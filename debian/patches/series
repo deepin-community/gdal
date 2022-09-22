@@ -1,0 +1,10 @@
+hdf4
+gdal-grass
+ecw-plugin
+mrsid-plugin
+spatialite
+java.opt
+perl-vendor
+perl-doxyfile
+spelling-errors.patch
+add-sunway-support.patch
