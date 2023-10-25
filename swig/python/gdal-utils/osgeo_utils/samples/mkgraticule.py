@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-# $Id: mkgraticule.py ffccab1ee20b5151e9bd45f1a2c46245a74f1f56 2021-04-23 14:05:42 +0300 Idan Miara $
+# $Id$
 #
 # Project:  OGR Python samples
 # Purpose:  Produce a graticule (grid) dataset.
@@ -30,8 +30,7 @@
 
 import sys
 
-from osgeo import ogr
-from osgeo import osr
+from osgeo import ogr, osr
 
 
 #############################################################################
@@ -59,13 +58,16 @@ def float_range(*args):
 
 #############################################################################
 def Usage():
-    print('Usage: mkgraticule [-connected] [-s stepsize] [-substep substepsize]')
-    print('         [-t_srs srs] [-range xmin ymin xmax ymax] outfile')
-    print('')
-    return 1
+    print("Usage: mkgraticule [-connected] [-s stepsize] [-substep substepsize]")
+    print("         [-t_srs srs] [-range xmin ymin xmax ymax] outfile")
+    print("")
+    print(
+        "Defaults to: not connected, step & substep of 5.0, no SRS, range -180,-90 180,90"
+    )
+    return 2
 
 
-def main(argv):
+def main(argv=sys.argv):
     # Argument processing.
     t_srs = None
     stepsize = 5.0
@@ -80,24 +82,24 @@ def main(argv):
 
     i = 1
     while i < len(argv):
-        if argv[i] == '-connected':
+        if argv[i] == "-connected":
             connected = 1
-        elif argv[i] == '-t_srs':
+        elif argv[i] == "-t_srs":
             i = i + 1
             t_srs = argv[i]
-        elif argv[i] == '-s':
+        elif argv[i] == "-s":
             i = i + 1
             stepsize = float(argv[i])
-        elif argv[i] == '-substep':
+        elif argv[i] == "-substep":
             i = i + 1
             substepsize = float(argv[i])
-        elif argv[i] == '-range':
+        elif argv[i] == "-range":
             xmin = float(argv[i + 1])
             ymin = float(argv[i + 2])
             xmax = float(argv[i + 3])
             ymax = float(argv[i + 4])
             i = i + 4
-        elif argv[i][0] == '-':
+        elif argv[i][0] == "-":
             return Usage()
         elif outfile is None:
             outfile = argv[i]
@@ -107,8 +109,8 @@ def main(argv):
         i = i + 1
 
     if outfile is None:
-        outfile = "graticule.shp"
-
+        print("""\nNo outfile specified, e.g. 'graticule.shp'.\n""")
+        return Usage()
 
     if substepsize > stepsize:
         substepsize = stepsize
@@ -123,26 +125,25 @@ def main(argv):
         t_srs_o.SetFromUserInput(t_srs)
 
         s_srs_o = osr.SpatialReference()
-        s_srs_o.SetFromUserInput('WGS84')
+        s_srs_o.SetFromUserInput("WGS84")
 
         ct = osr.CoordinateTransformation(s_srs_o, t_srs_o)
     else:
         t_srs_o = osr.SpatialReference()
-        t_srs_o.SetFromUserInput('WGS84')
+        t_srs_o.SetFromUserInput("WGS84")
 
     # -
     # Create graticule file.
 
-    drv = ogr.GetDriverByName('ESRI Shapefile')
+    drv = ogr.GetDriverByName("ESRI Shapefile")
 
     try:
         drv.DeleteDataSource(outfile)
-    except:
+    except Exception:
         pass
 
     ds = drv.CreateDataSource(outfile)
-    layer = ds.CreateLayer('out', geom_type=ogr.wkbLineString,
-                           srs=t_srs_o)
+    layer = ds.CreateLayer("out", geom_type=ogr.wkbLineString, srs=t_srs_o)
 
     #########################################################################
     # Not connected case.  Produce individual segments are these are going to
@@ -184,7 +185,6 @@ def main(argv):
                 if err == 0:
                     feat.SetGeometry(geom)
                     layer.CreateFeature(feat)
-
 
     #########################################################################
     # Connected case - produce one polyline for each complete line of latitude
@@ -241,5 +241,5 @@ def main(argv):
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

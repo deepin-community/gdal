@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: Driver.i 2fb147ddf53416161a4ef763c11038a15ffa8678 2019-06-07 16:07:20 +0200 Even Rouault $
+ * $Id$
  *
  * Name:     Driver.i
  * Project:  GDAL Python Interface

@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: OGRFeatureEdit.cs 2f8852a83c79a3153293d85892fffd70e4abe780 2015-04-25 18:15:42Z Tamas Szekeres $
+ * $Id$
  *
  * Name:     OGRFeatureEdit.cs
  * Project:  GDAL CSharp Interface

@@ -1,13 +1,21 @@
 #!/bin/sh
 #
-# $Id: mkgdaldist.sh cc7e1d850cc13474f6f805885d7d5b53762f856e 2021-11-01 18:01:57 +0100 Even Rouault $
+# $Id$
 #
 # mkgdaldist.sh - prepares GDAL source distribution package
 
 set -eu
 
+if [ -z ${MAKE+x} ]; then
+    MAKE="make"
+fi
+
+if [ -z ${PYTHON+x} ]; then
+    PYTHON="python3"
+fi
+
 # Doxygen 1.7.1 has a bug related to man pages. See https://trac.osgeo.org/gdal/ticket/6048
-doxygen --version | xargs python -c "import sys; v = sys.argv[1].split('.'); v=int(v[0])*10000+int(v[1])*100+int(v[2]); sys.exit(v < 10704)"
+doxygen --version | xargs ${PYTHON} -c "import sys; v = sys.argv[1].split('.'); v=int(v[0])*10000+int(v[1])*100+int(v[2]); sys.exit(v < 10704)"
 rc=$?
 if test $rc != 0; then
     echo "Wrong Doxygen version. 1.7.4 or later required"
@@ -16,7 +24,7 @@ fi
 
 GITURL="https://github.com/OSGeo/gdal"
 
-if [ $# -lt 1 ] ; then
+if [ $# -lt 1 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ] ; then
   echo "Usage: mkgdaldist.sh <version> [-date date] [-branch branch|-tag tag] [-rc n] [-url url]"
   echo " <version> - version number used in name of generated archive."
   echo " -date     - date of package generation, current date used if not provided"
@@ -115,113 +123,63 @@ fi
 if test "$forcedate" != "no" ; then
   echo "* Updating release date..."
   echo "Forcing Date To: $forcedate"
-  rm -f gdal/gcore/gdal_new.h
-  sed -e "/define GDAL_RELEASE_DATE/s/20[0-9][0-9][0-9][0-9][0-9][0-9]/$forcedate/" gdal/gcore/gdal.h > gdal/gcore/gdal_new.h
-  mv gdal/gcore/gdal_new.h gdal/gcore/gdal.h
+  rm -f gcore/gdal_new.h
+  sed -e "/define GDAL_RELEASE_DATE/s/20[0-9][0-9][0-9][0-9][0-9][0-9]/$forcedate/" gcore/gdal.h > gcore/gdal_new.h
+  mv gcore/gdal_new.h gcore/gdal.h
 fi
 
-echo "* Cleaning .gitignore under $PWD..."
-rm -f gdal/.gitignore
-
-echo "* Substituting \$Id\$..."
-find . -name "*.h" -o -name "*.c" -o -name "*.cpp" -o -name "*.dox" \
-     -o -name "*.py" -o -name "*.i" -o -name "*.sh" -o -name "*.cs" \
-     -o -name "*.java" -o -name "*.m4" -o -name "*.xml" \
-     -o -name "*.xsd" | while read -r i ; do
-    ID=$(basename "$i")
-    ID="$ID $(git log -1 --format='%H %ai %aN' "$i" | sed 's/ +0000/Z/')"
-    sed -i "s/\\\$Id\\\$/\\\$Id: ${ID} \\\$/" "$i"
-done
-
+echo "* Cleaning .git, .github .gitignore, ci under $PWD..."
+rm -rf .git
+rm -f .gitignore
+rm -rf .github
+rm -rf ci
 
 CWD=${PWD}
-cd gdal
-
-#
-# Generate ./configure
-#
-echo "* Generating ./configure..."
-./autogen.sh
-rm -rf autom4te.cache
 
 #
 # Generate man pages
 #
 echo "* Generating man pages..."
-if test -d "man"; then
-    rm -rf man
-fi
 
-if test -f "doc/Makefile"; then
-    (cd doc; make man)
-    mkdir -p man/man1
-    cp doc/build/man/*.1 man/man1
-    rm -rf doc/build
-    rm -f doc/.doxygen_up_to_date
-else
-    (cat Doxyfile ; echo "ENABLED_SECTIONS=man"; echo "INPUT=apps swig/python/gdal-utils/scripts"; echo "FILE_PATTERNS=*.cpp *.dox"; echo "GENERATE_HTML=NO"; echo "GENERATE_MAN=YES"; echo "QUIET=YES") | doxygen -
-    rm -f doxygen_sqlite3.db
-    rm -f man/man1/*_dist_wrk_gdal_gdal_apps_.1
-fi
+(cd doc; SPHINXOPTS='--keep-going -j auto' make man)
+mkdir -p man/man1
+cp doc/build/man/*.1 man/man1
+rm -rf doc/build
+rm -f doc/.doxygen_up_to_date
 
-if test ! -d "man"; then
+if test ! -f "man/man1/gdalinfo.1"; then
     echo " make man failed"
 fi
 
 cd "$CWD"
 
-# They currently require SWIG 1.3.X, which is not convenient as we need
-# newer SWIG for newer Python versions
-echo "SWIG C# interfaces *NOT* generated !"
-
-#
-# Generate SWIG interface for C#
-#
-#echo "* Generating SWIG C# interfaces..."
-#CWD=${PWD}
-#cd gdal/swig/csharp
-#./mkinterface.sh
-#cd ${CWD}
-
-#
-# Generate SWIG interface for Perl
-#
-echo "* Generating SWIG Perl interfaces..."
-CWD=${PWD}
-
-rm -f gdal/swig/perl/*wrap*
-touch gdal/GDALmake.opt
-(cd gdal/swig/perl && make generate)
-rm gdal/GDALmake.opt
+echo "* Cleaning doc/, fuzzers/ and perftests/ under $CWD..."
+rm -rf doc
+rm -rf fuzzers
+rm -rf perftests
 
 #
 # Make distribution packages
 #
 echo "* Making distribution packages..."
-rm -f gdal/VERSION
-echo "$GDAL_VERSION" > gdal/VERSION
+rm -f VERSION
+echo "$GDAL_VERSION" > VERSION
 
+cd ..
+mv gdal/autotest "gdalautotest-${GDAL_VERSION}"
 mv gdal "gdal-${GDAL_VERSION}"
 
-rm -f "../../gdal-${GDAL_VERSION}${RC}.tar.gz" "../../gdal${COMPRESSED_VERSION}${RC}.zip"
+rm -f "../gdal-${GDAL_VERSION}${RC}.tar.xz" "../gdal-${GDAL_VERSION}${RC}.tar.gz" "../gdal${COMPRESSED_VERSION}${RC}.zip"
 
-tar cf "../../gdal-${GDAL_VERSION}${RC}.tar" "gdal-${GDAL_VERSION}"
-xz -k9e "../../gdal-${GDAL_VERSION}${RC}.tar"
-gzip -9 "../../gdal-${GDAL_VERSION}${RC}.tar"
-zip -qr "../../gdal${COMPRESSED_VERSION}${RC}.zip" "gdal-${GDAL_VERSION}"
+tar cf "../gdal-${GDAL_VERSION}${RC}.tar" "gdal-${GDAL_VERSION}"
+xz -k9e "../gdal-${GDAL_VERSION}${RC}.tar"
+gzip -9 "../gdal-${GDAL_VERSION}${RC}.tar"
+zip -qr "../gdal${COMPRESSED_VERSION}${RC}.zip" "gdal-${GDAL_VERSION}"
 
-mv autotest "gdalautotest-${GDAL_VERSION}"
-rm -f "../../gdalautotest-${GDAL_VERSION}${RC}.tar.gz"
-rm -f "../../gdalautotest-${GDAL_VERSION}${RC}.zip"
-tar cf "../../gdalautotest-${GDAL_VERSION}${RC}.tar.gz" "gdalautotest-${GDAL_VERSION}"
-zip -qr "../../gdalautotest-${GDAL_VERSION}${RC}.zip" "gdalautotest-${GDAL_VERSION}"
-
-cd "gdal-${GDAL_VERSION}"
-echo "GDAL_VER=${GDAL_VERSION}" > GDALmake.opt
-cd frmts/grass
-make dist
-mv ./*.tar.gz ../../../../..
-cd ../../..
+rm -f "../gdalautotest-${GDAL_VERSION}${RC}.tar.gz"
+rm -f "../gdalautotest-${GDAL_VERSION}${RC}.zip"
+tar czf "../gdalautotest-${GDAL_VERSION}${RC}.tar.gz" "gdalautotest-${GDAL_VERSION}"
+zip -qr "../gdalautotest-${GDAL_VERSION}${RC}.zip" "gdalautotest-${GDAL_VERSION}"
 
 echo "* Generating MD5 sums ..."
 
@@ -232,7 +190,7 @@ else
 MD5=md5sum
 fi
 
-cd ../..
+cd ..
 $MD5 "gdal-${GDAL_VERSION}${RC}.tar.xz" > "gdal-${GDAL_VERSION}${RC}.tar.xz.md5"
 $MD5 "gdal-${GDAL_VERSION}${RC}.tar.gz" > "gdal-${GDAL_VERSION}${RC}.tar.gz.md5"
 $MD5 "gdal${COMPRESSED_VERSION}${RC}.zip" > "gdal${COMPRESSED_VERSION}${RC}.zip.md5"

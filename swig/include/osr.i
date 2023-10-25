@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: osr.i ed03372732878b73c2d7043c0bd8f0a3cc01ca8d 2021-10-18 05:00:39 -0500 Alan D. Snow $
+ * $Id$
  *
  * Project:  GDAL SWIG Interfaces.
  * Purpose:  OGRSpatialReference related declarations.
@@ -33,9 +33,7 @@
 
 %include constraints.i
 
-#ifdef PERL_CPAN_NAMESPACE
-%module "Geo::OSR"
-#elif defined(SWIGCSHARP)
+#if defined(SWIGCSHARP)
 %module Osr
 #elif defined(SWIGPYTHON)
 %module (package="osgeo") osr
@@ -169,8 +167,6 @@ typedef int OGRErr;
 %include osr_csharp.i
 #elif defined(SWIGJAVA)
 %include osr_java.i
-#elif defined(SWIGPERL)
-%include osr_perl.i
 #else
 %include gdal_typemaps.i
 #endif
@@ -191,7 +187,7 @@ OGRErr GetWellKnownGeogCSAsWKT( const char *name, char **argout ) {
   OGRErr rcode = OSRSetWellKnownGeogCS( srs, name );
   if( rcode == OGRERR_NONE )
       rcode = OSRExportToWkt ( srs, argout );
-  OSRDestroySpatialReference( srs );
+  OSRRelease( srs );
   return rcode;
 }
 %}
@@ -205,7 +201,7 @@ OGRErr GetUserInputAsWKT( const char *name, char **argout ) {
   OGRErr rcode = OSRSetFromUserInput( srs, name );
   if( rcode == OGRERR_NONE )
       rcode = OSRExportToWkt ( srs, argout );
-  OSRDestroySpatialReference( srs );
+  OSRRelease( srs );
   return rcode;
 }
 %}
@@ -314,9 +310,7 @@ public:
   }
 
   ~OSRSpatialReferenceShadow() {
-    if (OSRDereference( self ) == 0 ) {
-      OSRDestroySpatialReference( self );
-    }
+    OSRRelease( self );
   }
 
 /* FIXME : all bindings should avoid using the #else case */
@@ -328,10 +322,6 @@ public:
     OSRExportToPrettyWkt( self, &buf, 0 );
     return buf;
   }
-/* Adding __str__ to Perl bindings makes Swig to use overloading,
-   which is undesirable since it is not used elsewhere in these
-   bindings, and causes side effects. */
-#elif defined(SWIGPERL)
 #else
 %newobject __str__;
   char *__str__() {
@@ -476,18 +466,10 @@ public:
   }
 
   const char *GetLinearUnitsName() {
-    const char *name = 0;
-    if ( OSRIsProjected( self ) ) {
-      name = OSRGetAttrValue( self, "PROJCS|UNIT", 0 );
-    }
-    else if ( OSRIsLocal( self ) ) {
-      name = OSRGetAttrValue( self, "LOCAL_CS|UNIT", 0 );
-    }
-
-    if (name != 0)
-      return name;
-
-    return "Meter";
+    char *name = NULL;
+    // Return code ignored.
+    OSRGetLinearUnits( self, &name );
+    return (const char*)name;
   }
 
   const char *GetAuthorityCode( const char *target_key ) {
@@ -1106,6 +1088,17 @@ public:
 %clear (long*);
 %clear (double *params[15]);
 
+%apply (char **argout) { (char **) };
+  OGRErr ExportToERM( char **proj, char** datum, char **units ) {
+    char szProj[32] = {0}, szDatum[32] = {0}, szUnits[32] = {0};
+    OGRErr ret = OSRExportToERM( self, szProj, szDatum, szUnits );
+    *proj = CPLStrdup(szProj);
+    *datum = CPLStrdup(szDatum);
+    *units = CPLStrdup(szUnits);
+    return ret;
+  }
+%clear (char **);
+
   OGRErr ExportToXML( char **argout, const char *dialect = "" ) {
     return OSRExportToXML( self, argout, dialect );
   }
@@ -1122,6 +1115,10 @@ public:
 %newobject Clone;
   OSRSpatialReferenceShadow *Clone() {
     return (OSRSpatialReferenceShadow*) OSRClone(self);
+  }
+
+  OGRErr StripVertical() {
+    return OSRStripVertical(self);
   }
 
   OGRErr Validate() {
@@ -1185,8 +1182,8 @@ public:
         eastLongitudeDeg, northLatitudeDeg);
   }
 
-  bool SetOperation(const char* operation) {
-    return OCTCoordinateTransformationOptionsSetOperation(self, operation, false);
+  bool SetOperation(const char* operation, bool inverseCT = false) {
+    return OCTCoordinateTransformationOptionsSetOperation(self, operation, inverseCT);
   }
 
   bool SetDesiredAccuracy(double accuracy) {
@@ -1221,6 +1218,11 @@ public:
 
   ~OSRCoordinateTransformationShadow() {
     OCTDestroyCoordinateTransformation( self );
+  }
+
+  %newobject GetInverse;
+  OSRCoordinateTransformationShadow* GetInverse() {
+    return OCTGetInverse(self);
   }
 
 // Need to apply argin typemap second so the numinputs=1 version gets applied

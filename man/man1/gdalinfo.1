@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALINFO" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdalinfo \- Lists various information about a GDAL supported raster dataset
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALINFO" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdalinfo \- Lists various information about a GDAL supported raster dataset
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -53,7 +53,10 @@ The following command line parameters can appear in any order
 .INDENT 0.0
 .TP
 .B \-json
-Display the output in json format.
+Display the output in json format. Since GDAL 3.6, this includes key\-value
+pairs useful for building a \fI\%STAC item\fP
+, including statistics and histograms if \fB\-stats\fP or \fB\-hist\fP flags are
+passed, respectively.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -208,13 +211,13 @@ Band NODATA value.
 .IP \(bu 2
 Band overview resolutions available.
 .IP \(bu 2
-Band unit type (i.e.. "meters" or "feet" for elevation bands).
+Band unit type (i.e.. \(dqmeters\(dq or \(dqfeet\(dq for elevation bands).
 .IP \(bu 2
 Band pseudo\-color tables.
 .UNINDENT
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALInfo()\fP\&.
+This utility is also callable from C with \fI\%GDALInfo()\fP\&.
 .sp
 New in version 2.1.
 
@@ -228,28 +231,287 @@ gdalinfo ~/openev/utm.tif
 Driver: GTiff/GeoTIFF
 Size is 512, 512
 Coordinate System is:
-PROJCS["NAD27 / UTM zone 11N",
-    GEOGCS["NAD27",
-        DATUM["North_American_Datum_1927",
-            SPHEROID["Clarke 1866",6378206.4,294.978698213901]],
-        PRIMEM["Greenwich",0],
-        UNIT["degree",0.0174532925199433]],
-    PROJECTION["Transverse_Mercator"],
-    PARAMETER["latitude_of_origin",0],
-    PARAMETER["central_meridian",\-117],
-    PARAMETER["scale_factor",0.9996],
-    PARAMETER["false_easting",500000],
-    PARAMETER["false_northing",0],
-    UNIT["metre",1]]
+PROJCS[\(dqNAD27 / UTM zone 11N\(dq,
+    GEOGCS[\(dqNAD27\(dq,
+        DATUM[\(dqNorth_American_Datum_1927\(dq,
+            SPHEROID[\(dqClarke 1866\(dq,6378206.4,294.978698213901]],
+        PRIMEM[\(dqGreenwich\(dq,0],
+        UNIT[\(dqdegree\(dq,0.0174532925199433]],
+    PROJECTION[\(dqTransverse_Mercator\(dq],
+    PARAMETER[\(dqlatitude_of_origin\(dq,0],
+    PARAMETER[\(dqcentral_meridian\(dq,\-117],
+    PARAMETER[\(dqscale_factor\(dq,0.9996],
+    PARAMETER[\(dqfalse_easting\(dq,500000],
+    PARAMETER[\(dqfalse_northing\(dq,0],
+    UNIT[\(dqmetre\(dq,1]]
 Origin = (440720.000000,3751320.000000)
 Pixel Size = (60.000000,\-60.000000)
 Corner Coordinates:
-Upper Left  (  440720.000, 3751320.000) (117d38\(aq28.21"W, 33d54\(aq8.47"N)
-Lower Left  (  440720.000, 3720600.000) (117d38\(aq20.79"W, 33d37\(aq31.04"N)
-Upper Right (  471440.000, 3751320.000) (117d18\(aq32.07"W, 33d54\(aq13.08"N)
-Lower Right (  471440.000, 3720600.000) (117d18\(aq28.50"W, 33d37\(aq35.61"N)
-Center      (  456080.000, 3735960.000) (117d28\(aq27.39"W, 33d45\(aq52.46"N)
+Upper Left  (  440720.000, 3751320.000) (117d38\(aq28.21\(dqW, 33d54\(aq8.47\(dqN)
+Lower Left  (  440720.000, 3720600.000) (117d38\(aq20.79\(dqW, 33d37\(aq31.04\(dqN)
+Upper Right (  471440.000, 3751320.000) (117d18\(aq32.07\(dqW, 33d54\(aq13.08\(dqN)
+Lower Right (  471440.000, 3720600.000) (117d18\(aq28.50\(dqW, 33d37\(aq35.61\(dqN)
+Center      (  456080.000, 3735960.000) (117d28\(aq27.39\(dqW, 33d45\(aq52.46\(dqN)
 Band 1 Block=512x16 Type=Byte, ColorInterp=Gray
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Example of JSON output with \fBgdalinfo \-json byte.tif\fP
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+{
+  \(dqdescription\(dq:\(dqbyte.tif\(dq,
+  \(dqdriverShortName\(dq:\(dqGTiff\(dq,
+  \(dqdriverLongName\(dq:\(dqGeoTIFF\(dq,
+  \(dqfiles\(dq:[
+    \(dqbyte.tif\(dq
+  ],
+  \(dqsize\(dq:[
+    20,
+    20
+  ],
+  \(dqcoordinateSystem\(dq:{
+    \(dqwkt\(dq:\(dqPROJCRS[\e\(dqNAD27 / UTM zone 11N\e\(dq,\en    BASEGEOGCRS[\e\(dqNAD27\e\(dq,\en        DATUM[\e\(dqNorth American Datum 1927\e\(dq,\en            ELLIPSOID[\e\(dqClarke 1866\e\(dq,6378206.4,294.978698213898,\en                LENGTHUNIT[\e\(dqmetre\e\(dq,1]]],\en        PRIMEM[\e\(dqGreenwich\e\(dq,0,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433]],\en        ID[\e\(dqEPSG\e\(dq,4267]],\en    CONVERSION[\e\(dqUTM zone 11N\e\(dq,\en        METHOD[\e\(dqTransverse Mercator\e\(dq,\en            ID[\e\(dqEPSG\e\(dq,9807]],\en        PARAMETER[\e\(dqLatitude of natural origin\e\(dq,0,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],\en            ID[\e\(dqEPSG\e\(dq,8801]],\en        PARAMETER[\e\(dqLongitude of natural origin\e\(dq,\-117,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],\en            ID[\e\(dqEPSG\e\(dq,8802]],\en        PARAMETER[\e\(dqScale factor at natural origin\e\(dq,0.9996,\en            SCALEUNIT[\e\(dqunity\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8805]],\en        PARAMETER[\e\(dqFalse easting\e\(dq,500000,\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8806]],\en        PARAMETER[\e\(dqFalse northing\e\(dq,0,\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8807]]],\en    CS[Cartesian,2],\en        AXIS[\e\(dq(E)\e\(dq,east,\en            ORDER[1],\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1]],\en        AXIS[\e\(dq(N)\e\(dq,north,\en            ORDER[2],\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1]],\en    USAGE[\en        SCOPE[\e\(dqEngineering survey, topographic mapping.\e\(dq],\en        AREA[\e\(dqNorth America \- between 120°W and 114°W \- onshore. Canada \- Alberta; British Columbia; Northwest Territories; Nunavut. Mexico. United States (USA) \- California; Idaho; Nevada; Oregon; Washington.\e\(dq],\en        BBOX[26.93,\-120,78.13,\-114]],\en    ID[\e\(dqEPSG\e\(dq,26711]]\(dq,
+    \(dqdataAxisToSRSAxisMapping\(dq:[
+      1,
+      2
+    ]
+  },
+  \(dqgeoTransform\(dq:[
+    440720.0,
+    60.0,
+    0.0,
+    3751320.0,
+    0.0,
+    \-60.0
+  ],
+  \(dqmetadata\(dq:{
+    \(dq\(dq:{
+      \(dqAREA_OR_POINT\(dq:\(dqArea\(dq
+    },
+    \(dqIMAGE_STRUCTURE\(dq:{
+      \(dqINTERLEAVE\(dq:\(dqBAND\(dq
+    }
+  },
+  \(dqcornerCoordinates\(dq:{
+    \(dqupperLeft\(dq:[
+      440720.0,
+      3751320.0
+    ],
+    \(dqlowerLeft\(dq:[
+      440720.0,
+      3750120.0
+    ],
+    \(dqlowerRight\(dq:[
+      441920.0,
+      3750120.0
+    ],
+    \(dqupperRight\(dq:[
+      441920.0,
+      3751320.0
+    ],
+    \(dqcenter\(dq:[
+      441320.0,
+      3750720.0
+    ]
+  },
+  \(dqwgs84Extent\(dq:{
+    \(dqtype\(dq:\(dqPolygon\(dq,
+    \(dqcoordinates\(dq:[
+      [
+        [
+          \-117.6420428,
+          33.9023684
+        ],
+        [
+          \-117.6419617,
+          33.8915461
+        ],
+        [
+          \-117.6289846,
+          33.8916131
+        ],
+        [
+          \-117.629064,
+          33.9024353
+        ],
+        [
+          \-117.6420428,
+          33.9023684
+        ]
+      ]
+    ]
+  },
+  \(dqbands\(dq:[
+    {
+      \(dqband\(dq:1,
+      \(dqblock\(dq:[
+        20,
+        20
+      ],
+      \(dqtype\(dq:\(dqByte\(dq,
+      \(dqcolorInterpretation\(dq:\(dqGray\(dq,
+      \(dqmetadata\(dq:{
+      }
+    }
+  ],
+  \(dqstac\(dq:{
+    \(dqproj:shape\(dq:[
+      20,
+      20
+    ],
+    \(dqproj:wkt2\(dq:\(dqPROJCRS[\e\(dqNAD27 / UTM zone 11N\e\(dq,\en    BASEGEOGCRS[\e\(dqNAD27\e\(dq,\en        DATUM[\e\(dqNorth American Datum 1927\e\(dq,\en            ELLIPSOID[\e\(dqClarke 1866\e\(dq,6378206.4,294.978698213898,\en                LENGTHUNIT[\e\(dqmetre\e\(dq,1]]],\en        PRIMEM[\e\(dqGreenwich\e\(dq,0,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433]],\en        ID[\e\(dqEPSG\e\(dq,4267]],\en    CONVERSION[\e\(dqUTM zone 11N\e\(dq,\en        METHOD[\e\(dqTransverse Mercator\e\(dq,\en            ID[\e\(dqEPSG\e\(dq,9807]],\en        PARAMETER[\e\(dqLatitude of natural origin\e\(dq,0,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],\en            ID[\e\(dqEPSG\e\(dq,8801]],\en        PARAMETER[\e\(dqLongitude of natural origin\e\(dq,\-117,\en            ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],\en            ID[\e\(dqEPSG\e\(dq,8802]],\en        PARAMETER[\e\(dqScale factor at natural origin\e\(dq,0.9996,\en            SCALEUNIT[\e\(dqunity\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8805]],\en        PARAMETER[\e\(dqFalse easting\e\(dq,500000,\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8806]],\en        PARAMETER[\e\(dqFalse northing\e\(dq,0,\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1],\en            ID[\e\(dqEPSG\e\(dq,8807]]],\en    CS[Cartesian,2],\en        AXIS[\e\(dq(E)\e\(dq,east,\en            ORDER[1],\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1]],\en        AXIS[\e\(dq(N)\e\(dq,north,\en            ORDER[2],\en            LENGTHUNIT[\e\(dqmetre\e\(dq,1]],\en    USAGE[\en        SCOPE[\e\(dqEngineering survey, topographic mapping.\e\(dq],\en        AREA[\e\(dqNorth America \- between 120°W and 114°W \- onshore. Canada \- Alberta; British Columbia; Northwest Territories; Nunavut. Mexico. United States (USA) \- California; Idaho; Nevada; Oregon; Washington.\e\(dq],\en        BBOX[26.93,\-120,78.13,\-114]],\en    ID[\e\(dqEPSG\e\(dq,26711]]\(dq,
+    \(dqproj:epsg\(dq:26711,
+    \(dqproj:projjson\(dq:{
+      \(dq$schema\(dq:\(dqhttps://proj.org/schemas/v0.6/projjson.schema.json\(dq,
+      \(dqtype\(dq:\(dqProjectedCRS\(dq,
+      \(dqname\(dq:\(dqNAD27 / UTM zone 11N\(dq,
+      \(dqbase_crs\(dq:{
+        \(dqname\(dq:\(dqNAD27\(dq,
+        \(dqdatum\(dq:{
+          \(dqtype\(dq:\(dqGeodeticReferenceFrame\(dq,
+          \(dqname\(dq:\(dqNorth American Datum 1927\(dq,
+          \(dqellipsoid\(dq:{
+            \(dqname\(dq:\(dqClarke 1866\(dq,
+            \(dqsemi_major_axis\(dq:6378206.4,
+            \(dqsemi_minor_axis\(dq:6356583.8
+          }
+        },
+        \(dqcoordinate_system\(dq:{
+          \(dqsubtype\(dq:\(dqellipsoidal\(dq,
+          \(dqaxis\(dq:[
+            {
+              \(dqname\(dq:\(dqGeodetic latitude\(dq,
+              \(dqabbreviation\(dq:\(dqLat\(dq,
+              \(dqdirection\(dq:\(dqnorth\(dq,
+              \(dqunit\(dq:\(dqdegree\(dq
+            },
+            {
+              \(dqname\(dq:\(dqGeodetic longitude\(dq,
+              \(dqabbreviation\(dq:\(dqLon\(dq,
+              \(dqdirection\(dq:\(dqeast\(dq,
+              \(dqunit\(dq:\(dqdegree\(dq
+            }
+          ]
+        },
+        \(dqid\(dq:{
+          \(dqauthority\(dq:\(dqEPSG\(dq,
+          \(dqcode\(dq:4267
+        }
+      },
+      \(dqconversion\(dq:{
+        \(dqname\(dq:\(dqUTM zone 11N\(dq,
+        \(dqmethod\(dq:{
+          \(dqname\(dq:\(dqTransverse Mercator\(dq,
+          \(dqid\(dq:{
+            \(dqauthority\(dq:\(dqEPSG\(dq,
+            \(dqcode\(dq:9807
+          }
+        },
+        \(dqparameters\(dq:[
+          {
+            \(dqname\(dq:\(dqLatitude of natural origin\(dq,
+            \(dqvalue\(dq:0,
+            \(dqunit\(dq:\(dqdegree\(dq,
+            \(dqid\(dq:{
+              \(dqauthority\(dq:\(dqEPSG\(dq,
+              \(dqcode\(dq:8801
+            }
+          },
+          {
+            \(dqname\(dq:\(dqLongitude of natural origin\(dq,
+            \(dqvalue\(dq:\-117,
+            \(dqunit\(dq:\(dqdegree\(dq,
+            \(dqid\(dq:{
+              \(dqauthority\(dq:\(dqEPSG\(dq,
+              \(dqcode\(dq:8802
+            }
+          },
+          {
+            \(dqname\(dq:\(dqScale factor at natural origin\(dq,
+            \(dqvalue\(dq:0.9996,
+            \(dqunit\(dq:\(dqunity\(dq,
+            \(dqid\(dq:{
+              \(dqauthority\(dq:\(dqEPSG\(dq,
+              \(dqcode\(dq:8805
+            }
+          },
+          {
+            \(dqname\(dq:\(dqFalse easting\(dq,
+            \(dqvalue\(dq:500000,
+            \(dqunit\(dq:\(dqmetre\(dq,
+            \(dqid\(dq:{
+              \(dqauthority\(dq:\(dqEPSG\(dq,
+              \(dqcode\(dq:8806
+            }
+          },
+          {
+            \(dqname\(dq:\(dqFalse northing\(dq,
+            \(dqvalue\(dq:0,
+            \(dqunit\(dq:\(dqmetre\(dq,
+            \(dqid\(dq:{
+              \(dqauthority\(dq:\(dqEPSG\(dq,
+              \(dqcode\(dq:8807
+            }
+          }
+        ]
+      },
+      \(dqcoordinate_system\(dq:{
+        \(dqsubtype\(dq:\(dqCartesian\(dq,
+        \(dqaxis\(dq:[
+          {
+            \(dqname\(dq:\(dqEasting\(dq,
+            \(dqabbreviation\(dq:\(dqE\(dq,
+            \(dqdirection\(dq:\(dqeast\(dq,
+            \(dqunit\(dq:\(dqmetre\(dq
+          },
+          {
+            \(dqname\(dq:\(dqNorthing\(dq,
+            \(dqabbreviation\(dq:\(dqN\(dq,
+            \(dqdirection\(dq:\(dqnorth\(dq,
+            \(dqunit\(dq:\(dqmetre\(dq
+          }
+        ]
+      },
+      \(dqscope\(dq:\(dqEngineering survey, topographic mapping.\(dq,
+      \(dqarea\(dq:\(dqNorth America \- between 120°W and 114°W \- onshore. Canada \- Alberta; British Columbia; Northwest Territories; Nunavut. Mexico. United States (USA) \- California; Idaho; Nevada; Oregon; Washington.\(dq,
+      \(dqbbox\(dq:{
+        \(dqsouth_latitude\(dq:26.93,
+        \(dqwest_longitude\(dq:\-120,
+        \(dqnorth_latitude\(dq:78.13,
+        \(dqeast_longitude\(dq:\-114
+      },
+      \(dqid\(dq:{
+        \(dqauthority\(dq:\(dqEPSG\(dq,
+        \(dqcode\(dq:26711
+      }
+    },
+    \(dqproj:transform\(dq:[
+      440720.0,
+      60.0,
+      0.0,
+      3751320.0,
+      0.0,
+      \-60.0
+    ],
+    \(dqraster:bands\(dq:[
+      {
+        \(dqdata_type\(dq:\(dquint8\(dq
+      }
+    ],
+    \(dqeo:bands\(dq:[
+      {
+        \(dqname\(dq:\(dqb1\(dq,
+        \(dqdescription\(dq:\(dqGray\(dq
+      }
+    ]
+  }
+}
 .ft P
 .fi
 .UNINDENT
@@ -257,6 +519,6 @@ Band 1 Block=512x16 Type=Byte, ColorInterp=Gray
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

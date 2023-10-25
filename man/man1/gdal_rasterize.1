@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDAL_RASTERIZE" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdal_rasterize \- Burns vector geometries into a raster.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDAL_RASTERIZE" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdal_rasterize \- Burns vector geometries into a raster.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -37,12 +37,13 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .nf
 .ft C
 gdal_rasterize [\-b band]* [\-i] [\-at]
+    [\-oo NAME=VALUE]*
     {[\-burn value]* | [\-a attribute_name] | [\-3d]} [\-add]
-    [\-l layername]* [\-where expression] [\-sql select_statement]
+    [\-l layername]* [\-where expression] [\-sql select_statement|@filename]
     [\-dialect dialect] [\-of format] [\-a_srs srs_def] [\-to NAME=VALUE]*
-    [\-co "NAME=VALUE"]* [\-a_nodata value] [\-init value]*
+    [\-co \(dqNAME=VALUE\(dq]* [\-a_nodata value] [\-init value]*
     [\-te xmin ymin xmax ymax] [\-tr xres yres] [\-tap] [\-ts width height]
-    [\-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/
+    [\-ot {Byte/Int8/Int16/UInt16/UInt32/Int32/UInt64/Int64/Float32/Float64/
             CInt16/CInt32/CFloat32/CFloat64}]
     [\-optim {[AUTO]/VECTOR/RASTER}] [\-q]
     <src_datasource> <dst_filename>
@@ -95,7 +96,7 @@ The value will be burned into all output bands.
 .INDENT 0.0
 .TP
 .B \-3d
-Indicates that a burn value should be extracted from the "Z" values of the
+Indicates that a burn value should be extracted from the \(dqZ\(dq values of the
 feature. Works with points and lines (linear interpolation along each segment).
 For polygons, works properly only if the are flat (same Z value for all
 vertices).
@@ -124,13 +125,15 @@ to burn in from the input layer(s).
 .B \-sql <select_statement>
 An SQL statement to be evaluated against the datasource to produce a
 virtual layer of features to be burned in.
+Starting with GDAL 3.7, the \fB@filename\fP syntax can be used to indicate
+that the content is in the pointed filename.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-dialect <dialect>
 SQL dialect. In some cases can be used to use (unoptimized) OGR SQL instead of
 the native SQL of an RDBMS by passing OGRSQL. The
-"SQLITE" dialect can also be used with any datasource.
+\(dqSQLITE\(dq dialect can also be used with any datasource.
 .sp
 New in version 2.1.
 
@@ -168,7 +171,7 @@ EPSG:n or a file containing the WKT.
 .TP
 .B \-to NAME=VALUE
 set a transformer
-option suitable to pass to \fBGDALCreateGenImgProjTransformer2()\fP\&. This is
+option suitable to pass to \fI\%GDALCreateGenImgProjTransformer2()\fP\&. This is
 used when converting geometries coordinates to target raster pixel space. For
 example this can be used to specify RPC related transformer options.
 .sp
@@ -186,10 +189,10 @@ and whether the file should be tiled.
 The creation options available vary by format driver, and some
 simple formats have no creation options at all. A list of options
 supported for a format can be listed with the
-\-\-formats
+\fI\%\-\-formats\fP
 command line option but the documentation for the format is the
 definitive source of information on driver creation options.
-See raster_drivers format
+See \fI\%Raster drivers\fP format
 specific documentation for legal creation options for each format.
 .UNINDENT
 .INDENT 0.0
@@ -211,6 +214,7 @@ Both must be positive values.
 (target aligned pixels) Align
 the coordinates of the extent of the output file to the values of the \fI\%\-tr\fP,
 such that the aligned extent includes the minimum extent.
+Alignment means that xmin / resx, ymin / resy, xmax / resx and ymax / resy are integer values.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -234,6 +238,14 @@ properties.
 .sp
 New in version 2.3.
 
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-oo <NAME=VALUE>
+New in version 3.7.
+
+.sp
+Source dataset open option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -262,7 +274,7 @@ rasters.  The target raster will be overwritten if it already exists and any of
 these creation\-related options are used.
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALRasterize()\fP\&.
+This utility is also callable from C with \fI\%GDALRasterize()\fP\&.
 .sp
 New in version 2.1.
 
@@ -281,14 +293,14 @@ gdal_rasterize \-b 1 \-b 2 \-b 3 \-burn 255 \-burn 0 \-burn 0 \-l mask mask.shp 
 .UNINDENT
 .UNINDENT
 .sp
-The following would burn all "class A" buildings into the output elevation
+The following would burn all \(dqclass A\(dq buildings into the output elevation
 file, pulling the top elevation from the ROOF_H attribute.
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .nf
 .ft C
-gdal_rasterize \-a ROOF_H \-where \(aqclass="A"\(aq \-l footprints footprints.shp city_dem.tif
+gdal_rasterize \-a ROOF_H \-where \(dqclass=\(aqA\(aq\(dq \-l footprints footprints.shp city_dem.tif
 .ft P
 .fi
 .UNINDENT
@@ -310,6 +322,6 @@ gdal_rasterize \-burn 255 \-burn 0 \-burn 0 \-ot Byte \-ts 1000 1000 \-l footpri
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

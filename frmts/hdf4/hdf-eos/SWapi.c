@@ -1,5 +1,5 @@
 /*****************************************************************************
- * $Id: SWapi.c 6ef13199b493973da285decbfcd5e2a763954b97 2018-06-07 05:46:42 -0400 luzpaz $
+ * $Id$
  *
  * This module has a number of additions and improvements over the original
  * implementation to be suitable for usage in GDAL HDF driver.
@@ -6940,7 +6940,7 @@ SWextractregion(int32 swathID, int32 regionID, const char *fieldname,
    /* which is found in Landsat 7 files.  It is used    */
    /* for some of the loops.                            */
    /* ================================================= */
-   if (SWXRegion[regionID]->scanflag == 1)
+   if (status == 0 && SWXRegion[regionID]->scanflag == 1)
    {
       land_status = SWattrinfo(swathID, "detector_count", &numtype, &count);
       if (land_status == 0)
@@ -8230,7 +8230,7 @@ SWregioninfo(int32 swathID, int32 regionID, const char *fieldname,
    /* which is found in Landsat 7 files.  It is used    */
    /* for some of the loops.                            */
    /* ================================================= */
-   if (SWXRegion[regionID]->scanflag == 1)
+   if (status == 0 && SWXRegion[regionID]->scanflag == 1)
    {
       land_status = SWattrinfo(swathID, "detector_count", &numtype, &count);
       if (land_status == 0)
@@ -9822,7 +9822,7 @@ SWgetfillvalue(int32 swathID, const char *fieldname, VOIDP fillval)
 |                                                                             |
 |  FUNCTION: SWdetach                                                         |
 |                                                                             |
-|  DESCRIPTION: Detachs swath structure and performs housekeeping             |
+|  DESCRIPTION: Detaches swath structure and performs housekeeping            |
 |                                                                             |
 |                                                                             |
 |  Return Value    Type     Units     Description                             |

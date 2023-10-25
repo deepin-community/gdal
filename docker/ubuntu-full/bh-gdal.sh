@@ -19,9 +19,7 @@ wget -q "https://github.com/${GDAL_REPOSITORY}/archive/${GDAL_VERSION}.tar.gz" \
 
 
 (
-    cd gdal/gdal
-
-    ./autogen.sh
+    cd gdal
 
     if test "${RSYNC_REMOTE:-}" != ""; then
         echo "Downloading cache..."
@@ -39,70 +37,52 @@ wget -q "https://github.com/${GDAL_REPOSITORY}/archive/${GDAL_VERSION}.tar.gz" \
         ccache -M 1G
     fi
 
-    GDAL_CONFIG_OPTS=""
+    export CFLAGS="-DPROJ_RENAME_SYMBOLS -O2 -g"
+    export CXXFLAGS="-DPROJ_RENAME_SYMBOLS -DPROJ_INTERNAL_CPP_NAMESPACE -O2 -g"
 
-    if echo "$WITH_FILEGDB" | grep -Eiq "^(y(es)?|1|true)$" ; then
-      GDAL_CONFIG_OPTS="$GDAL_CONFIG_OPTS  --with-fgdb=/usr/local/FileGDB_API "
-      export LD_LIBRARY_PATH=/usr/local/FileGDB_API/lib
+    mkdir build
+    cd build
+    # GDAL_USE_TIFF_INTERNAL=ON to use JXL
+    export GDAL_CMAKE_EXTRA_OPTS=""
+    if test "${GCC_ARCH}" != "x86_64"; then
+        export GDAL_CMAKE_EXTRA_OPTS="${GDAL_CMAKE_EXTRA_OPTS} -DPDFIUM_INCLUDE_DIR="
     fi
-
-    if echo "$WITH_PDFIUM" | grep -Eiq "^(y(es)?|1|true)$" ; then
-      if test "${GCC_ARCH}" = "x86_64"; then
-        GDAL_CONFIG_OPTS="$GDAL_CONFIG_OPTS  --with-pdfium=/usr "
-      fi
-    fi
-
+    export JAVA_ARCH=""
     if test "${GCC_ARCH}" = "x86_64"; then
-      JAVA_ARCH=amd64;
+      export JAVA_ARCH="amd64";
     elif test "${GCC_ARCH}" = "aarch64"; then
-      JAVA_ARCH=arm64;
-    else
-      echo "Unknown arch. FIXME!"
+      export JAVA_ARCH="arm64";
     fi
-
-    if test "${WITH_HOST}" = ""; then
-      GDAL_CONFIG_OPTS="$GDAL_CONFIG_OPTS --with-dods-root=/usr "
+    if test "${JAVA_ARCH:-}" != ""; then
+        export GDAL_CMAKE_EXTRA_OPTS="${GDAL_CMAKE_EXTRA_OPTS} -DBUILD_JAVA_BINDINGS=ON -DJAVA_HOME=/usr/lib/jvm/java-${JAVA_VERSION}-openjdk-${JAVA_ARCH}"
     fi
-
-    LDFLAGS="-L/build${PROJ_INSTALL_PREFIX-/usr/local}/lib -linternalproj" \
-    ./configure --prefix=/usr --sysconfdir=/etc "${WITH_HOST}" \
-    --without-libtool \
-    --with-hide-internal-symbols \
-    --with-jpeg12 \
-    --with-python \
-    --with-jxl \
-    --with-spatialite \
-    --with-mysql \
-    --with-liblzma \
-    --with-webp \
-    --with-proj="/build${PROJ_INSTALL_PREFIX-/usr/local}" \
-    --with-poppler \
-    --with-hdf5 \
-    --with-sosi \
-    --with-libtiff=internal --with-rename-internal-libtiff-symbols \
-    --with-geotiff=internal --with-rename-internal-libgeotiff-symbols \
-    --with-kea=/usr/bin/kea-config \
-    --with-mongocxxv3 \
-    --with-crypto \
-    --with-java=/usr/lib/jvm/java-"$JAVA_VERSION"-openjdk-"$JAVA_ARCH" --with-jvm-lib=/usr/lib/jvm/java-"$JAVA_VERSION"-openjdk-"$JAVA_ARCH"/lib/server --with-jvm-lib-add-rpath \
-    --with-mdb $GDAL_CONFIG_OPTS
+    if echo "$WITH_FILEGDB" | grep -Eiq "^(y(es)?|1|true)$" ; then
+      ln -s /usr/local/FileGDB_API/lib/libFileGDBAPI.so /usr/lib/x86_64-linux-gnu
+      export GDAL_CMAKE_EXTRA_OPTS="${GDAL_CMAKE_EXTRA_OPTS} -DFileGDB_ROOT:PATH=/usr/local/FileGDB_API -DFileGDB_LIBRARY:FILEPATH=/usr/lib/x86_64-linux-gnu/libFileGDBAPI.so"
+      export LD_LIBRARY_PATH=/usr/local/FileGDB_API/lib:${LD_LIBRARY_PATH:-}
+    fi
+    echo "${GDAL_CMAKE_EXTRA_OPTS}"
+    cmake .. \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DPROJ_INCLUDE_DIR="/build${PROJ_INSTALL_PREFIX-/usr/local}/include" \
+        -DPROJ_LIBRARY="/build${PROJ_INSTALL_PREFIX-/usr/local}/lib/libinternalproj.so" \
+        -DGDAL_USE_TIFF_INTERNAL=ON \
+        -DBUILD_PYTHON_BINDINGS=ON \
+        -DGDAL_USE_GEOTIFF_INTERNAL=ON ${GDAL_CMAKE_EXTRA_OPTS}
 
     make "-j$(nproc)"
     make install DESTDIR="/build"
 
-    cd swig/java
-    make "-j$(nproc)"
-    make install DESTDIR="/build"
-    cd ../../
+    cd ..
 
     if [ -n "${RSYNC_REMOTE:-}" ]; then
         ccache -s
 
         echo "Uploading cache..."
-        rsync -ra --delete "$HOME/.ccache" "${RSYNC_REMOTE}/gdal/${GCC_ARCH}/"
+        rsync -ra --delete "$HOME/.cache" "${RSYNC_REMOTE}/gdal/${GCC_ARCH}/"
         echo "Finished"
 
-        rm -rf "$HOME/.ccache"
+        rm -rf "$HOME/.cache"
         unset CC
         unset CXX
     fi
@@ -120,7 +100,7 @@ mv /build/usr/bin                    /build_gdal_version_changing/usr
 
 if [ "${WITH_DEBUG_SYMBOLS}" = "yes" ]; then
     # separate debug symbols
-    for P in /build_gdal_version_changing/usr/lib/* /build_gdal_python/usr/lib/python3/dist-packages/osgeo/*.so /build_gdal_version_changing/usr/bin/*; do
+    for P in "/build_gdal_version_changing/usr/lib/${GCC_ARCH}-linux-gnu"/* /build_gdal_python/usr/lib/python3/dist-packages/osgeo/*.so /build_gdal_version_changing/usr/bin/*; do
         if file -h "$P" | grep -qi elf; then
             F=$(basename "$P")
             mkdir -p "$(dirname "$P")/.debug"
@@ -131,7 +111,7 @@ if [ "${WITH_DEBUG_SYMBOLS}" = "yes" ]; then
         fi
     done
 else
-    for P in /build_gdal_version_changing/usr/lib/*; do ${GCC_ARCH}-linux-gnu-strip -s "$P" 2>/dev/null || /bin/true; done
+    for P in "/build_gdal_version_changing/usr/lib/${GCC_ARCH}-linux-gnu"/*; do ${GCC_ARCH}-linux-gnu-strip -s "$P" 2>/dev/null || /bin/true; done
     for P in /build_gdal_python/usr/lib/python3/dist-packages/osgeo/*.so; do ${GCC_ARCH}-linux-gnu-strip -s "$P" 2>/dev/null || /bin/true; done
     for P in /build_gdal_version_changing/usr/bin/*; do ${GCC_ARCH}-linux-gnu-strip -s "$P" 2>/dev/null || /bin/true; done
 fi

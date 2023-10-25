@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALSRSINFO" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdalsrsinfo \- Lists info about a given SRS in number of formats (WKT, PROJ.4, etc.)
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALSRSINFO" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdalsrsinfo \- Lists info about a given SRS in number of formats (WKT, PROJ.4, etc.)
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -89,13 +89,13 @@ Output types:
 .IP \(bu 2
 \fBwkt_esri\fP: ESRI WKT format
 .IP \(bu 2
-\fBwkt\fP: Latest WKT version supported, currently wkt2_2018
+\fBwkt\fP: Latest WKT version supported, currently wkt2_2019
 .IP \(bu 2
-\fBwkt2\fP: Latest WKT2 version supported, currently wkt2_2018
+\fBwkt2\fP: Latest WKT2 version supported, currently wkt2_2019
 .IP \(bu 2
 \fBwkt2_2015\fP: OGC WKT2:2015
 .IP \(bu 2
-\fBwkt2_2018\fP: OGC WKT2:2018
+\fBwkt2_2019\fP: OGC WKT2:2019 (for GDAL < 3.6, use \fBwkt2_2018\fP)
 .IP \(bu 2
 \fBmapinfo\fP: Mapinfo style CoordSys format
 .IP \(bu 2
@@ -119,16 +119,16 @@ $ gdalsrsinfo EPSG:4326
 PROJ.4 : +proj=longlat +datum=WGS84 +no_defs
 
 OGC WKT :
-GEOGCS["WGS 84",
-    DATUM["WGS_1984",
-        SPHEROID["WGS 84",6378137,298.257223563,
-            AUTHORITY["EPSG","7030"]],
-        AUTHORITY["EPSG","6326"]],
-    PRIMEM["Greenwich",0,
-        AUTHORITY["EPSG","8901"]],
-    UNIT["degree",0.0174532925199433,
-        AUTHORITY["EPSG","9122"]],
-    AUTHORITY["EPSG","4326"]]
+GEOGCS[\(dqWGS 84\(dq,
+    DATUM[\(dqWGS_1984\(dq,
+        SPHEROID[\(dqWGS 84\(dq,6378137,298.257223563,
+            AUTHORITY[\(dqEPSG\(dq,\(dq7030\(dq]],
+        AUTHORITY[\(dqEPSG\(dq,\(dq6326\(dq]],
+    PRIMEM[\(dqGreenwich\(dq,0,
+        AUTHORITY[\(dqEPSG\(dq,\(dq8901\(dq]],
+    UNIT[\(dqdegree\(dq,0.0174532925199433,
+        AUTHORITY[\(dqEPSG\(dq,\(dq9122\(dq]],
+    AUTHORITY[\(dqEPSG\(dq,\(dq4326\(dq]]
 .ft P
 .fi
 .UNINDENT
@@ -161,45 +161,45 @@ PROJ.4 : \(aq+proj=utm +zone=19 +south +datum=WGS84 +units=m +no_defs \(aq
 .sp
 .nf
 .ft C
-$ gdalsrsinfo  \-o wkt "EPSG:32722"
+$ gdalsrsinfo  \-o wkt \(dqEPSG:32722\(dq
 
-PROJCRS["WGS 84 / UTM zone 22S",
-    BASEGEOGCRS["WGS 84",
-        DATUM["World Geodetic System 1984",
-            ELLIPSOID["WGS 84",6378137,298.257223563,
-                LENGTHUNIT["metre",1]]],
-        PRIMEM["Greenwich",0,
-            ANGLEUNIT["degree",0.0174532925199433]]],
-    CONVERSION["UTM zone 22S",
-        METHOD["Transverse Mercator",
-            ID["EPSG",9807]],
-        PARAMETER["Latitude of natural origin",0,
-            ANGLEUNIT["degree",0.0174532925199433],
-            ID["EPSG",8801]],
-        PARAMETER["Longitude of natural origin",\-51,
-            ANGLEUNIT["degree",0.0174532925199433],
-            ID["EPSG",8802]],
-        PARAMETER["Scale factor at natural origin",0.9996,
-            SCALEUNIT["unity",1],
-            ID["EPSG",8805]],
-        PARAMETER["False easting",500000,
-            LENGTHUNIT["metre",1],
-            ID["EPSG",8806]],
-        PARAMETER["False northing",10000000,
-            LENGTHUNIT["metre",1],
-            ID["EPSG",8807]]],
+PROJCRS[\(dqWGS 84 / UTM zone 22S\(dq,
+    BASEGEOGCRS[\(dqWGS 84\(dq,
+        DATUM[\(dqWorld Geodetic System 1984\(dq,
+            ELLIPSOID[\(dqWGS 84\(dq,6378137,298.257223563,
+                LENGTHUNIT[\(dqmetre\(dq,1]]],
+        PRIMEM[\(dqGreenwich\(dq,0,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]]],
+    CONVERSION[\(dqUTM zone 22S\(dq,
+        METHOD[\(dqTransverse Mercator\(dq,
+            ID[\(dqEPSG\(dq,9807]],
+        PARAMETER[\(dqLatitude of natural origin\(dq,0,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
+            ID[\(dqEPSG\(dq,8801]],
+        PARAMETER[\(dqLongitude of natural origin\(dq,\-51,
+            ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433],
+            ID[\(dqEPSG\(dq,8802]],
+        PARAMETER[\(dqScale factor at natural origin\(dq,0.9996,
+            SCALEUNIT[\(dqunity\(dq,1],
+            ID[\(dqEPSG\(dq,8805]],
+        PARAMETER[\(dqFalse easting\(dq,500000,
+            LENGTHUNIT[\(dqmetre\(dq,1],
+            ID[\(dqEPSG\(dq,8806]],
+        PARAMETER[\(dqFalse northing\(dq,10000000,
+            LENGTHUNIT[\(dqmetre\(dq,1],
+            ID[\(dqEPSG\(dq,8807]]],
     CS[Cartesian,2],
-        AXIS["(E)",east,
+        AXIS[\(dq(E)\(dq,east,
             ORDER[1],
-            LENGTHUNIT["metre",1]],
-        AXIS["(N)",north,
+            LENGTHUNIT[\(dqmetre\(dq,1]],
+        AXIS[\(dq(N)\(dq,north,
             ORDER[2],
-            LENGTHUNIT["metre",1]],
+            LENGTHUNIT[\(dqmetre\(dq,1]],
     USAGE[
-        SCOPE["unknown"],
-        AREA["World \- S hemisphere \- 54°W to 48°W \- by country"],
+        SCOPE[\(dqunknown\(dq],
+        AREA[\(dqWorld \- S hemisphere \- 54°W to 48°W \- by country\(dq],
         BBOX[\-80,\-54,0,\-48]],
-    ID["EPSG",32722]]
+    ID[\(dqEPSG\(dq,32722]]
 .ft P
 .fi
 .UNINDENT
@@ -209,157 +209,157 @@ PROJCRS["WGS 84 / UTM zone 22S",
 .sp
 .nf
 .ft C
-$ gdalsrsinfo \-o wkt_all "EPSG:4322"
+$ gdalsrsinfo \-o wkt_all \(dqEPSG:4322\(dq
 OGC WKT 1:
-GEOGCS["WGS 72",
-    DATUM["World_Geodetic_System_1972",
-        SPHEROID["WGS 72",6378135,298.26,
-            AUTHORITY["EPSG","7043"]],
+GEOGCS[\(dqWGS 72\(dq,
+    DATUM[\(dqWorld_Geodetic_System_1972\(dq,
+        SPHEROID[\(dqWGS 72\(dq,6378135,298.26,
+            AUTHORITY[\(dqEPSG\(dq,\(dq7043\(dq]],
         TOWGS84[0,0,4.5,0,0,0.554,0.2263],
-        AUTHORITY["EPSG","6322"]],
-    PRIMEM["Greenwich",0,
-        AUTHORITY["EPSG","8901"]],
-    UNIT["degree",0.0174532925199433,
-        AUTHORITY["EPSG","9122"]],
-    AXIS["Latitude",NORTH],
-    AXIS["Longitude",EAST],
-    AUTHORITY["EPSG","4322"]]
+        AUTHORITY[\(dqEPSG\(dq,\(dq6322\(dq]],
+    PRIMEM[\(dqGreenwich\(dq,0,
+        AUTHORITY[\(dqEPSG\(dq,\(dq8901\(dq]],
+    UNIT[\(dqdegree\(dq,0.0174532925199433,
+        AUTHORITY[\(dqEPSG\(dq,\(dq9122\(dq]],
+    AXIS[\(dqLatitude\(dq,NORTH],
+    AXIS[\(dqLongitude\(dq,EAST],
+    AUTHORITY[\(dqEPSG\(dq,\(dq4322\(dq]]
 
 OGC WKT2:2015 :
 BOUNDCRS[
     SOURCECRS[
-        GEODCRS["WGS 72",
-            DATUM["World Geodetic System 1972",
-                ELLIPSOID["WGS 72",6378135,298.26,
-                    LENGTHUNIT["metre",1]]],
-            PRIMEM["Greenwich",0,
-                ANGLEUNIT["degree",0.0174532925199433]],
+        GEODCRS[\(dqWGS 72\(dq,
+            DATUM[\(dqWorld Geodetic System 1972\(dq,
+                ELLIPSOID[\(dqWGS 72\(dq,6378135,298.26,
+                    LENGTHUNIT[\(dqmetre\(dq,1]]],
+            PRIMEM[\(dqGreenwich\(dq,0,
+                ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
             CS[ellipsoidal,2],
-                AXIS["geodetic latitude (Lat)",north,
+                AXIS[\(dqgeodetic latitude (Lat)\(dq,north,
                     ORDER[1],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                AXIS["geodetic longitude (Lon)",east,
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+                AXIS[\(dqgeodetic longitude (Lon)\(dq,east,
                     ORDER[2],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-            AREA["World"],
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+            AREA[\(dqWorld\(dq],
             BBOX[\-90,\-180,90,180],
-            ID["EPSG",4322]]],
+            ID[\(dqEPSG\(dq,4322]]],
     TARGETCRS[
-        GEODCRS["WGS 84",
-            DATUM["World Geodetic System 1984",
-                ELLIPSOID["WGS 84",6378137,298.257223563,
-                    LENGTHUNIT["metre",1]]],
-            PRIMEM["Greenwich",0,
-                ANGLEUNIT["degree",0.0174532925199433]],
+        GEODCRS[\(dqWGS 84\(dq,
+            DATUM[\(dqWorld Geodetic System 1984\(dq,
+                ELLIPSOID[\(dqWGS 84\(dq,6378137,298.257223563,
+                    LENGTHUNIT[\(dqmetre\(dq,1]]],
+            PRIMEM[\(dqGreenwich\(dq,0,
+                ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
             CS[ellipsoidal,2],
-                AXIS["latitude",north,
+                AXIS[\(dqlatitude\(dq,north,
                     ORDER[1],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                AXIS["longitude",east,
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+                AXIS[\(dqlongitude\(dq,east,
                     ORDER[2],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-            ID["EPSG",4326]]],
-    ABRIDGEDTRANSFORMATION["WGS 72 to WGS 84 (1)",
-        METHOD["Position Vector transformation (geog2D domain)",
-            ID["EPSG",9606]],
-        PARAMETER["X\-axis translation",0,
-            ID["EPSG",8605]],
-        PARAMETER["Y\-axis translation",0,
-            ID["EPSG",8606]],
-        PARAMETER["Z\-axis translation",4.5,
-            ID["EPSG",8607]],
-        PARAMETER["X\-axis rotation",0,
-            ID["EPSG",8608]],
-        PARAMETER["Y\-axis rotation",0,
-            ID["EPSG",8609]],
-        PARAMETER["Z\-axis rotation",0.554,
-            ID["EPSG",8610]],
-        PARAMETER["Scale difference",1.0000002263,
-            ID["EPSG",8611]],
-        AREA["World"],
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+            ID[\(dqEPSG\(dq,4326]]],
+    ABRIDGEDTRANSFORMATION[\(dqWGS 72 to WGS 84 (1)\(dq,
+        METHOD[\(dqPosition Vector transformation (geog2D domain)\(dq,
+            ID[\(dqEPSG\(dq,9606]],
+        PARAMETER[\(dqX\-axis translation\(dq,0,
+            ID[\(dqEPSG\(dq,8605]],
+        PARAMETER[\(dqY\-axis translation\(dq,0,
+            ID[\(dqEPSG\(dq,8606]],
+        PARAMETER[\(dqZ\-axis translation\(dq,4.5,
+            ID[\(dqEPSG\(dq,8607]],
+        PARAMETER[\(dqX\-axis rotation\(dq,0,
+            ID[\(dqEPSG\(dq,8608]],
+        PARAMETER[\(dqY\-axis rotation\(dq,0,
+            ID[\(dqEPSG\(dq,8609]],
+        PARAMETER[\(dqZ\-axis rotation\(dq,0.554,
+            ID[\(dqEPSG\(dq,8610]],
+        PARAMETER[\(dqScale difference\(dq,1.0000002263,
+            ID[\(dqEPSG\(dq,8611]],
+        AREA[\(dqWorld\(dq],
         BBOX[\-90,\-180,90,180],
-        ID["EPSG",1237]]]
+        ID[\(dqEPSG\(dq,1237]]]
 
-OGC WKT2:2018 :
+OGC WKT2:2019 :
 BOUNDCRS[
     SOURCECRS[
-        GEOGCRS["WGS 72",
-            DATUM["World Geodetic System 1972",
-                ELLIPSOID["WGS 72",6378135,298.26,
-                    LENGTHUNIT["metre",1]]],
-            PRIMEM["Greenwich",0,
-                ANGLEUNIT["degree",0.0174532925199433]],
+        GEOGCRS[\(dqWGS 72\(dq,
+            DATUM[\(dqWorld Geodetic System 1972\(dq,
+                ELLIPSOID[\(dqWGS 72\(dq,6378135,298.26,
+                    LENGTHUNIT[\(dqmetre\(dq,1]]],
+            PRIMEM[\(dqGreenwich\(dq,0,
+                ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
             CS[ellipsoidal,2],
-                AXIS["geodetic latitude (Lat)",north,
+                AXIS[\(dqgeodetic latitude (Lat)\(dq,north,
                     ORDER[1],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                AXIS["geodetic longitude (Lon)",east,
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+                AXIS[\(dqgeodetic longitude (Lon)\(dq,east,
                     ORDER[2],
-                    ANGLEUNIT["degree",0.0174532925199433]],
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
             USAGE[
-                SCOPE["unknown"],
-                AREA["World"],
+                SCOPE[\(dqunknown\(dq],
+                AREA[\(dqWorld\(dq],
                 BBOX[\-90,\-180,90,180]],
-            ID["EPSG",4322]]],
+            ID[\(dqEPSG\(dq,4322]]],
     TARGETCRS[
-        GEOGCRS["WGS 84",
-            DATUM["World Geodetic System 1984",
-                ELLIPSOID["WGS 84",6378137,298.257223563,
-                    LENGTHUNIT["metre",1]]],
-            PRIMEM["Greenwich",0,
-                ANGLEUNIT["degree",0.0174532925199433]],
+        GEOGCRS[\(dqWGS 84\(dq,
+            DATUM[\(dqWorld Geodetic System 1984\(dq,
+                ELLIPSOID[\(dqWGS 84\(dq,6378137,298.257223563,
+                    LENGTHUNIT[\(dqmetre\(dq,1]]],
+            PRIMEM[\(dqGreenwich\(dq,0,
+                ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
             CS[ellipsoidal,2],
-                AXIS["latitude",north,
+                AXIS[\(dqlatitude\(dq,north,
                     ORDER[1],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-                AXIS["longitude",east,
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+                AXIS[\(dqlongitude\(dq,east,
                     ORDER[2],
-                    ANGLEUNIT["degree",0.0174532925199433]],
-            ID["EPSG",4326]]],
-    ABRIDGEDTRANSFORMATION["WGS 72 to WGS 84 (1)",
-        METHOD["Position Vector transformation (geog2D domain)",
-            ID["EPSG",9606]],
-        PARAMETER["X\-axis translation",0,
-            ID["EPSG",8605]],
-        PARAMETER["Y\-axis translation",0,
-            ID["EPSG",8606]],
-        PARAMETER["Z\-axis translation",4.5,
-            ID["EPSG",8607]],
-        PARAMETER["X\-axis rotation",0,
-            ID["EPSG",8608]],
-        PARAMETER["Y\-axis rotation",0,
-            ID["EPSG",8609]],
-        PARAMETER["Z\-axis rotation",0.554,
-            ID["EPSG",8610]],
-        PARAMETER["Scale difference",1.0000002263,
-            ID["EPSG",8611]],
+                    ANGLEUNIT[\(dqdegree\(dq,0.0174532925199433]],
+            ID[\(dqEPSG\(dq,4326]]],
+    ABRIDGEDTRANSFORMATION[\(dqWGS 72 to WGS 84 (1)\(dq,
+        METHOD[\(dqPosition Vector transformation (geog2D domain)\(dq,
+            ID[\(dqEPSG\(dq,9606]],
+        PARAMETER[\(dqX\-axis translation\(dq,0,
+            ID[\(dqEPSG\(dq,8605]],
+        PARAMETER[\(dqY\-axis translation\(dq,0,
+            ID[\(dqEPSG\(dq,8606]],
+        PARAMETER[\(dqZ\-axis translation\(dq,4.5,
+            ID[\(dqEPSG\(dq,8607]],
+        PARAMETER[\(dqX\-axis rotation\(dq,0,
+            ID[\(dqEPSG\(dq,8608]],
+        PARAMETER[\(dqY\-axis rotation\(dq,0,
+            ID[\(dqEPSG\(dq,8609]],
+        PARAMETER[\(dqZ\-axis rotation\(dq,0.554,
+            ID[\(dqEPSG\(dq,8610]],
+        PARAMETER[\(dqScale difference\(dq,1.0000002263,
+            ID[\(dqEPSG\(dq,8611]],
         USAGE[
-            SCOPE["unknown"],
-            AREA["World"],
+            SCOPE[\(dqunknown\(dq],
+            AREA[\(dqWorld\(dq],
             BBOX[\-90,\-180,90,180]],
-        ID["EPSG",1237]]]
+        ID[\(dqEPSG\(dq,1237]]]
 
 OGC WKT 1 (simple) :
-GEOGCS["WGS 72",
-    DATUM["World_Geodetic_System_1972",
-        SPHEROID["WGS 72",6378135,298.26],
+GEOGCS[\(dqWGS 72\(dq,
+    DATUM[\(dqWorld_Geodetic_System_1972\(dq,
+        SPHEROID[\(dqWGS 72\(dq,6378135,298.26],
         TOWGS84[0,0,4.5,0,0,0.554,0.2263]],
-    PRIMEM["Greenwich",0],
-    UNIT["degree",0.0174532925199433]]
+    PRIMEM[\(dqGreenwich\(dq,0],
+    UNIT[\(dqdegree\(dq,0.0174532925199433]]
 
 OGC WKT 1 (no CT) :
-GEOGCS["WGS 72",
-    DATUM["World_Geodetic_System_1972",
-        SPHEROID["WGS 72",6378135,298.26]],
-    PRIMEM["Greenwich",0],
-    UNIT["degree",0.0174532925199433]]
+GEOGCS[\(dqWGS 72\(dq,
+    DATUM[\(dqWorld_Geodetic_System_1972\(dq,
+        SPHEROID[\(dqWGS 72\(dq,6378135,298.26]],
+    PRIMEM[\(dqGreenwich\(dq,0],
+    UNIT[\(dqdegree\(dq,0.0174532925199433]]
 
 ESRI WKT :
-GEOGCS["GCS_WGS_1972",
-    DATUM["D_WGS_1972",
-        SPHEROID["WGS_1972",6378135.0,298.26]],
-    PRIMEM["Greenwich",0.0],
-    UNIT["Degree",0.0174532925199433]]
+GEOGCS[\(dqGCS_WGS_1972\(dq,
+    DATUM[\(dqD_WGS_1972\(dq,
+        SPHEROID[\(dqWGS_1972\(dq,6378135.0,298.26]],
+    PRIMEM[\(dqGreenwich\(dq,0.0],
+    UNIT[\(dqDegree\(dq,0.0174532925199433]]
 .ft P
 .fi
 .UNINDENT
@@ -367,6 +367,6 @@ GEOGCS["GCS_WGS_1972",
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>, Etienne Tourigny <etourigny.dev-at-gmail-dot-com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

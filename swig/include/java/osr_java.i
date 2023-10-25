@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: osr_java.i 5106013c5d2ac51dbb5d7badae417d9bb1b1545a 2020-12-16 15:09:33 +0100 Even Rouault $
+ * $Id$
  *
  * Name:     osr_java.i
  * Project:  GDAL SWIG Interface

@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: GetCRSInfo.cs 4bd5f4efaf062aaea3e33c63c31c8bb184cba01d 2020-07-22 21:53:21 +0200 Tamas Szekeres $
+ * $Id$
  *
  * Name:     GetCRSInfo.cs
  * Project:  GDAL CSharp Interface

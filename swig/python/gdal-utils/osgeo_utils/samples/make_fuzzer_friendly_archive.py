@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ******************************************************************************
-#  $Id: make_fuzzer_friendly_archive.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+#  $Id$
 #
 #  Project:  GDAL
 #  Purpose:  Make fuzzer friendly archive (only works in DEBUG mode)
@@ -33,14 +33,23 @@ import os
 import sys
 
 
-def main(argv):
+def Usage():
+    print(
+        f"Usage: {sys.argv[0]} -- This is a sample. Read source to know how to use. --"
+    )
+    return 2
+
+
+def main(argv=sys.argv):
+    if len(sys.argv) < 2:
+        return Usage()
     fout = open(argv[1], "wb")
-    fout.write('FUZZER_FRIENDLY_ARCHIVE\n'.encode('ascii'))
+    fout.write("FUZZER_FRIENDLY_ARCHIVE\n".encode("ascii"))
     for filename in argv[2:]:
-        fout.write(('***NEWFILE***:%s\n' % os.path.basename(filename)).encode('ascii'))
-        fout.write(open(filename, 'rb').read())
+        fout.write(("***NEWFILE***:%s\n" % os.path.basename(filename)).encode("ascii"))
+        fout.write(open(filename, "rb").read())
     fout.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

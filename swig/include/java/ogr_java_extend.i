@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: ogr_java_extend.i e1c3df602da06891427105b5f8426d4b3bd03103 2016-07-03 02:53:47Z Kurt Schwehr $
+ * $Id$
  *
  * Name:     ogr_java_extend.i
  * Project:  GDAL SWIG Interface

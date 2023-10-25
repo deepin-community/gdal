@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: MajorObject.i b1fd4d61e877e5d9de96ed4a590b06adf80a905f 2021-02-25 02:44:52 -0500 Elliott Sales de Andrade $
+ * $Id$
  *
  * Project:  GDAL SWIG Interfaces.
  * Purpose:  SWIG Definitions for GDALMajorObject.
@@ -32,9 +32,7 @@
 /* We should probably define a new module for MajorObject, or merge gdal and ogr */
 /* modules */
 #ifndef FROM_PYTHON_OGR_I
-#ifdef PERL_CPAN_NAMESPACE
-%module "Geo::GDAL"
-#elif defined(SWIGCSHARP)
+#if defined(SWIGCSHARP)
 %module Gdal
 #elif defined(SWIGPYTHON)
 %module (package="osgeo") gdal

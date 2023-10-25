@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: MultiDimensional.i 4406677a5b4c74c72a2c6b0842129df71c97b404 2021-08-25 12:19:13 +0200 Even Rouault $
+ * $Id$
  *
  * Name:     MultiDimensional.i
  * Purpose:  GDAL Core SWIG Interface declarations.
@@ -69,17 +69,41 @@ public:
 
 %newobject OpenMDArray;
   GDALMDArrayHS* OpenMDArray( const char* name, char** options = 0) {
-    return GDALGroupOpenMDArray(self, name, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALMDArrayH hRet = GDALGroupOpenMDArray(self, name, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Array %s does not exist", name);
+#endif
+    return hRet;
   }
 
 %newobject OpenMDArrayFromFullname;
   GDALMDArrayHS* OpenMDArrayFromFullname( const char* name, char** options = 0) {
-    return GDALGroupOpenMDArrayFromFullname(self, name, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALMDArrayH hRet = GDALGroupOpenMDArrayFromFullname(self, name, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Array %s does not exist", name);
+#endif
+    return hRet;
   }
 
 %newobject ResolveMDArray;
   GDALMDArrayHS* ResolveMDArray( const char* name, const char* starting_point, char** options = 0) {
-    return GDALGroupResolveMDArray(self, name, starting_point, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALMDArrayH hRet = GDALGroupResolveMDArray(self, name, starting_point, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Array %s does not exist", name);
+#endif
+    return hRet;
   }
 
 %apply (char **CSL) {char **};
@@ -90,12 +114,28 @@ public:
 
 %newobject OpenGroup;
   GDALGroupHS* OpenGroup( const char* name, char** options = 0) {
-    return GDALGroupOpenGroup(self, name, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALGroupH hRet = GDALGroupOpenGroup(self, name, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Group %s does not exist", name);
+#endif
+    return hRet;
   }
 
 %newobject OpenGroupFromFullname;
   GDALGroupHS* OpenGroupFromFullname( const char* name, char** options = 0) {
-    return GDALGroupOpenGroupFromFullname(self, name, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALGroupH hRet = GDALGroupOpenGroupFromFullname(self, name, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Group %s does not exist", name);
+#endif
+    return hRet;
   }
 
 %apply (char **CSL) {char **};
@@ -105,7 +145,15 @@ public:
 %clear char **;
 
   OGRLayerShadow* OpenVectorLayer( const char* name, char** options = 0) {
-    return (OGRLayerShadow*) GDALGroupOpenVectorLayer(self, name, options);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    OGRLayerH hRet = GDALGroupOpenVectorLayer(self, name, options);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Vector layer %s does not exist", name);
+#endif
+    return (OGRLayerShadow*) hRet;
   }
 
 #if defined(SWIGPYTHON)
@@ -116,7 +164,15 @@ public:
 
 %newobject GetAttribute;
   GDALAttributeHS* GetAttribute( const char* name) {
-    return GDALGroupGetAttribute(self, name);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALAttributeH hRet = GDALGroupGetAttribute(self, name);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Attribute %s does not exist", name);
+#endif
+    return hRet;
   }
 
 #if defined(SWIGPYTHON)
@@ -427,6 +483,18 @@ public:
   }
 %clear char **;
 
+%apply (int nList, GUIntBig* pList) {(int nDimCount, GUIntBig* newDimSizes)};
+  CPLErr Resize( int nDimCount, GUIntBig* newDimSizes, char** options = NULL ) {
+    if( static_cast<size_t>(nDimCount) != GDALMDArrayGetDimensionCount(self) )
+    {
+        CPLError(CE_Failure, CPLE_IllegalArg,
+                 "newDimSizes array not of expected size");
+        return CE_Failure;
+    }
+    return GDALMDArrayResize( self, newDimSizes, options ) ? CE_None : CE_Failure;
+  }
+%clear (int nDimCount, GUIntBig* newDimSizes);
+
 #if defined(SWIGPYTHON)
 %apply Pointer NONNULL {GDALExtendedDataTypeHS* buffer_datatype};
 %apply ( void **outPythonObject ) { (void **buf ) };
@@ -555,7 +623,7 @@ public:
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions )
+        if( !GetUseExceptions() )
         {
             PyErr_Clear();
         }
@@ -749,7 +817,15 @@ public:
 
 %newobject GetAttribute;
   GDALAttributeHS* GetAttribute( const char* name) {
-    return GDALMDArrayGetAttribute(self, name);
+#if defined(SWIGPYTHON)
+    CPLErr eLastErrorType = CPLGetLastErrorType();
+#endif
+    GDALAttributeH hRet = GDALMDArrayGetAttribute(self, name);
+#if defined(SWIGPYTHON)
+    if( GetUseExceptions() && hRet == NULL && eLastErrorType == CE_None && CPLGetLastErrorType() == CE_None )
+        CPLError(CE_Failure, CPLE_AppDefined, "Attribute %s does not exist", name);
+#endif
+    return hRet;
   }
 
 #if defined(SWIGPYTHON)
@@ -789,7 +865,7 @@ public:
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions )
+        if( !GetUseExceptions() )
         {
             PyErr_Clear();
         }
@@ -810,6 +886,16 @@ public:
   void GetNoDataValueAsDouble( double *val, int *hasval ) {
     *val = GDALMDArrayGetNoDataValueAsDouble( self, hasval );
   }
+
+#ifdef SWIGPYTHON
+  void GetNoDataValueAsInt64( GIntBig *val, int *hasval ) {
+    *val = GDALMDArrayGetNoDataValueAsInt64( self, hasval );
+  }
+
+  void GetNoDataValueAsUInt64( GUIntBig *val, int *hasval ) {
+    *val = GDALMDArrayGetNoDataValueAsUInt64( self, hasval );
+  }
+#endif
 
   retStringAndCPLFree* GetNoDataValueAsString() {
     GDALExtendedDataTypeHS* selfType = GDALMDArrayGetDataType(self);
@@ -835,6 +921,16 @@ public:
   CPLErr SetNoDataValueDouble( double d ) {
     return GDALMDArraySetNoDataValueAsDouble( self, d ) ? CE_None : CE_Failure;
   }
+
+#ifdef SWIGPYTHON
+  CPLErr SetNoDataValueInt64( GIntBig v ) {
+    return GDALMDArraySetNoDataValueAsInt64( self, v ) ? CE_None : CE_Failure;
+  }
+
+  CPLErr SetNoDataValueUInt64( GUIntBig v ) {
+    return GDALMDArraySetNoDataValueAsUInt64( self, v ) ? CE_None : CE_Failure;
+  }
+#endif
 
   CPLErr SetNoDataValueString( const char* nodata ) {
     GDALExtendedDataTypeHS* selfType = GDALMDArrayGetDataType(self);
@@ -947,6 +1043,17 @@ public:
     return GDALMDArrayGetMask(self, options);
   }
 %clear char **;
+
+%newobject GetGridded;
+%feature ("kwargs") GetGridded;
+%apply Pointer NONNULL {const char* pszGridOptions};
+  GDALMDArrayHS* GetGridded(const char* pszGridOptions,
+                            GDALMDArrayHS* xArray = NULL,
+                            GDALMDArrayHS* yArray = NULL,
+                            char** options = 0)
+  {
+    return GDALMDArrayGetGridded(self, pszGridOptions, xArray, yArray, options);
+  }
 
 %newobject AsClassicDataset;
   GDALDatasetShadow* AsClassicDataset(size_t iXDim, size_t iYDim)
@@ -1098,7 +1205,7 @@ public:
     if (*buf == NULL)
     {
         *buf = Py_None;
-        if( !bUseExceptions )
+        if( !GetUseExceptions() )
         {
             PyErr_Clear();
         }

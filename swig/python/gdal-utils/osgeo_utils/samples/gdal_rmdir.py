@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-# $Id: gdal_rmdir.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+# $Id$
 #
 #  Project:  GDAL samples
 #  Purpose:  Delete a virtual directory
@@ -34,8 +34,8 @@ from osgeo import gdal
 
 
 def Usage():
-    print('Usage: gdal_rmdir filename')
-    return -1
+    print("Usage: gdal_rmdir filename")
+    return 2
 
 
 def gdal_rm(argv, progress=None):
@@ -48,15 +48,15 @@ def gdal_rm(argv, progress=None):
         return -1
 
     for i in range(1, len(argv)):
-        if argv[i] == '-r':
+        if argv[i] == "-r":
             recursive = True
         elif filename is None:
             filename = argv[i]
-        elif argv[i][0] == '-':
-            print('Unexpected option : %s' % argv[i])
+        elif argv[i][0] == "-":
+            print("Unexpected option : %s" % argv[i])
             return Usage()
         else:
-            print('Unexpected option : %s' % argv[i])
+            print("Unexpected option : %s" % argv[i])
             return Usage()
 
     if filename is None:
@@ -67,13 +67,13 @@ def gdal_rm(argv, progress=None):
     else:
         ret = gdal.Rmdir(filename)
     if ret != 0:
-        print('Deletion failed')
+        print("Deletion failed")
     return ret
 
 
-def main(argv):
+def main(argv=sys.argv):
     return gdal_rm(argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

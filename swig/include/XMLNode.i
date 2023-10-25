@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: XMLNode.i a2d4bcda7874bbc6de9942874f8d549219e9403d 2016-01-08 21:00:50Z Kurt Schwehr $
+ * $Id$
  *
  * Project:  GDAL SWIG Interface
  * Purpose:  GDAL XML SWIG Interface declarations.
@@ -79,7 +79,7 @@ typedef struct CPLXMLNode
     }
 #endif
 
-#if defined(SWIGJAVA) || defined(SWIGCSHARP) || defined(SWIGPERL)
+#if defined(SWIGJAVA) || defined(SWIGCSHARP)
     retStringAndCPLFree *SerializeXMLTree( )
 #else
     char *SerializeXMLTree( )
@@ -89,7 +89,7 @@ typedef struct CPLXMLNode
     }
 
     /* Interface method added for GDAL 1.7.0 */
-#if defined(SWIGJAVA) || defined(SWIGCSHARP) || defined(SWIGPERL)
+#if defined(SWIGJAVA) || defined(SWIGCSHARP)
     retStringAndCPLFree * toString()
     {
         return CPLSerializeXMLTree( self );

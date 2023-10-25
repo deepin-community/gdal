@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-# $Id: gdal_mkdir.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+# $Id$
 #
 #  Project:  GDAL samples
 #  Purpose:  Create a virtual directory
@@ -34,8 +34,8 @@ from osgeo import gdal
 
 
 def Usage():
-    print('Usage: gdal_mkdir filename')
-    return -1
+    print("Usage: gdal_mkdir filename")
+    return 2
 
 
 def gdal_mkdir(argv, progress=None):
@@ -49,25 +49,25 @@ def gdal_mkdir(argv, progress=None):
     for i in range(1, len(argv)):
         if filename is None:
             filename = argv[i]
-        elif argv[i][0] == '-':
-            print('Unexpected option : %s' % argv[i])
+        elif argv[i][0] == "-":
+            print("Unexpected option : %s" % argv[i])
             return Usage()
         else:
-            print('Unexpected option : %s' % argv[i])
+            print("Unexpected option : %s" % argv[i])
             return Usage()
 
     if filename is None:
         return Usage()
 
-    ret = gdal.Mkdir(filename, int('0755', 8))
+    ret = gdal.Mkdir(filename, int("0755", 8))
     if ret != 0:
-        print('Creation failed')
+        print("Creation failed")
     return ret
 
 
-def main(argv):
+def main(argv=sys.argv):
     return gdal_mkdir(argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

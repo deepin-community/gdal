@@ -37,72 +37,75 @@
 #include "cpl_aws.h"
 #include <map>
 
-class VSIAzureBlobHandleHelper final: public IVSIS3LikeHandleHelper
+class VSIAzureBlobHandleHelper final : public IVSIS3LikeHandleHelper
 {
-        CPLString m_osURL;
-        CPLString m_osEndpoint;
-        CPLString m_osBucket;
-        CPLString m_osObjectKey;
-        CPLString m_osStorageAccount;
-        CPLString m_osStorageKey;
-        CPLString m_osSAS;
-        bool      m_bUseHTTPS;
-        bool      m_bFromManagedIdendities;
+    std::string m_osPathForOption;
+    CPLString m_osURL;
+    CPLString m_osEndpoint;
+    CPLString m_osBucket;
+    CPLString m_osObjectKey;
+    CPLString m_osStorageAccount;
+    CPLString m_osStorageKey;
+    CPLString m_osSAS;
+    CPLString m_osAccessToken;
+    bool m_bFromManagedIdentities;
+    bool m_bIncludeMSVersion = true;
 
-        enum class Service
-        {
-            BLOB,
-            ADLS,
-        };
+    enum class Service
+    {
+        SERVICE_BLOB,
+        SERVICE_ADLS,
+    };
 
-        static bool     GetConfiguration(CSLConstList papszOptions,
-                                         Service eService,
-                                         bool& bUseHTTPS,
-                                         CPLString& osEndpoint,
-                                         CPLString& osStorageAccount,
-                                         CPLString& osStorageKey,
-                                         CPLString& osSAS,
-                                         bool& bFromManagedIdentities);
+    static bool GetConfiguration(const std::string &osPathForOption,
+                                 CSLConstList papszOptions, Service eService,
+                                 bool &bUseHTTPS, CPLString &osEndpoint,
+                                 CPLString &osStorageAccount,
+                                 CPLString &osStorageKey, CPLString &osSAS,
+                                 CPLString &osAccessToken,
+                                 bool &bFromManagedIdentities);
 
-        static bool     GetConfigurationFromManagedIdentities(
-                                                    CPLString& osAccessToken);
+    static CPLString BuildURL(const CPLString &osEndpoint,
+                              const CPLString &osBucket,
+                              const CPLString &osObjectKey,
+                              const CPLString &osSAS);
 
-        static CPLString BuildURL(const CPLString& osEndpoint,
-                                  const CPLString& osStorageAccount,
-                                  const CPLString& osBucket,
-                                  const CPLString& osObjectKey,
-                                  const CPLString& osSAS,
-                                  bool bUseHTTPS);
+    void RebuildURL() override;
 
-        void RebuildURL() override;
+  public:
+    VSIAzureBlobHandleHelper(
+        const std::string &osPathForOption, const CPLString &osEndpoint,
+        const CPLString &osBucket, const CPLString &osObjectKey,
+        const CPLString &osStorageAccount, const CPLString &osStorageKey,
+        const CPLString &osSAS, const CPLString &osAccessToken,
+        bool bFromManagedIdentities);
+    ~VSIAzureBlobHandleHelper();
 
-    public:
-        VSIAzureBlobHandleHelper(const CPLString& osEndpoint,
-                                 const CPLString& osBucket,
-                                 const CPLString& osObjectKey,
-                                 const CPLString& osStorageAccount,
-                                 const CPLString& osStorageKey,
-                                 const CPLString& osSAS,
-                                 bool bUseHTTPS,
-                                 bool bFromManagedIdentities);
-       ~VSIAzureBlobHandleHelper();
+    static VSIAzureBlobHandleHelper *
+    BuildFromURI(const char *pszURI, const char *pszFSPrefix,
+                 CSLConstList papszOptions = nullptr);
 
-        static VSIAzureBlobHandleHelper* BuildFromURI(const char* pszURI,
-                                                      const char* pszFSPrefix,
-                                                      CSLConstList papszOptions = nullptr);
+    void SetIncludeMSVersion(bool bInclude)
+    {
+        m_bIncludeMSVersion = bInclude;
+    }
 
-        struct curl_slist* GetCurlHeaders(const CPLString& osVerbosVerb,
-                                          const struct curl_slist* psExistingHeaders,
-                                          const void *pabyDataContent = nullptr,
-                                          size_t nBytesContent = 0) const override;
+    struct curl_slist *
+    GetCurlHeaders(const CPLString &osVerbosVerb,
+                   const struct curl_slist *psExistingHeaders,
+                   const void *pabyDataContent = nullptr,
+                   size_t nBytesContent = 0) const override;
 
-        const CPLString& GetURL() const override { return m_osURL; }
+    const CPLString &GetURL() const override
+    {
+        return m_osURL;
+    }
 
-        CPLString GetSignedURL(CSLConstList papszOptions);
+    CPLString GetSignedURL(CSLConstList papszOptions);
 
-        static void ClearCache();
+    static void ClearCache();
 
-        std::string GetSASQueryString() const;
+    std::string GetSASQueryString() const;
 };
 
 namespace cpl

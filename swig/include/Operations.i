@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: Operations.i 9b04a6ce329ade6272643ab59d0ffaabd313955c 2021-10-11 23:32:03 +0200 Even Rouault $
+ * $Id$
  *
  * Name:     Operations.i
  * Project:  GDAL Python Interface
@@ -470,11 +470,11 @@ int wrapper_GridCreate( char* algorithmOptions,
 
     if ( algorithmOptions )
     {
-        eErr = ParseAlgorithmAndOptions( algorithmOptions, &eAlgorithm, &pOptions );
+        eErr = GDALGridParseAlgorithmAndOptions( algorithmOptions, &eAlgorithm, &pOptions );
     }
     else
     {
-        eErr = ParseAlgorithmAndOptions( szAlgNameInvDist, &eAlgorithm, &pOptions );
+        eErr = GDALGridParseAlgorithmAndOptions( szAlgNameInvDist, &eAlgorithm, &pOptions );
     }
 
     if ( eErr != CE_None )
@@ -592,6 +592,7 @@ typedef enum {
 #ifndef SWIGJAVA
 %feature( "kwargs" ) ViewshedGenerate;
 #endif
+%apply (char **options) {char ** creationOptions};
 %apply Pointer NONNULL {GDALRasterBandShadow *srcBand};
 %inline %{
 GDALDatasetShadow *ViewshedGenerate( GDALRasterBandShadow *srcBand,
@@ -604,7 +605,7 @@ GDALDatasetShadow *ViewshedGenerate( GDALRasterBandShadow *srcBand,
                         GDALViewshedMode mode, double maxDistance,
                         GDALProgressFunc callback = NULL, void* callback_data = NULL,
                         GDALViewshedOutputType heightMode = GVOT_NORMAL,
-                        char** papszOptions = NULL)
+                        char** options = NULL)
 {
     GDALDatasetShadow* ds = GDALViewshedGenerate( srcBand,
                                  driverName,
@@ -624,7 +625,7 @@ GDALDatasetShadow *ViewshedGenerate( GDALRasterBandShadow *srcBand,
                                  callback,
                                  callback_data,
                                  heightMode,
-                                 papszOptions);
+                                 options);
   if (ds == 0) {
     /*throw CPLGetLastErrorMsg(); causes a SWIG_exception later*/
   }
@@ -632,6 +633,7 @@ GDALDatasetShadow *ViewshedGenerate( GDALRasterBandShadow *srcBand,
 }
 %}
 %clear GDALRasterBandShadow *srcBand;
+%clear (char **creationOptions);
 
 /************************************************************************/
 /*                        AutoCreateWarpedVRT()                         */

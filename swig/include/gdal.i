@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: gdal.i 85cd4f9ed80fb993b24c79749601e08101c006ab 2022-01-19 22:01:18 +0100 Even Rouault $
+ * $Id$
  *
  * Name:     gdal.i
  * Project:  GDAL Python Interface
@@ -30,9 +30,7 @@
 
 %include constraints.i
 
-#ifdef PERL_CPAN_NAMESPACE
-%module "Geo::GDAL"
-#elif defined(SWIGCSHARP)
+#if defined(SWIGCSHARP)
 %module Gdal
 #elif defined(SWIGPYTHON)
 %module (package="osgeo") gdal
@@ -73,6 +71,9 @@ using namespace std;
 #include "gdalwarper.h"
 #include "ogr_srs_api.h"
 
+// From gdal_priv.h
+void CPL_DLL GDALEnablePixelTypeSignedByteWarning(GDALRasterBandH hBand, bool b);
+
 typedef void GDALMajorObjectShadow;
 typedef void GDALDriverShadow;
 typedef void GDALDatasetShadow;
@@ -81,6 +82,7 @@ typedef void GDALColorTableShadow;
 typedef void GDALRasterAttributeTableShadow;
 typedef void GDALTransformerInfoShadow;
 typedef void GDALAsyncReaderShadow;
+typedef void GDALRelationshipShadow;
 
 typedef GDALExtendedDataTypeHS GDALExtendedDataTypeHS;
 typedef GDALEDTComponentHS GDALEDTComponentHS;
@@ -91,7 +93,7 @@ typedef GDALDimensionHS GDALDimensionHS;
 
 %}
 
-#if defined(SWIGPYTHON) || defined(SWIGJAVA) || defined(SWIGPERL) || defined(SWIGCSHARP)
+#if defined(SWIGPYTHON) || defined(SWIGJAVA) || defined(SWIGCSHARP)
 %{
 #ifdef DEBUG
 typedef struct OGRSpatialReferenceHS OSRSpatialReferenceShadow;
@@ -145,17 +147,20 @@ typedef int GDALRIOResampleAlg;
 typedef enum {
     GDT_Unknown = 0,
     /*! Eight bit unsigned integer */           GDT_Byte = 1,
+    /*! Eight bit signed integer */             GDT_Int8 = 14,
     /*! Sixteen bit unsigned integer */         GDT_UInt16 = 2,
     /*! Sixteen bit signed integer */           GDT_Int16 = 3,
     /*! Thirty two bit unsigned integer */      GDT_UInt32 = 4,
     /*! Thirty two bit signed integer */        GDT_Int32 = 5,
+    /*! 64 bit unsigned integer */              GDT_UInt64 = 12,
+    /*! 64 bit signed integer */                GDT_Int64 = 13,
     /*! Thirty two bit floating point */        GDT_Float32 = 6,
     /*! Sixty four bit floating point */        GDT_Float64 = 7,
     /*! Complex Int16 */                        GDT_CInt16 = 8,
     /*! Complex Int32 */                        GDT_CInt32 = 9,
     /*! Complex Float32 */                      GDT_CFloat32 = 10,
     /*! Complex Float64 */                      GDT_CFloat64 = 11,
-    GDT_TypeCount = 12          /* maximum type # + 1 */
+    GDT_TypeCount = 15          /* maximum type # + 1 */
 } GDALDataType;
 
 /*! Types of color interpretation for raster bands. */
@@ -231,7 +236,6 @@ typedef enum {
   /*! Cubic B-Spline Approximation (4x4 kernel) */     GRA_CubicSpline=3,
   /*! Lanczos windowed sinc interpolation (6x6 kernel) */ GRA_Lanczos=4,
   /*! Average (computes the average of all non-NODATA contributing pixels) */ GRA_Average=5,
-  /*! Root Mean Square (computes the RMS (Quadratic Mean) of all non-NODATA contributing pixels) */ GRA_RMS=14,
   /*! Mode (selects the value which appears most often of all the sampled points) */ GRA_Mode=6,
   /*  GRA_Gauss=7 reserved. */
   /*! Max (selects maximum of all non-NODATA contributing pixels) */ GRA_Max=8,
@@ -250,14 +254,36 @@ typedef enum {
 	GARIO_ERROR = 2,
 	GARIO_COMPLETE = 3
 } GDALAsyncStatusType;
+
+/** Cardinality of relationship.
+ *
+ * @since GDAL 3.6
+ */
+%rename (RelationshipCardinality) GDALRelationshipCardinality;
+typedef enum {
+  /*! One-to-one */ GRC_ONE_TO_ONE=0,
+  /*! One-to-many */ GRC_ONE_TO_MANY=1,
+  /*! Many-to-one */ GRC_MANY_TO_ONE=2,
+  /*! Many-to-many */ GRC_MANY_TO_MANY=3
+} GDALRelationshipCardinality;
+
+/** Type of relationship.
+ *
+ * @since GDAL 3.6
+ */
+%rename (RelationshipType) GDALRelationshipType;
+typedef enum {
+  /*! Composite relationship */ GRT_COMPOSITE=0,
+  /*! Association relationship */ GRT_ASSOCIATION=1,
+  /*! Aggregation relationship */ GRT_AGGREGATION=2,
+} GDALRelationshipType;
+
 #endif
 
 #if defined(SWIGPYTHON)
 %include "gdal_python.i"
 #elif defined(SWIGCSHARP)
 %include "gdal_csharp.i"
-#elif defined(SWIGPERL)
-%include "gdal_perl.i"
 #elif defined(SWIGJAVA)
 %include "gdal_java.i"
 #else
@@ -310,7 +336,7 @@ $1;
 %include "Driver.i"
 
 
-#if defined(SWIGPYTHON) || defined(SWIGJAVA) || defined(SWIGPERL)
+#if defined(SWIGPYTHON) || defined(SWIGJAVA)
 /*
  * We need to import ogr.i and osr.i for OGRLayer and OSRSpatialRefrerence
  */
@@ -339,6 +365,7 @@ $1;
 %rename (DataTypeIsComplex) GDALDataTypeIsComplex;
 %rename (GetDataTypeName) GDALGetDataTypeName;
 %rename (GetDataTypeByName) GDALGetDataTypeByName;
+%rename (DataTypeUnion) GDALDataTypeUnion;
 %rename (GetColorInterpretationName) GDALGetColorInterpretationName;
 %rename (GetPaletteInterpretationName) GDALGetPaletteInterpretationName;
 %rename (DecToDMS) GDALDecToDMS;
@@ -348,17 +375,12 @@ $1;
 %rename (SerializeXMLTree) CPLSerializeXMLTree;
 %rename (GetJPEG2000Structure) GDALGetJPEG2000Structure;
 
-#ifdef SWIGPERL
-%include "gdal_perl_rename.i"
-#endif
-
-
 //************************************************************************
 //
 // GDALColorEntry
 //
 //************************************************************************
-#if !defined(SWIGPERL) && !defined(SWIGJAVA)
+#if !defined(SWIGJAVA)
 %rename (ColorEntry) GDALColorEntry;
 #ifdef SWIGPYTHON
 %nodefaultctor GDALColorEntry;
@@ -583,6 +605,13 @@ RETURN_NONE GDALGCPsToGeoTransform( int nGCPs, GDAL_GCP const * pGCPs,
 
 //************************************************************************
 //
+// Define the Relationship object.
+//
+//************************************************************************
+%include "Relationship.i"
+
+//************************************************************************
+//
 // Raster Operations
 //
 //************************************************************************
@@ -629,7 +658,7 @@ void GDALAllRegister();
 
 void GDALDestroyDriverManager();
 
-#if defined(SWIGPYTHON) || defined(SWIGPERL)
+#if defined(SWIGPYTHON)
 %inline {
 GIntBig wrapper_GDALGetCacheMax()
 {
@@ -682,6 +711,8 @@ const char *GDALGetDataTypeName( GDALDataType eDataType );
 
 GDALDataType GDALGetDataTypeByName( const char * pszDataTypeName );
 
+GDALDataType GDALDataTypeUnion( GDALDataType a, GDALDataType b );
+
 const char *GDALGetColorInterpretationName( GDALColorInterp eColorInterp );
 
 const char *GDALGetPaletteInterpretationName( GDALPaletteInterp ePaletteInterp );
@@ -711,7 +742,7 @@ double GDALDecToPackedDMS( double dfDec );
 #endif
 CPLXMLNode *CPLParseXMLString( char * pszXMLString );
 
-#if defined(SWIGJAVA) || defined(SWIGCSHARP) || defined(SWIGPYTHON) || defined(SWIGPERL)
+#if defined(SWIGJAVA) || defined(SWIGCSHARP) || defined(SWIGPYTHON)
 retStringAndCPLFree *CPLSerializeXMLTree( CPLXMLNode *xmlnode );
 #else
 char *CPLSerializeXMLTree( CPLXMLNode *xmlnode );
@@ -734,6 +765,8 @@ retStringAndCPLFree *GetJPEG2000StructureAsString( const char* pszFilename, char
 }
 }
 
+%rename (HasTriangulation) GDALHasTriangulation;
+int GDALHasTriangulation();
 
 //************************************************************************
 //
@@ -758,13 +791,6 @@ GDALDriverShadow* GetDriverByName( char const *name ) {
 }
 %}
 
-#ifdef SWIGPERL
-%inline %{
-GDALDriverShadow* GetDriver( char const *name ) {
-  return (GDALDriverShadow*) GDALGetDriverByName( name );
-}
-%}
-#endif
 %inline %{
 GDALDriverShadow* GetDriver( int i ) {
   return (GDALDriverShadow*) GDALGetDriver( i );
@@ -1108,6 +1134,30 @@ struct GDALInfoOptions {
 retStringAndCPLFree *GDALInfo( GDALDatasetShadow *hDataset, GDALInfoOptions *infoOptions );
 
 //************************************************************************
+// gdal.VectorInfo()
+//************************************************************************
+
+#ifdef SWIGJAVA
+%rename (VectorInfoOptions) GDALVectorInfoOptions;
+#endif
+struct GDALVectorInfoOptions {
+%extend {
+    GDALVectorInfoOptions(char** options) {
+        return GDALVectorInfoOptionsNew(options, NULL);
+    }
+
+    ~GDALVectorInfoOptions() {
+        GDALVectorInfoOptionsFree( self );
+    }
+}
+};
+
+#ifdef SWIGPYTHON
+%rename (VectorInfoInternal) GDALVectorInfo;
+#endif
+retStringAndCPLFree *GDALVectorInfo( GDALDatasetShadow *hDataset, GDALVectorInfoOptions *infoOptions );
+
+//************************************************************************
 // gdal.MultiDimInfo()
 //************************************************************************
 
@@ -1177,7 +1227,7 @@ GDALDatasetShadow* wrapper_GDALTranslate( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1186,7 +1236,7 @@ GDALDatasetShadow* wrapper_GDALTranslate( const char* dest,
     if( bFreeOptions )
         GDALTranslateOptionsFree(translateOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1241,7 +1291,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1250,7 +1300,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1285,7 +1335,7 @@ GDALDatasetShadow* wrapper_GDALWarpDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1294,7 +1344,7 @@ GDALDatasetShadow* wrapper_GDALWarpDestName( const char* dest,
     if( bFreeOptions )
         GDALWarpAppOptionsFree(warpAppOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1348,7 +1398,7 @@ int wrapper_GDALVectorTranslateDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1357,7 +1407,7 @@ int wrapper_GDALVectorTranslateDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1391,7 +1441,7 @@ GDALDatasetShadow* wrapper_GDALVectorTranslateDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1400,7 +1450,7 @@ GDALDatasetShadow* wrapper_GDALVectorTranslateDestName( const char* dest,
     if( bFreeOptions )
         GDALVectorTranslateOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1458,7 +1508,7 @@ GDALDatasetShadow* wrapper_GDALDEMProcessing( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1467,7 +1517,7 @@ GDALDatasetShadow* wrapper_GDALDEMProcessing( const char* dest,
     if( bFreeOptions )
         GDALDEMProcessingOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1520,7 +1570,7 @@ int wrapper_GDALNearblackDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1529,7 +1579,7 @@ int wrapper_GDALNearblackDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1563,7 +1613,7 @@ GDALDatasetShadow* wrapper_GDALNearblackDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1572,7 +1622,7 @@ GDALDatasetShadow* wrapper_GDALNearblackDestName( const char* dest,
     if( bFreeOptions )
         GDALNearblackOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1627,7 +1677,7 @@ GDALDatasetShadow* wrapper_GDALGrid( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1636,7 +1686,7 @@ GDALDatasetShadow* wrapper_GDALGrid( const char* dest,
     if( bFreeOptions )
         GDALGridOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1689,7 +1739,7 @@ int wrapper_GDALRasterizeDestDS( GDALDatasetShadow* dstDS,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1698,7 +1748,7 @@ int wrapper_GDALRasterizeDestDS( GDALDatasetShadow* dstDS,
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, bRet);
     }
@@ -1732,7 +1782,7 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1741,7 +1791,7 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
     if( bFreeOptions )
         GDALRasterizeOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1797,7 +1847,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_objects( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1806,7 +1856,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_objects( const char* dest,
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1844,7 +1894,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1853,7 +1903,7 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
     if( bFreeOptions )
         GDALBuildVRTOptionsFree(options);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }
@@ -1908,7 +1958,7 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
     }
 #ifdef SWIGPYTHON
     std::vector<ErrorStruct> aoErrors;
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PushStackingErrorHandler(&aoErrors);
     }
@@ -1917,7 +1967,7 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
     if( bFreeOptions )
         GDALMultiDimTranslateOptionsFree(multiDimTranslateOptions);
 #ifdef SWIGPYTHON
-    if( bUseExceptions )
+    if( GetUseExceptions() )
     {
         PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
     }

@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: ColorTable.i 03ae1801b0e36769e546740af0e08eff08357c52 2018-05-03 08:03:25 +0200 Juergen E. Fischer $
+ * $Id$
  *
  * Name:     ColorTable.i
  * Project:  GDAL Python Interface

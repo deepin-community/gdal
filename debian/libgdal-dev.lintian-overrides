@@ -1,3 +1,6 @@
-# GDAL doesn't use Multi-Arch, it breaks too many rdeps
-pkg-config-unavailable-for-cross-compilation usr/lib/pkgconfig/gdal.pc
+# Changelog is trimmed
+debian-news-entry-has-unknown-version 1.8.0-2 *
+
+# False positive
+groff-message * warning: cannot select font *
 

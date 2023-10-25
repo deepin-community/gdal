@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-# $Id: tolatlong.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+# $Id$
 #
 # Project:  GDAL Python samples
 # Purpose:  Script to read coordinate system and geotransformation matrix
@@ -33,24 +33,23 @@
 
 import sys
 
-from osgeo import gdal
-from osgeo import osr
+from osgeo import gdal, osr
 
 # =============================================================================
 
 
 def Usage():
-    print('')
-    print('Read coordinate system and geotransformation matrix from input')
-    print('file and report latitude/longitude coordinates for the center')
-    print('of the specified pixel.')
-    print('')
-    print('Usage: tolatlong.py pixel line infile')
-    print('')
-    return 1
+    print("")
+    print("Read coordinate system and geotransformation matrix from input")
+    print("file and report latitude/longitude coordinates for the center")
+    print("of the specified pixel.")
+    print("")
+    print("Usage: tolatlong.py pixel line infile")
+    print("")
+    return 2
 
 
-def main(argv):
+def main(argv=sys.argv):
     infile = None
     pixel = None
     line = None
@@ -107,13 +106,15 @@ def main(argv):
     (lon, lat, height) = ct.TransformPoint(X, Y)
 
     # Report results
-    print('pixel: %g\t\t\tline: %g' % (pixel, line))
-    print('latitude: %fd\t\tlongitude: %fd' % (lat, lon))
-    print('latitude: %s\t\tlongitude: %s' % (gdal.DecToDMS(lat, 'Lat', 2), gdal.DecToDMS(lon, 'Long', 2)))
+    print("pixel: %g\t\t\tline: %g" % (pixel, line))
+    print("latitude: %fd\t\tlongitude: %fd" % (lat, lon))
+    print(
+        "latitude: %s\t\tlongitude: %s"
+        % (gdal.DecToDMS(lat, "Lat", 2), gdal.DecToDMS(lon, "Long", 2))
+    )
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))
-

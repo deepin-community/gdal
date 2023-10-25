@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ******************************************************************************
-#  $Id: gdalcopyproj.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+#  $Id$
 #
 #  Name:     gdalcopyproj.py
 #  Project:  GDAL Python Interface
@@ -38,35 +38,35 @@ import sys
 from osgeo import gdal
 
 
-def main(argv):
+def main(argv=sys.argv):
     if len(argv) < 3:
         print("Usage: gdalcopyproj.py source_file dest_file")
-        return 1
+        return 2
 
     inp = argv[1]
     dataset = gdal.Open(inp)
     if dataset is None:
-        print('Unable to open', inp, 'for reading')
+        print("Unable to open", inp, "for reading")
         return 1
 
     projection = dataset.GetProjection()
     geotransform = dataset.GetGeoTransform()
 
     if projection is None and geotransform is None:
-        print('No projection or geotransform found on file' + input)
+        print("No projection or geotransform found on file" + input)
         return 1
 
     output = argv[2]
     dataset2 = gdal.Open(output, gdal.GA_Update)
 
     if dataset2 is None:
-        print('Unable to open', output, 'for writing')
+        print("Unable to open", output, "for writing")
         return 1
 
     if geotransform is not None and geotransform != (0, 1, 0, 0, 0, 1):
         dataset2.SetGeoTransform(geotransform)
 
-    if projection is not None and projection != '':
+    if projection is not None and projection != "":
         dataset2.SetProjection(projection)
 
     gcp_count = dataset.GetGCPCount()
@@ -78,6 +78,5 @@ def main(argv):
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))
-

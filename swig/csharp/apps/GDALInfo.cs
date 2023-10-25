@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: GDALInfo.cs 179218d76649a68fbee5edfc00b86b6397c1f149 2020-07-19 20:53:25 +0200 Tamas Szekeres $
+ * $Id$
  *
  * Name:     GDALInfo.cs
  * Project:  GDAL CSharp Interface

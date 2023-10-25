@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDAL_CALC" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdal_calc \- Command line raster calculator with numpy syntax.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDAL_CALC" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdal_calc \- Command line raster calculator with numpy syntax.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -47,7 +47,7 @@ DESCRIPTION
 .sp
 Command line raster calculator with numpy syntax. Use any basic
 arithmetic supported by numpy arrays such as \fB+\fP, \fB\-\fP, \fB*\fP, and
-\fB\e\fP along with logical operators such as \fB>\fP\&.
+\fB/\fP along with logical operators such as \fB>\fP\&.
 Note that all files must have the same dimensions (unless extent option is used),
 but no projection checking is performed (unless projectionCheck option is used).
 .INDENT 0.0
@@ -71,7 +71,9 @@ Multiple \fB\-\-calc\fP options can be listed to produce a multiband file (GDAL 
 .B \-A <filename>
 Input gdal raster file, you can use any letter (a\-z, A\-Z).  (lower case supported since GDAL 3.3)
 .sp
-A letter may be repeated (GDAL >= 3.3). The effect will be to create a 3\-dim numpy array.
+A letter may be repeated, or several values (separated by space) can be provided (GDAL >= 3.3).
+Since GDAL 3.5, wildcard exceptions (using ?, *) are supported for all shells/platforms.
+The effect will be to create a 3\-dim numpy array.
 In such a case, the calculation formula must use this input as a 3\-dim array and must return a 2D array (see examples below).
 In case the calculation does not return a 2D array an error would be generated.
 .UNINDENT
@@ -114,13 +116,21 @@ The output will not have a set NoDataValue, unless you explicitly specified a sp
 .INDENT 0.0
 .TP
 .B \-\-type=<datatype>
-Output datatype, must be one of [\fBInt32\fP, \fBInt16\fP, \fBFloat64\fP, \fBUInt16\fP, \fBByte\fP, \fBUInt32\fP, \fBFloat32\fP].
+Output datatype, must be one of [\fBByte\fP, \fBInt8\fP, \fBUInt16\fP, \fBInt16\fP, \fBUInt32\fP, \fBInt32\fP, \fBUInt64\fP, \fBInt64\fP, \fBFloat64\fP, \fBFloat32\fP, \fBCInt16\fP, \fBCInt32\fP, \fBCFloat64\fP, \fBCFloat32\fP].
 .sp
 \fBNOTE:\fP
 .INDENT 7.0
 .INDENT 3.5
 Despite the datatype set using \fB\-\-type\fP, when doing intermediate aritmethic operations using operands of the
 same type, the operation result will honor the original datatype. This may lead into unexpected results in the final result.
+.UNINDENT
+.UNINDENT
+.sp
+\fBNOTE:\fP
+.INDENT 7.0
+.INDENT 3.5
+UInt64, Int64, CInt16, CInt32, CFloat32, CFloat64 have been added in GDAL 3.5.3
+Int8 has been added in GDAL 3.7
 .UNINDENT
 .UNINDENT
 .UNINDENT
@@ -131,7 +141,7 @@ GDAL format for output file.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B color\-table=<filename>
+.B \-\-color\-table=<filename>
 Allows specifying a filename of a color table (or a ColorTable object) (with Palette Index interpretation) to be used for the output raster.
 Supported formats: txt (i.e. like gdaldem, but color names are not supported), qlr, qml (i.e. exported from QGIS)
 .UNINDENT
@@ -141,12 +151,17 @@ Supported formats: txt (i.e. like gdaldem, but color names are not supported), q
 New in version 3.3.
 
 .sp
-this option determines how to handle rasters with different extents.
-this option is mutually exclusive with the \fIprojwin\fP option, which is used for providing a custom extent.
-for all the options below the pixel size (resolution) and SRS (Spatial Reference System) of all the input rasters must be the same.
+This option determines how to handle rasters with different extents.
+This option is mutually exclusive with the \fIprojwin\fP option, which is used for providing a custom extent.
+.sp
+For all the options below the pixel size (resolution) and SRS (Spatial Reference System) of all the input rasters must be the same.
+.sp
 \fBignore\fP (default) \- only the dimensions of the rasters are compared. if the dimensions do not agree the operation will fail.
+.sp
 \fBfail\fP \- the dimensions and the extent (bounds) of the rasters must agree, otherwise the operation will fail.
+.sp
 \fBunion\fP \- the extent (bounds) of the output will be the minimal rectangle that contains all the input extents.
+.sp
 \fBintersect\fP \- the extent (bounds) of the output will be the maximal rectangle that is contained in all the input extents.
 .UNINDENT
 .INDENT 0.0
@@ -155,7 +170,7 @@ for all the options below the pixel size (resolution) and SRS (Spatial Reference
 New in version 3.3.
 
 .sp
-this option provides a custom extent for the output, it is mutually exclusive with the \fIextent\fP option.
+This option provides a custom extent for the output, it is mutually exclusive with the \fIextent\fP option.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -231,7 +246,7 @@ Add two files together:
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-B input2.tif \-\-outfile=result.tif \-\-calc="A+B"
+gdal_calc.py \-A input1.tif \-B input2.tif \-\-outfile=result.tif \-\-calc=\(dqA+B\(dq
 .ft P
 .fi
 .UNINDENT
@@ -243,7 +258,7 @@ Average of two layers:
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-B input2.tif \-\-outfile=result.tif \-\-calc="(A+B)/2"
+gdal_calc.py \-A input1.tif \-B input2.tif \-\-outfile=result.tif \-\-calc=\(dq(A+B)/2\(dq
 .ft P
 .fi
 .UNINDENT
@@ -259,7 +274,7 @@ may need to force the conversion of one of the operands before the division oper
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input.tif \-B input2.tif \-\-outfile=result.tif \-\-calc="(A.astype(numpy.float64) + B) / 2"
+gdal_calc.py \-A input.tif \-B input2.tif \-\-outfile=result.tif \-\-calc=\(dq(A.astype(numpy.float64) + B) / 2\(dq
 .ft P
 .fi
 .UNINDENT
@@ -273,7 +288,7 @@ Add three files together (two options with the same result):
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc="A+B+C"
+gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc=\(dqA+B+C\(dq
 .ft P
 .fi
 .UNINDENT
@@ -286,7 +301,7 @@ New in version 3.3.
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-A input2.tif \-A input3.tif \-\-outfile=result.tif \-\-calc="numpy.sum(A,axis=0)".
+gdal_calc.py \-A input1.tif \-A input2.tif \-A input3.tif \-\-outfile=result.tif \-\-calc=\(dqnumpy.sum(A,axis=0)\(dq.
 .ft P
 .fi
 .UNINDENT
@@ -298,7 +313,7 @@ Average of three layers (two options with the same result):
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc="(A+B+C)/3"
+gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc=\(dq(A+B+C)/3\(dq
 .ft P
 .fi
 .UNINDENT
@@ -311,7 +326,7 @@ New in version 3.3.
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-A input2.tif \-A input3.tif \-\-outfile=result.tif \-\-calc="numpy.average(a,axis=0)".
+gdal_calc.py \-A input1.tif input2.tif input3.tif \-\-outfile=result.tif \-\-calc=\(dqnumpy.average(a,axis=0)\(dq.
 .ft P
 .fi
 .UNINDENT
@@ -323,7 +338,7 @@ Maximum of three layers  (two options with the same result):
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc="numpy.max((A,B,C),axis=0)"
+gdal_calc.py \-A input1.tif \-B input2.tif \-C input3.tif \-\-outfile=result.tif \-\-calc=\(dqnumpy.max((A,B,C),axis=0)\(dq
 .ft P
 .fi
 .UNINDENT
@@ -336,7 +351,7 @@ New in version 3.3.
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input1.tif \-A input2.tif \-A input3.tif \-\-outfile=result.tif \-\-calc="numpy.max(A,axis=0)"
+gdal_calc.py \-A input1.tif input2.tif input3.tif \-\-outfile=result.tif \-\-calc=\(dqnumpy.max(A,axis=0)\(dq
 .ft P
 .fi
 .UNINDENT
@@ -348,7 +363,7 @@ Set values of zero and below to null:
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input.tif \-\-outfile=result.tif \-\-calc="A*(A>0)" \-\-NoDataValue=0
+gdal_calc.py \-A input.tif \-\-outfile=result.tif \-\-calc=\(dqA*(A>0)\(dq \-\-NoDataValue=0
 .ft P
 .fi
 .UNINDENT
@@ -360,7 +375,7 @@ Using logical operator to keep a range of values from input:
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input.tif \-\-outfile=result.tif \-\-calc="A*logical_and(A>100,A<150)"
+gdal_calc.py \-A input.tif \-\-outfile=result.tif \-\-calc=\(dqA*logical_and(A>100,A<150)\(dq
 .ft P
 .fi
 .UNINDENT
@@ -372,7 +387,7 @@ Work with multiple bands:
 .sp
 .nf
 .ft C
-gdal_calc.py \-A input.tif \-\-A_band=1 \-B input.tif \-\-B_band=2 \-\-outfile=result.tif \-\-calc="(A+B)/2" \-\-calc="B*logical_and(A>100,A<150)"
+gdal_calc.py \-A input.tif \-\-A_band=1 \-B input.tif \-\-B_band=2 \-\-outfile=result.tif \-\-calc=\(dq(A+B)/2\(dq \-\-calc=\(dqB*logical_and(A>100,A<150)\(dq
 .ft P
 .fi
 .UNINDENT
@@ -380,6 +395,6 @@ gdal_calc.py \-A input.tif \-\-A_band=1 \-B input.tif \-\-B_band=2 \-\-outfile=r
 .SH AUTHOR
 Chris Yesson <chris dot yesson at ioz dot ac dot uk>, Etienne Tourigny <etourigny dot dev at gmail dot com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

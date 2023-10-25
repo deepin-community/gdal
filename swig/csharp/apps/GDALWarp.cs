@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: GDALWarp.cs 8a219e58c2b176900390e37866700878fbbd0da1 2020-07-19 19:59:30 +0200 Tamas Szekeres $
+ * $Id$
  *
  * Name:     GDALWarp.cs
  * Project:  GDAL CSharp Interface
