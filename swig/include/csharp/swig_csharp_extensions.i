@@ -1,6 +1,6 @@
 
 /******************************************************************************
- * $Id: swig_csharp_extensions.i 806e9ded87d1002791ad78167c19292d0c93c964 2020-08-21 19:21:53 +0200 Björn Harrtell $
+ * $Id$
  *
  * Name:     swig_csharp_extensions.i
  * Purpose:  Fix for the SWIG Interface problems (early GC)

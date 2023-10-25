@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDAL_TRANSLATE" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdal_translate \- Converts raster data between different formats.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDAL_TRANSLATE" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdal_translate \- Converts raster data between different formats.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -37,11 +37,12 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .nf
 .ft C
 gdal_translate [\-\-help\-general]
-    [\-ot {Byte/Int16/UInt16/UInt32/Int32/Float32/Float64/
+    [\-ot {Byte/Int8/Int16/UInt16/UInt32/Int32/UInt64/Int64/Float32/Float64/
             CInt16/CInt32/CFloat32/CFloat64}] [\-strict]
     [\-if format]* [\-of format]
     [\-b band]* [\-mask band] [\-expand {gray|rgb|rgba}]
     [\-outsize xsize[%]|0 ysize[%]|0] [\-tr xres yres]
+    [\-ovr level|AUTO|AUTO\-n|NONE]
     [\-r {nearest,bilinear,cubic,cubicspline,lanczos,average,rms,mode}]
     [\-unscale] [\-scale[_bn] [src_min src_max [dst_min dst_max]]]* [\-exponent[_bn] exp_val]*
     [\-srcwin xoff yoff xsize ysize] [\-epo] [\-eco]
@@ -52,8 +53,8 @@ gdal_translate [\-\-help\-general]
     [\-nogcp] [\-gcp pixel line easting northing [elevation]]*
     |\-colorinterp{_bn} {red|green|blue|alpha|gray|undefined}]
     |\-colorinterp {red|green|blue|alpha|gray|undefined},...]
-    [\-mo "META\-TAG=VALUE"]* [\-q] [\-sds]
-    [\-co "NAME=VALUE"]* [\-stats] [\-norat] [\-noxmp]
+    [\-mo \(dqMETA\-TAG=VALUE\(dq]* [\-q] [\-sds]
+    [\-co \(dqNAME=VALUE\(dq]* [\-stats] [\-norat] [\-noxmp]
     [\-oo NAME=VALUE]*
     src_dataset dst_dataset
 .ft P
@@ -69,8 +70,8 @@ resampling, and rescaling pixels in the process.
 .TP
 .B \-ot <type>
 Force the output image bands to have a specific data type supported by the
-driver, which may be one of the following: \fBByte\fP, \fBUInt16\fP,
-\fBInt16\fP, \fBUInt32\fP, \fBInt32\fP, \fBFloat32\fP, \fBFloat64\fP, \fBCInt16\fP,
+driver, which may be one of the following: \fBByte\fP, \fBInt8\fP, \fBUInt16\fP,
+\fBInt16\fP, \fBUInt32\fP, \fBInt32\fP, \fBUInt64\fP, \fBInt64\fP, \fBFloat32\fP, \fBFloat64\fP, \fBCInt16\fP,
 \fBCInt32\fP, \fBCFloat32\fP or \fBCFloat64\fP\&.
 .UNINDENT
 .INDENT 0.0
@@ -103,18 +104,18 @@ format name.
 Select an input band \fBband\fP for output. Bands are numbered from 1.
 Multiple \fI\%\-b\fP switches may be used to select a set of input bands
 to write to the output file, or to reorder bands. \fBband\fP can also be set
-to "mask,1" (or just "mask") to mean the mask band of the first band of the
+to \(dqmask,1\(dq (or just \(dqmask\(dq) to mean the mask band of the first band of the
 input dataset.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-mask <band>
 Select an input band \fBband\fP to create output dataset mask band. Bands are
-numbered from 1. \fBband\fP can be set to "none" to avoid copying the global
+numbered from 1. \fBband\fP can be set to \(dqnone\(dq to avoid copying the global
 mask of the input dataset if it exists. Otherwise it is copied by default
-("auto"), unless the mask is an alpha channel, or if it is explicitly used
-to be a regular band of the output dataset ("\-b mask"). \fBband\fP can also
-be set to "mask,1" (or just "mask") to mean the mask band of the 1st band
+(\(dqauto\(dq), unless the mask is an alpha channel, or if it is explicitly used
+to be a regular band of the output dataset (\(dq\-b mask\(dq). \fBband\fP can also
+be set to \(dqmask,1\(dq (or just \(dqmask\(dq) to mean the mask band of the 1st band
 of the input dataset.
 .UNINDENT
 .INDENT 0.0
@@ -143,6 +144,30 @@ Both must be positive values. This is mutually exclusive with
 .UNINDENT
 .INDENT 0.0
 .TP
+.B \-ovr <level|AUTO|AUTO\-n|NONE>
+New in version 3.6.
+
+.sp
+To specify which overview level of source file must be used. The default choice,
+AUTO, will select the overview level whose resolution is the closest to the
+target resolution. Specify an integer value (0\-based, i.e. 0=1st overview level)
+to select a particular level. Specify AUTO\-n where n is an integer greater or
+equal to 1, to select an overview level below the AUTO one. Or specify NONE to
+force the base resolution to be used (can be useful if overviews have been
+generated with a low quality resampling method, and a higher quality resampling method
+is specified with \fI\%\-r\fP\&.
+.sp
+When \fI\%\-ovr\fP is specified to an integer value,
+and none of \fI\%\-outsize\fP and \fI\%\-tr\fP is specified, the size of
+the overview will be used as the output size.
+.sp
+When \fI\%\-ovr\fP is specified, values of \fI\%\-srcwin\fP, when specified,
+should be expressed as pixel offset and size of the full resolution source dataset.
+Similarly when using \fI\%\-outsize\fP with percentage values, they refer to the size
+of the full resolution source dataset.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-r {nearest (default),bilinear,cubic,cubicspline,lanczos,average,rms,mode}
 Select a resampling algorithm.
 .sp
@@ -166,15 +191,22 @@ Select a resampling algorithm.
 .TP
 .B \-scale [src_min src_max [dst_min dst_max]]
 Rescale the input pixels values from the range \fBsrc_min\fP to \fBsrc_max\fP
-to the range \fBdst_min\fP to \fBdst_max\fP\&. If omitted the output range is 0
-to 255.  If omitted the input range is automatically computed from the
-source data. Note that these values are only used to compute a scale and
-offset to apply to the input raster values. In particular, src_min and
-src_max are not used to clip input values.
-\-scale can be repeated several times (if specified only once,
+to the range \fBdst_min\fP to \fBdst_max\fP\&.
+If omitted the output range is 0 to 255.
+If omitted the input range is automatically computed from the
+source dataset, in its whole (not just the window of interest potentially
+specified with \fI\%\-srcwin\fP or \fI\%\-projwin\fP). This may be a
+slow operation on a large source dataset, and if using it multiple times
+for several gdal_translate invocation, it might be beneficial to call
+\fBgdalinfo \-stats {source_dataset}\fP priorly to precompute statistics, for
+formats that support serializing statistics computations (GeoTIFF, VRT...)
+Note that the values specified after \fI\%\-scale\fP are only used to compute a scale and
+offset to apply to the input raster values. In particular, \fBsrc_min\fP and
+\fBsrc_max\fP are not used to clip input values.
+\fI\%\-scale\fP can be repeated several times (if specified only once,
 it also applies to all bands of the output dataset), so as to specify per
-band parameters. It is also possible to use the "\-scale_bn" syntax where bn
-is a band number (e.g. "\-scale_2" for the 2nd band of the output dataset)
+band parameters. It is also possible to use the \(dq\-scale_bn\(dq syntax where bn
+is a band number (e.g. \(dq\-scale_2\(dq for the 2nd band of the output dataset)
 to specify the parameters of one or several specific bands.
 .UNINDENT
 .INDENT 0.0
@@ -184,8 +216,8 @@ To apply non\-linear scaling with a power function. exp_val is the exponent
 of the power function (must be positive). This option must be used with the
 \-scale option. If specified only once, \-exponent applies to all bands of
 the output image. It can be repeated several times so as to specify per
-band parameters. It is also possible to use the "\-exponent_bn" syntax where
-bn is a band number (e.g. "\-exponent_2" for the 2nd band of the output
+band parameters. It is also possible to use the \(dq\-exponent_bn\(dq syntax where
+bn is a band number (e.g. \(dq\-exponent_2\(dq for the 2nd band of the output
 dataset) to specify the parameters of one or several specific bands.
 .UNINDENT
 .INDENT 0.0
@@ -194,6 +226,14 @@ dataset) to specify the parameters of one or several specific bands.
 Apply the scale/offset metadata for the bands to convert scaled values to
 unscaled values.  It is also often necessary to reset the output datatype
 with the \fI\%\-ot\fP switch.
+The unscaled value is computed from the scaled raw value with the following
+formula:
+.sp
+.ce
+{unscaled\e_value} = {scaled\e_value} * {scale} + {offset}
+
+
+.ce 0
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -341,10 +381,10 @@ and whether the file should be tiled.
 The creation options available vary by format driver, and some
 simple formats have no creation options at all. A list of options
 supported for a format can be listed with the
-\-\-formats
+\fI\%\-\-formats\fP
 command line option but the documentation for the format is the
 definitive source of information on driver creation options.
-See raster_drivers format
+See \fI\%Raster drivers\fP format
 specific documentation for legal creation options for each format.
 .UNINDENT
 .INDENT 0.0
@@ -403,9 +443,35 @@ subdataset name for multi\-dataset files.
 .B <dst_dataset>
 The destination file name.
 .UNINDENT
+.SH NODATA / SOURCE VALIDITY MASK HANDLING DURING RESAMPLING
+.sp
+Masked values, either identified through a nodata value metadata set on the
+source band, a mask band, an alpha band will not be used during resampling
+(when using \fI\%\-outsize\fP or \fI\%\-tr\fP).
+.sp
+The details of how it is taken into account depends on the resampling kernel:
+.INDENT 0.0
+.IP \(bu 2
+for nearest resampling, for each target pixel, one of the potential contributing
+source pixels is selected (in an implementation specific way). Its value is used
+as it, be it valid or invalid.
+.IP \(bu 2
+for bilinear, cubic, cubicspline and lanczos, for each target pixel, the weights
+of contributing source pixels is set to zero to ignore them when they are masked.
+There is an extra specificity for cubic: given that some of the weights in the
+kernel are negative, such strategy could lead to strong overshoot/undershoot
+when there is an alternance of valid and invalid pixels. Consequently, if any
+of the horizontal or vertical direction, if the maximum number of valid source
+pixels in each dimension is less than the radius of the resampling kernel,
+the target pixel is considered as nodata.
+.IP \(bu 2
+for the other resampling methods, source pixels contributing to the target pixel
+are ignored if masked. Only the valid ones are taken into account. If there are
+none, the target pixel is considered as nodata.
+.UNINDENT
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALTranslate()\fP\&.
+This utility is also callable from C with \fI\%GDALTranslate()\fP\&.
 .sp
 New in version 2.1.
 
@@ -415,7 +481,7 @@ New in version 2.1.
 .sp
 .nf
 .ft C
-gdal_translate \-of GTiff \-co "TILED=YES" utm.tif utm_tiled.tif
+gdal_translate \-of GTiff \-co \(dqTILED=YES\(dq utm.tif utm_tiled.tif
 .ft P
 .fi
 .UNINDENT
@@ -447,6 +513,6 @@ gdal_translate withmask.tif rgba.tif \-b 1 \-b 2 \-b 3 \-b mask
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>, Silke Reimer <silke@intevation.de>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

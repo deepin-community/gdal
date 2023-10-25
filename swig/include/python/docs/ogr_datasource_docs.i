@@ -10,10 +10,11 @@ OGRDataSource::DestroyDataSource().
 
 Deprecated Use GDALClose() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
-
-hDataSource:  handle to allocated datasource object. ";
+hDS:
+    handle to allocated datasource object.
+";
 
 %feature("docstring")  Reference "int OGR_DS_Reference(OGRDataSourceH
 hDataSource) ";
@@ -28,9 +29,9 @@ OGR_DS_GetRefCount(OGRDataSourceH hDataSource) ";
 OGR_DS_GetSummaryRefCount(OGRDataSourceH hDataSource) ";
 
 %feature("docstring")  CreateLayer "OGRLayerH
-OGR_DS_CreateLayer(OGRDataSourceH hDS, const char *pszName,
+OGR_DS_CreateLayer(OGRDataSourceH hDS, const char \\*pszName,
 OGRSpatialReferenceH hSpatialRef, OGRwkbGeometryType eType, char
-**papszOptions)
+\\*\\*papszOptions)
 
 This function attempts to create a new layer on the data source with
 the indicated name, coordinate system, geometry type.
@@ -41,33 +42,35 @@ specific documentation.
 
 Deprecated Use GDALDatasetCreateLayer() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    The dataset handle.pszName:  the name for the new layer. This should ideally not match
+    any existing layer on the datasource.
+hSpatialRef:
+    handle to the coordinate system to use for the new
+    layer, or NULL if no coordinate system is available. The driver might
+    only increase the reference counter of the object to take ownership,
+    and not make a full copy, so do not use OSRDestroySpatialReference(),
+    but OSRRelease() instead when you are done with the object.
+eType:
+    the geometry type for the layer. Use wkbUnknown if there are
+    no constraints on the types geometry to be written.
+papszOptions:
+    a StringList of name=value options. Options are driver
+    specific, and driver information can be found at the following
+    url:http://www.gdal.org/ogr_formats.html
 
-hDS:  The dataset handle.
 
-pszName:  the name for the new layer. This should ideally not match
-any existing layer on the datasource.
-
-hSpatialRef:  handle to the coordinate system to use for the new
-layer, or NULL if no coordinate system is available. The driver might
-only increase the reference counter of the object to take ownership,
-and not make a full copy, so do not use OSRDestroySpatialReference(),
-but OSRRelease() instead when you are done with the object.
-
-eType:  the geometry type for the layer. Use wkbUnknown if there are
-no constraints on the types geometry to be written.
-
-papszOptions:  a StringList of name=value options. Options are driver
-specific, and driver information can be found at the following
-url:http://www.gdal.org/ogr_formats.html
-
-NULL is returned on failure, or a new OGRLayer handle on success.
-Example: ";
+Returns
+--------
+OGRLayerH:
+    NULL is returned on failure, or a new OGRLayer handle on success.
+";
 
 %feature("docstring")  CopyLayer "OGRLayerH
 OGR_DS_CopyLayer(OGRDataSourceH hDS, OGRLayerH hSrcLayer, const char
-*pszNewName, char **papszOptions)
+\\*pszNewName, char \\*\\*papszOptions)
 
 Duplicate an existing layer.
 
@@ -80,42 +83,26 @@ dataset.
 
 Deprecated Use GDALDatasetCopyLayer() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source where to create the new layer
+hSrcLayer:
+    handle to the source layer.
+pszNewName:
+    the name of the layer to create.
+papszOptions:
+    a StringList of name=value options. Options are driver
+    specific.
 
-hDS:  handle to the data source where to create the new layer
-
-hSrcLayer:  handle to the source layer.
-
-pszNewName:  the name of the layer to create.
-
-papszOptions:  a StringList of name=value options. Options are driver
-specific.
-
-a handle to the layer, or NULL if an error occurs. ";
-
-%feature("docstring")  DeleteLayer "OGRErr
-OGR_DS_DeleteLayer(OGRDataSourceH hDS, int iLayer)
-
-Delete the indicated layer from the datasource.
-
-If this method is supported the ODsCDeleteLayer capability will test
-TRUE on the OGRDataSource.
-
-Deprecated Use GDALDatasetDeleteLayer() in GDAL 2.0
-
-Parameters:
------------
-
-hDS:  handle to the datasource
-
-iLayer:  the index of the layer to delete.
-
-OGRERR_NONE on success, or OGRERR_UNSUPPORTED_OPERATION if deleting
-layers is not supported for this datasource. ";
+Returns
+-------
+OGRLayerH:
+    a handle to the layer, or NULL if an error occurs.
+";
 
 %feature("docstring")  GetLayerByName "OGRLayerH
-OGR_DS_GetLayerByName(OGRDataSourceH hDS, const char *pszName)
+OGR_DS_GetLayerByName(OGRDataSourceH hDS, const char \\*pszLayerName)
 
 Fetch a layer by name.
 
@@ -124,78 +111,23 @@ be deleted by the application.
 
 Deprecated Use GDALDatasetGetLayerByName() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source from which to get the layer.
+pszLayerName:
+    Layer the layer name of the layer to fetch.
 
-hDS:  handle to the data source from which to get the layer.
 
-pszLayerName:  Layer the layer name of the layer to fetch.
-
-a handle to the layer, or NULL if the layer is not found or an error
-occurs. ";
-
-%feature("docstring")  ExecuteSQL "OGRLayerH
-OGR_DS_ExecuteSQL(OGRDataSourceH hDS, const char *pszStatement,
-OGRGeometryH hSpatialFilter, const char *pszDialect)
-
-Execute an SQL statement against the data store.
-
-The result of an SQL query is either NULL for statements that are in
-error, or that have no results set, or an OGRLayer handle representing
-a results set from the query. Note that this OGRLayer is in addition
-to the layers in the data store and must be destroyed with
-OGR_DS_ReleaseResultSet() before the data source is closed
-(destroyed).
-
-For more information on the SQL dialect supported internally by OGR
-review theOGR SQL document. Some drivers (i.e. Oracle and PostGIS)
-pass the SQL directly through to the underlying RDBMS.
-
-Starting with OGR 1.10, theSQLITE dialect can also be used.
-
-Deprecated Use GDALDatasetExecuteSQL() in GDAL 2.0
-
-Parameters:
------------
-
-hDS:  handle to the data source on which the SQL query is executed.
-
-pszSQLCommand:  the SQL statement to execute.
-
-hSpatialFilter:  handle to a geometry which represents a spatial
-filter. Can be NULL.
-
-pszDialect:  allows control of the statement dialect. If set to NULL,
-the OGR SQL engine will be used, except for RDBMS drivers that will
-use their dedicated SQL engine, unless OGRSQL is explicitly passed as
-the dialect. Starting with OGR 1.10, the SQLITE dialect can also be
-used.
-
-a handle to a OGRLayer containing the results of the query.
-Deallocate with OGR_DS_ReleaseResultSet(). ";
-
-%feature("docstring")  ReleaseResultSet "void
-OGR_DS_ReleaseResultSet(OGRDataSourceH hDS, OGRLayerH hLayer)
-
-Release results of OGR_DS_ExecuteSQL().
-
-This function should only be used to deallocate OGRLayers resulting
-from an OGR_DS_ExecuteSQL() call on the same OGRDataSource. Failure to
-deallocate a results set before destroying the OGRDataSource may cause
-errors.
-
-Deprecated Use GDALDatasetReleaseResultSet() in GDAL 2.0
-
-Parameters:
------------
-
-hDS:  a handle to the data source on which was executed an SQL query.
-
-hLayer:  handle to the result of a previous OGR_DS_ExecuteSQL() call.
+Returns
+--------
+OGRLayerH:
+    a handle to the layer, or NULL if the layer is not found or an error
+    occurs.
 ";
 
 %feature("docstring")  TestCapability "int
-OGR_DS_TestCapability(OGRDataSourceH hDS, const char *pszCap)
+OGR_DS_TestCapability(OGRDataSourceH hDS, const char \\*pszCapability)
 
 Test if capability is available.
 
@@ -219,14 +151,18 @@ preference to the strings themselves to avoid misspelling.
 
 Deprecated Use GDALDatasetTestCapability() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source against which to test the capability.
+pszCapability:
+    the capability to test.
 
-hDS:  handle to the data source against which to test the capability.
-
-pszCapability:  the capability to test.
-
-TRUE if capability available otherwise FALSE. ";
+Returns
+--------
+int:
+    TRUE if capability available otherwise FALSE.
+";
 
 %feature("docstring")  GetLayerCount "int
 OGR_DS_GetLayerCount(OGRDataSourceH hDS)
@@ -235,13 +171,17 @@ Get the number of layers in this data source.
 
 Deprecated Use GDALDatasetGetLayerCount() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source from which to get the number of
+    layers.
 
-hDS:  handle to the data source from which to get the number of
-layers.
-
-layer count. ";
+Returns
+--------
+int:
+    layer count.
+";
 
 %feature("docstring")  GetLayer "OGRLayerH
 OGR_DS_GetLayer(OGRDataSourceH hDS, int iLayer)
@@ -253,17 +193,21 @@ be deleted by the application.
 
 Deprecated Use GDALDatasetGetLayer() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source from which to get the layer.
+iLayer:
+    a layer number between 0 and OGR_DS_GetLayerCount()-1.
 
-hDS:  handle to the data source from which to get the layer.
+Returns
+--------
+OGRLayerH:
+    a handle to the layer, or NULL if iLayer is out of range or an error
+    occurs.
+";
 
-iLayer:  a layer number between 0 and OGR_DS_GetLayerCount()-1.
-
-a handle to the layer, or NULL if iLayer is out of range or an error
-occurs. ";
-
-%feature("docstring")  GetName "const char*
+%feature("docstring")  GetName "const char\\*
 OGR_DS_GetName(OGRDataSourceH hDS)
 
 Returns the name of the data source.
@@ -275,13 +219,17 @@ source. Normally this is a filename.
 
 Deprecated Use GDALGetDescription() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the data source to get the name from.
 
-hDS:  handle to the data source to get the name from.
-
-pointer to an internal name string which should not be modified or
-freed by the caller. ";
+Returns
+--------
+str:
+    pointer to an internal name string which should not be modified or
+    freed by the caller.
+";
 
 %feature("docstring")  SyncToDisk "OGRErr
 OGR_DS_SyncToDisk(OGRDataSourceH hDS)
@@ -296,18 +244,22 @@ OGR_DS_GetDriver(OGRDataSourceH hDS)
 Returns the driver that the dataset was opened with.
 
 NOTE: Starting with GDAL 2.0, it is NOT safe to cast the returned
-handle to OGRSFDriver*. If a C++ object is needed, the handle should
-be cast to GDALDriver*.
+handle to OGRSFDriver\\*. If a C++ object is needed, the handle should
+be cast to GDALDriver\\*.
 
 Deprecated Use GDALGetDatasetDriver() in GDAL 2.0
 
-Parameters:
+Parameters
 -----------
+hDS:
+    handle to the datasource
 
-hDS:  handle to the datasource
-
-NULL if driver info is not available, or pointer to a driver owned by
-the OGRSFDriverManager. ";
+Returns
+--------
+OGRSFDriverH:
+    NULL if driver info is not available, or pointer to a driver owned by
+    the OGRSFDriverManager.
+";
 
 %feature("docstring")  GetStyleTable "OGRStyleTableH
 OGR_DS_GetStyleTable(OGRDataSourceH hDS)

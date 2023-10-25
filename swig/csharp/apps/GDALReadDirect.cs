@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: GDALReadDirect.cs d663b6c3d575bb6dae66de854ca6212c38249b79 2020-12-21 14:05:32 -0800 Chris Zielin $
+ * $Id$
  *
  * Name:     GDALReadDirect.cs
  * Project:  GDAL CSharp Interface

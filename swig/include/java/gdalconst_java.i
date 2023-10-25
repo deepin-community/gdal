@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: gdalconst_java.i 19f708c8a21ace821b243cbb6833e12dffcb82b3 2018-01-08 19:18:49Z Even Rouault $
+ * $Id$
  *
  * Name:     gdalconst_java.i
  * Project:  GDAL SWIG Interface

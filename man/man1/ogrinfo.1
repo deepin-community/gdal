@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "OGRINFO" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-ogrinfo \- Lists information about an OGR-supported data source.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,15 +27,19 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "OGRINFO" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+ogrinfo \- Lists information about an OGR-supported data source.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .nf
 .ft C
-ogrinfo [\-\-help\-general] [\-ro] [\-q] [\-where restricted_where|\e@filename]
+ogrinfo [\-\-help\-general] [\-json] [\-ro] [\-q] [\-where restricted_where|@filename]
         [\-spat xmin ymin xmax ymax] [\-geomfield field] [\-fid fid]
-        [\-sql statement|\e@filename] [\-dialect dialect] [\-al] [\-rl] [\-so] [\-fields={YES/NO}]
+        [\-sql statement|@filename] [\-dialect dialect] [\-al] [\-rl]
+        [\-so|\-features] [\-fields={YES/NO}]
         [\-geom={YES/NO/SUMMARY/WKT/ISO_WKT}] [\-\-formats] [[\-oo NAME=VALUE] ...]
         [\-nomd] [\-listmdd] [\-mdd domain|\(gaall\(ga]*
         [\-nocount] [\-noextent] [\-nogeomtype] [\-wkt_format WKT1|WKT2|...]
@@ -55,14 +56,28 @@ source to stdout (the terminal). By executing SQL statements it is also possible
 edit data.
 .INDENT 0.0
 .TP
+.B \-json
+Display the output in json format, conforming to the
+\fI\%ogrinfo.schema.json\fP
+schema.
+.sp
+New in version 3.7.
+
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-ro
 Open the data source in read\-only mode.
 .UNINDENT
 .INDENT 0.0
 .TP
 .B \-al
-List all features of all layers (used instead of having to give layer names
+List all layers (used instead of having to give layer names
 as arguments).
+In the default text output, this also enables listing
+all features, which can be disabled with \fI\%\-so\fP\&.
+In JSON output, \-al is implicit, but listing of features must be
+explicitly enabled with \fI\%\-features\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -79,6 +94,19 @@ New in version 2.2.
 .B \-so
 Summary Only: suppress listing of individual features and show only
 summary information like projection, schema, feature count and extents.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-features
+Enable listing of features. This has the opposite effect of \fI\%\-so\fP\&.
+.sp
+This option should be used with caution if using the library function
+\fI\%GDALVectorInfo()\fP and/or \fI\%\-json\fP, as the whole output of
+ogrinfo will be built in memory. Consequently, when used on a large
+collection of features, RAM may be exhausted.
+.sp
+New in version 3.7.
+
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -106,9 +134,9 @@ DELETE, DROP TABLE, ALTER TABLE etc. Editing capabilities depend on the selected
 .INDENT 0.0
 .TP
 .B \-dialect <dialect>
-SQL dialect. In some cases can be used to use (unoptimized) ogr_sql_dialect instead
+SQL dialect. In some cases can be used to use (unoptimized) \fI\%OGR SQL dialect\fP instead
 of the native SQL of an RDBMS by passing the \fBOGRSQL\fP dialect value.
-The sql_sqlite_dialect dialect can be select with the \fBSQLITE\fP
+The \fI\%SQL SQLite dialect\fP can be selected with the \fBSQLITE\fP
 and \fBINDIRECT_SQLITE\fP dialect values, and this can be used with any datasource.
 .UNINDENT
 .INDENT 0.0
@@ -127,7 +155,7 @@ Name of the geometry field on which the spatial filter operates.
 If provided, only the feature with this feature id will be reported.
 Operates exclusive of the spatial or attribute queries. Note: if you want
 to select several features based on their feature id, you can also use the
-fact the \(aqfid\(aq is a special field recognized by OGR SQL. So, \fI\-where "fid in (1,3,5)"\fP
+fact the \(aqfid\(aq is a special field recognized by OGR SQL. So, \fI\-where \(dqfid in (1,3,5)\(dq\fP
 would select features 1, 3 and 5.
 .UNINDENT
 .INDENT 0.0
@@ -234,6 +262,12 @@ are provided, all features are reported.
 .UNINDENT
 .sp
 Geometries are reported in OGC WKT format.
+.SH C API
+.sp
+This utility is also callable from C with \fI\%GDALVectorInfo()\fP\&.
+.sp
+New in version 3.7.
+
 .SH EXAMPLES
 .sp
 Example of reporting the names of the layers in a NTF file:
@@ -274,21 +308,235 @@ ogrinfo \e
   # Feature Count: 23
   # Extent: (\-150.000000, \-90.000000) \- (160.100000, \-60.000000)
   # Layer SRS WKT:
-  # GEOGCS["WGS 84",
-  #     DATUM["WGS_1984",
-  #         SPHEROID["WGS 84",6378137,298.257223563,
-  #             AUTHORITY["EPSG","7030"]],
-  #         AUTHORITY["EPSG","6326"]],
-  #     PRIMEM["Greenwich",0,
-  #         AUTHORITY["EPSG","8901"]],
-  #     UNIT["degree",0.0174532925199433,
-  #         AUTHORITY["EPSG","9122"]],
-  #     AUTHORITY["EPSG","4326"]]
+  # GEOGCS[\(dqWGS 84\(dq,
+  #     DATUM[\(dqWGS_1984\(dq,
+  #         SPHEROID[\(dqWGS 84\(dq,6378137,298.257223563,
+  #             AUTHORITY[\(dqEPSG\(dq,\(dq7030\(dq]],
+  #         AUTHORITY[\(dqEPSG\(dq,\(dq6326\(dq]],
+  #     PRIMEM[\(dqGreenwich\(dq,0,
+  #         AUTHORITY[\(dqEPSG\(dq,\(dq8901\(dq]],
+  #     UNIT[\(dqdegree\(dq,0.0174532925199433,
+  #         AUTHORITY[\(dqEPSG\(dq,\(dq9122\(dq]],
+  #     AUTHORITY[\(dqEPSG\(dq,\(dq4326\(dq]]
   # FID Column = fid
   # Geometry Column = geom
   # type: String (15.0)
   # scalerank: Integer (0.0)
   # featurecla: String (50.0)
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Example of retrieving information on a file in JSON format without showing details about every single feature:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ogrinfo \-json poly.shp
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+{
+  \(dqdescription\(dq:\(dqautotest/ogr/data/poly.shp\(dq,
+  \(dqdriverShortName\(dq:\(dqESRI Shapefile\(dq,
+  \(dqdriverLongName\(dq:\(dqESRI Shapefile\(dq,
+  \(dqlayers\(dq:[
+    {
+      \(dqname\(dq:\(dqpoly\(dq,
+      \(dqmetadata\(dq:{
+        \(dq\(dq:{
+          \(dqDBF_DATE_LAST_UPDATE\(dq:\(dq2018\-08\-02\(dq
+        },
+        \(dqSHAPEFILE\(dq:{
+          \(dqSOURCE_ENCODING\(dq:\(dq\(dq
+        }
+      },
+      \(dqgeometryFields\(dq:[
+        {
+          \(dqname\(dq:\(dq\(dq,
+          \(dqtype\(dq:\(dqPolygon\(dq,
+          \(dqnullable\(dq:true,
+          \(dqextent\(dq:[
+            478315.53125,
+            4762880.5,
+            481645.3125,
+            4765610.5
+          ],
+          \(dqcoordinateSystem\(dq:{
+            \(dqwkt\(dq:\(dqPROJCRS[\e\(dqOSGB36 / British National Grid\e\(dq,BASEGEOGCRS[\e\(dqOSGB36\e\(dq,DATUM[\e\(dqOrdnance Survey of Great Britain 1936\e\(dq,ELLIPSOID[\e\(dqAiry 1830\e\(dq,6377563.396,299.3249646,LENGTHUNIT[\e\(dqmetre\e\(dq,1]]],PRIMEM[\e\(dqGreenwich\e\(dq,0,ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433]],ID[\e\(dqEPSG\e\(dq,4277]],CONVERSION[\e\(dqBritish National Grid\e\(dq,METHOD[\e\(dqTransverse Mercator\e\(dq,ID[\e\(dqEPSG\e\(dq,9807]],PARAMETER[\e\(dqLatitude of natural origin\e\(dq,49,ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],ID[\e\(dqEPSG\e\(dq,8801]],PARAMETER[\e\(dqLongitude of natural origin\e\(dq,\-2,ANGLEUNIT[\e\(dqdegree\e\(dq,0.0174532925199433],ID[\e\(dqEPSG\e\(dq,8802]],PARAMETER[\e\(dqScale factor at natural origin\e\(dq,0.9996012717,SCALEUNIT[\e\(dqunity\e\(dq,1],ID[\e\(dqEPSG\e\(dq,8805]],PARAMETER[\e\(dqFalse easting\e\(dq,400000,LENGTHUNIT[\e\(dqmetre\e\(dq,1],ID[\e\(dqEPSG\e\(dq,8806]],PARAMETER[\e\(dqFalse northing\e\(dq,\-100000,LENGTHUNIT[\e\(dqmetre\e\(dq,1],ID[\e\(dqEPSG\e\(dq,8807]]],CS[Cartesian,2],AXIS[\e\(dq(E)\e\(dq,east,ORDER[1],LENGTHUNIT[\e\(dqmetre\e\(dq,1]],AXIS[\e\(dq(N)\e\(dq,north,ORDER[2],LENGTHUNIT[\e\(dqmetre\e\(dq,1]],USAGE[SCOPE[\e\(dqEngineering survey, topographic mapping.\e\(dq],AREA[\e\(dqUnited Kingdom (UK) \- offshore to boundary of UKCS within 49°45\(aqN to 61°N and 9°W to 2°E; onshore Great Britain (England, Wales and Scotland). Isle of Man onshore.\e\(dq],BBOX[49.75,\-9,61.01,2.01]],ID[\e\(dqEPSG\e\(dq,27700]]\(dq,
+            \(dqprojjson\(dq:{
+              \(dq$schema\(dq:\(dqhttps://proj.org/schemas/v0.6/projjson.schema.json\(dq,
+              \(dqtype\(dq:\(dqProjectedCRS\(dq,
+              \(dqname\(dq:\(dqOSGB36 / British National Grid\(dq,
+              \(dqbase_crs\(dq:{
+                \(dqname\(dq:\(dqOSGB36\(dq,
+                \(dqdatum\(dq:{
+                  \(dqtype\(dq:\(dqGeodeticReferenceFrame\(dq,
+                  \(dqname\(dq:\(dqOrdnance Survey of Great Britain 1936\(dq,
+                  \(dqellipsoid\(dq:{
+                    \(dqname\(dq:\(dqAiry 1830\(dq,
+                    \(dqsemi_major_axis\(dq:6377563.396,
+                    \(dqinverse_flattening\(dq:299.3249646
+                  }
+                },
+                \(dqcoordinate_system\(dq:{
+                  \(dqsubtype\(dq:\(dqellipsoidal\(dq,
+                  \(dqaxis\(dq:[
+                    {
+                      \(dqname\(dq:\(dqGeodetic latitude\(dq,
+                      \(dqabbreviation\(dq:\(dqLat\(dq,
+                      \(dqdirection\(dq:\(dqnorth\(dq,
+                      \(dqunit\(dq:\(dqdegree\(dq
+                    },
+                    {
+                      \(dqname\(dq:\(dqGeodetic longitude\(dq,
+                      \(dqabbreviation\(dq:\(dqLon\(dq,
+                      \(dqdirection\(dq:\(dqeast\(dq,
+                      \(dqunit\(dq:\(dqdegree\(dq
+                    }
+                  ]
+                },
+                \(dqid\(dq:{
+                  \(dqauthority\(dq:\(dqEPSG\(dq,
+                  \(dqcode\(dq:4277
+                }
+              },
+              \(dqconversion\(dq:{
+                \(dqname\(dq:\(dqBritish National Grid\(dq,
+                \(dqmethod\(dq:{
+                  \(dqname\(dq:\(dqTransverse Mercator\(dq,
+                  \(dqid\(dq:{
+                    \(dqauthority\(dq:\(dqEPSG\(dq,
+                    \(dqcode\(dq:9807
+                  }
+                },
+                \(dqparameters\(dq:[
+                  {
+                    \(dqname\(dq:\(dqLatitude of natural origin\(dq,
+                    \(dqvalue\(dq:49,
+                    \(dqunit\(dq:\(dqdegree\(dq,
+                    \(dqid\(dq:{
+                      \(dqauthority\(dq:\(dqEPSG\(dq,
+                      \(dqcode\(dq:8801
+                    }
+                  },
+                  {
+                    \(dqname\(dq:\(dqLongitude of natural origin\(dq,
+                    \(dqvalue\(dq:\-2,
+                    \(dqunit\(dq:\(dqdegree\(dq,
+                    \(dqid\(dq:{
+                      \(dqauthority\(dq:\(dqEPSG\(dq,
+                      \(dqcode\(dq:8802
+                    }
+                  },
+                  {
+                    \(dqname\(dq:\(dqScale factor at natural origin\(dq,
+                    \(dqvalue\(dq:0.9996012717,
+                    \(dqunit\(dq:\(dqunity\(dq,
+                    \(dqid\(dq:{
+                      \(dqauthority\(dq:\(dqEPSG\(dq,
+                      \(dqcode\(dq:8805
+                    }
+                  },
+                  {
+                    \(dqname\(dq:\(dqFalse easting\(dq,
+                    \(dqvalue\(dq:400000,
+                    \(dqunit\(dq:\(dqmetre\(dq,
+                    \(dqid\(dq:{
+                      \(dqauthority\(dq:\(dqEPSG\(dq,
+                      \(dqcode\(dq:8806
+                    }
+                  },
+                  {
+                    \(dqname\(dq:\(dqFalse northing\(dq,
+                    \(dqvalue\(dq:\-100000,
+                    \(dqunit\(dq:\(dqmetre\(dq,
+                    \(dqid\(dq:{
+                      \(dqauthority\(dq:\(dqEPSG\(dq,
+                      \(dqcode\(dq:8807
+                    }
+                  }
+                ]
+              },
+              \(dqcoordinate_system\(dq:{
+                \(dqsubtype\(dq:\(dqCartesian\(dq,
+                \(dqaxis\(dq:[
+                  {
+                    \(dqname\(dq:\(dqEasting\(dq,
+                    \(dqabbreviation\(dq:\(dqE\(dq,
+                    \(dqdirection\(dq:\(dqeast\(dq,
+                    \(dqunit\(dq:\(dqmetre\(dq
+                  },
+                  {
+                    \(dqname\(dq:\(dqNorthing\(dq,
+                    \(dqabbreviation\(dq:\(dqN\(dq,
+                    \(dqdirection\(dq:\(dqnorth\(dq,
+                    \(dqunit\(dq:\(dqmetre\(dq
+                  }
+                ]
+              },
+              \(dqscope\(dq:\(dqEngineering survey, topographic mapping.\(dq,
+              \(dqarea\(dq:\(dqUnited Kingdom (UK) \- offshore to boundary of UKCS within 49°45\(aqN to 61°N and 9°W to 2°E; onshore Great Britain (England, Wales and Scotland). Isle of Man onshore.\(dq,
+              \(dqbbox\(dq:{
+                \(dqsouth_latitude\(dq:49.75,
+                \(dqwest_longitude\(dq:\-9,
+                \(dqnorth_latitude\(dq:61.01,
+                \(dqeast_longitude\(dq:2.01
+              },
+              \(dqid\(dq:{
+                \(dqauthority\(dq:\(dqEPSG\(dq,
+                \(dqcode\(dq:27700
+              }
+            },
+            \(dqdataAxisToSRSAxisMapping\(dq:[
+              1,
+              2
+            ]
+          }
+        }
+      ],
+      \(dqfeatureCount\(dq:10,
+      \(dqfields\(dq:[
+        {
+          \(dqname\(dq:\(dqAREA\(dq,
+          \(dqtype\(dq:\(dqReal\(dq,
+          \(dqwidth\(dq:12,
+          \(dqprecision\(dq:3,
+          \(dqnullable\(dq:true,
+          \(dquniqueConstraint\(dq:false
+        },
+        {
+          \(dqname\(dq:\(dqEAS_ID\(dq,
+          \(dqtype\(dq:\(dqInteger64\(dq,
+          \(dqwidth\(dq:11,
+          \(dqnullable\(dq:true,
+          \(dquniqueConstraint\(dq:false
+        },
+        {
+          \(dqname\(dq:\(dqPRFEDEA\(dq,
+          \(dqtype\(dq:\(dqString\(dq,
+          \(dqwidth\(dq:16,
+          \(dqnullable\(dq:true,
+          \(dquniqueConstraint\(dq:false
+        }
+      ]
+    }
+  ],
+  \(dqmetadata\(dq:{
+  },
+  \(dqdomains\(dq:{
+  },
+  \(dqrelationships\(dq:{
+  }
+}
 .ft P
 .fi
 .UNINDENT
@@ -313,19 +561,19 @@ ogrinfo \-ro \e
 # Feature Count: 1
 # Extent: (419794.100000, 1069031.000000) \- (419927.900000, 1069153.500000)
 # Layer SRS WKT:
-# PROJCS["OSGB 1936 / British National Grid",
-# GEOGCS["OSGB 1936",
-# DATUM["OSGB_1936",
-# SPHEROID["Airy 1830",6377563.396,299.3249646]],
-# PRIMEM["Greenwich",0],
-# UNIT["degree",0.0174532925199433]],
-# PROJECTION["Transverse_Mercator"],
-# PARAMETER["latitude_of_origin",49],
-# PARAMETER["central_meridian",\-2],
-# PARAMETER["scale_factor",0.999601272],
-# PARAMETER["false_easting",400000],
-# PARAMETER["false_northing",\-100000],
-# UNIT["metre",1]]
+# PROJCS[\(dqOSGB 1936 / British National Grid\(dq,
+# GEOGCS[\(dqOSGB 1936\(dq,
+# DATUM[\(dqOSGB_1936\(dq,
+# SPHEROID[\(dqAiry 1830\(dq,6377563.396,299.3249646]],
+# PRIMEM[\(dqGreenwich\(dq,0],
+# UNIT[\(dqdegree\(dq,0.0174532925199433]],
+# PROJECTION[\(dqTransverse_Mercator\(dq],
+# PARAMETER[\(dqlatitude_of_origin\(dq,49],
+# PARAMETER[\(dqcentral_meridian\(dq,\-2],
+# PARAMETER[\(dqscale_factor\(dq,0.999601272],
+# PARAMETER[\(dqfalse_easting\(dq,400000],
+# PARAMETER[\(dqfalse_northing\(dq,\-100000],
+# UNIT[\(dqmetre\(dq,1]]
 # LINE_ID: Integer (6.0)
 # GEOM_ID: Integer (6.0)
 # FEAT_CODE: String (4.0)
@@ -367,7 +615,7 @@ Example of updating a value of an attribute in a shapefile with SQL by using the
 .sp
 .nf
 .ft C
-ogrinfo test.shp \-dialect sqlite \-sql "update test set attr=\(aqbar\(aq where attr=\(aqfoo\(aq"
+ogrinfo test.shp \-dialect sqlite \-sql \(dqupdate test set attr=\(aqbar\(aq where attr=\(aqfoo\(aq\(dq
 .ft P
 .fi
 .UNINDENT
@@ -375,6 +623,6 @@ ogrinfo test.shp \-dialect sqlite \-sql "update test set attr=\(aqbar\(aq where 
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>, Silke Reimer <silke@intevation.de>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

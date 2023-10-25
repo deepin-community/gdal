@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: python_strings.i de98b4fa8850b1becc0fb69ebdc712d8c75c8006 2021-08-23 21:44:41 +0200 Even Rouault $
+ * $Id$
  *
  * Name:     python_strings.i
  * Project:  GDAL Python Interface

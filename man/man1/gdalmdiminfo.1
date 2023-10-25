@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALMDIMINFO" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdalmdiminfo \- Reports structure and content of a multidimensional dataset
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALMDIMINFO" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdalmdiminfo \- Reports structure and content of a multidimensional dataset
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -38,7 +38,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .ft C
 gdalmdiminfo [\-\-help\-general] [\-oo NAME=VALUE]* [\-arrayoption NAME=VALUE]*
              [\-detailed] [\-nopretty] [\-array {array_name}] [\-limit {number}]
-             [\-stats] <datasetname>
+             [\-stats] [\-if format]* <datasetname>
 .ft P
 .fi
 .UNINDENT
@@ -81,7 +81,7 @@ This option may be used several times.
 .INDENT 0.0
 .TP
 .B \-arrayoption <NAME=VALUE>
-Option passed to \fBGDALGroup::GetMDArrayNames()\fP to filter reported
+Option passed to \fI\%GDALGroup::GetMDArrayNames()\fP to filter reported
 arrays. Such option is format specific. Consult driver documentation.
 This option may be used several times.
 .UNINDENT
@@ -94,9 +94,20 @@ statistics are stored in an image.
 New in version 3.2.
 
 .UNINDENT
+.INDENT 0.0
+.TP
+.B \-if <format>
+Format/driver name to be attempted to open the input file(s). It is generally
+not necessary to specify it, but it can be used to skip automatic driver
+detection, when it fails to select the appropriate driver.
+This option can be repeated several times to specify several candidate drivers.
+.sp
+New in version 3.2.
+
+.UNINDENT
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALMultiDimInfo()\fP\&.
+This utility is also callable from C with \fI\%GDALMultiDimInfo()\fP\&.
 .SH EXAMPLES
 .INDENT 0.0
 .IP \(bu 2
@@ -118,102 +129,102 @@ $ gdalmdiminfo netcdf\-4d.nc
 .nf
 .ft C
 {
-  "type": "group",
-  "name": "/",
-  "attributes": {
-    "Conventions": "CF\-1.5"
+  \(dqtype\(dq: \(dqgroup\(dq,
+  \(dqname\(dq: \(dq/\(dq,
+  \(dqattributes\(dq: {
+    \(dqConventions\(dq: \(dqCF\-1.5\(dq
   },
-  "dimensions": [
+  \(dqdimensions\(dq: [
     {
-      "name": "levelist",
-      "full_name": "/levelist",
-      "size": 2,
-      "type": "VERTICAL",
-      "indexing_variable": "/levelist"
+      \(dqname\(dq: \(dqlevelist\(dq,
+      \(dqfull_name\(dq: \(dq/levelist\(dq,
+      \(dqsize\(dq: 2,
+      \(dqtype\(dq: \(dqVERTICAL\(dq,
+      \(dqindexing_variable\(dq: \(dq/levelist\(dq
     },
     {
-      "name": "longitude",
-      "full_name": "/longitude",
-      "size": 10,
-      "type": "HORIZONTAL_X",
-      "direction": "EAST",
-      "indexing_variable": "/longitude"
+      \(dqname\(dq: \(dqlongitude\(dq,
+      \(dqfull_name\(dq: \(dq/longitude\(dq,
+      \(dqsize\(dq: 10,
+      \(dqtype\(dq: \(dqHORIZONTAL_X\(dq,
+      \(dqdirection\(dq: \(dqEAST\(dq,
+      \(dqindexing_variable\(dq: \(dq/longitude\(dq
     },
     {
-      "name": "latitude",
-      "full_name": "/latitude",
-      "size": 10,
-      "type": "HORIZONTAL_Y",
-      "direction": "NORTH",
-      "indexing_variable": "/latitude"
+      \(dqname\(dq: \(dqlatitude\(dq,
+      \(dqfull_name\(dq: \(dq/latitude\(dq,
+      \(dqsize\(dq: 10,
+      \(dqtype\(dq: \(dqHORIZONTAL_Y\(dq,
+      \(dqdirection\(dq: \(dqNORTH\(dq,
+      \(dqindexing_variable\(dq: \(dq/latitude\(dq
     },
     {
-      "name": "time",
-      "full_name": "/time",
-        "size": 4,
-      "type": "TEMPORAL",
-      "indexing_variable": "/time"
+      \(dqname\(dq: \(dqtime\(dq,
+      \(dqfull_name\(dq: \(dq/time\(dq,
+        \(dqsize\(dq: 4,
+      \(dqtype\(dq: \(dqTEMPORAL\(dq,
+      \(dqindexing_variable\(dq: \(dq/time\(dq
       }
   ],
-  "arrays": {
-    "levelist": {
-      "datatype": "Int32",
-      "dimensions": [
-          "/levelist"
+  \(dqarrays\(dq: {
+    \(dqlevelist\(dq: {
+      \(dqdatatype\(dq: \(dqInt32\(dq,
+      \(dqdimensions\(dq: [
+          \(dq/levelist\(dq
         ],
-      "attributes": {
-        "long_name": "pressure_level"
+      \(dqattributes\(dq: {
+        \(dqlong_name\(dq: \(dqpressure_level\(dq
       },
-      "unit": "millibars"
+      \(dqunit\(dq: \(dqmillibars\(dq
     },
-    "longitude": {
-      "datatype": "Float32",
-      "dimensions": [
-        "/longitude"
+    \(dqlongitude\(dq: {
+      \(dqdatatype\(dq: \(dqFloat32\(dq,
+      \(dqdimensions\(dq: [
+        \(dq/longitude\(dq
       ],
-      "attributes": {
-        "standard_name": "longitude",
-        "long_name": "longitude",
-        "axis": "X"
+      \(dqattributes\(dq: {
+        \(dqstandard_name\(dq: \(dqlongitude\(dq,
+        \(dqlong_name\(dq: \(dqlongitude\(dq,
+        \(dqaxis\(dq: \(dqX\(dq
       },
-      "unit": "degrees_east"
+      \(dqunit\(dq: \(dqdegrees_east\(dq
     },
-    "latitude": {
-      "datatype": "Float32",
-      "dimensions": [
-        "/latitude"
+    \(dqlatitude\(dq: {
+      \(dqdatatype\(dq: \(dqFloat32\(dq,
+      \(dqdimensions\(dq: [
+        \(dq/latitude\(dq
       ],
-      "attributes": {
-        "standard_name": "latitude",
-        "long_name": "latitude",
-        "axis": "Y"
+      \(dqattributes\(dq: {
+        \(dqstandard_name\(dq: \(dqlatitude\(dq,
+        \(dqlong_name\(dq: \(dqlatitude\(dq,
+        \(dqaxis\(dq: \(dqY\(dq
       },
-      "unit": "degrees_north"
+      \(dqunit\(dq: \(dqdegrees_north\(dq
     },
-    "time": {
-      "datatype": "Float64",
-      "dimensions": [
-        "/time"
+    \(dqtime\(dq: {
+      \(dqdatatype\(dq: \(dqFloat64\(dq,
+      \(dqdimensions\(dq: [
+        \(dq/time\(dq
       ],
-      "attributes": {
-        "standard_name": "time",
-        "calendar": "standard"
+      \(dqattributes\(dq: {
+        \(dqstandard_name\(dq: \(dqtime\(dq,
+        \(dqcalendar\(dq: \(dqstandard\(dq
       },
-      "unit": "hours since 1900\-01\-01 00:00:00"
+      \(dqunit\(dq: \(dqhours since 1900\-01\-01 00:00:00\(dq
     },
-    "t": {
-      "datatype": "Int32",
-      "dimensions": [
-        "/time",
-        "/levelist",
-        "/latitude",
-        "/longitude"
+    \(dqt\(dq: {
+      \(dqdatatype\(dq: \(dqInt32\(dq,
+      \(dqdimensions\(dq: [
+        \(dq/time\(dq,
+        \(dq/levelist\(dq,
+        \(dq/latitude\(dq,
+        \(dq/longitude\(dq
       ],
-      "nodata_value": \-32767
+      \(dqnodata_value\(dq: \-32767
     }
   },
-  "structural_info": {
-    "NC_FORMAT": "CLASSIC"
+  \(dqstructural_info\(dq: {
+    \(dqNC_FORMAT\(dq: \(dqCLASSIC\(dq
   }
 }
 .ft P
@@ -237,6 +248,6 @@ $ gdalmdiminfo netcdf\-4d.nc \-array t \-detailed \-limit 3
 .SH AUTHOR
 Even Rouault <even.rouault@spatialys.com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

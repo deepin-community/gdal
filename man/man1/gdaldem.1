@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALDEM" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdaldem \- Tools to analyze and visualize DEMs.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALDEM" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdaldem \- Tools to analyze and visualize DEMs.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -52,7 +52,7 @@ gdaldem hillshade input_dem output_hillshade
             [\-z ZFactor (default=1)] [\-s scale* (default=1)]
             [\-az Azimuth (default=315)] [\-alt Altitude (default=45)]
             [\-alg Horn|ZevenbergenThorne] [\-combined | \-multidirectional | \-igor]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co "NAME=VALUE"]* [\-q]
+            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -67,7 +67,7 @@ Generate a slope map from any GDAL\-supported elevation raster:
 gdaldem slope input_dem output_slope_map
             [\-p use percent slope (default=degrees)] [\-s scale* (default=1)]
             [\-alg Horn|ZevenbergenThorne]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co "NAME=VALUE"]* [\-q]
+            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -83,7 +83,7 @@ outputs a 32\-bit float raster with pixel values from 0\-360 indicating azimuth:
 gdaldem aspect input_dem output_aspect_map
             [\-trigonometric] [\-zero_for_flat]
             [\-alg Horn|ZevenbergenThorne]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co "NAME=VALUE"]* [\-q]
+            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -97,8 +97,8 @@ Generate a color relief map from any GDAL\-supported elevation raster:
 .ft C
 gdaldem color\-relief input_dem color_text_file output_color_relief_map
             [\-alpha] [\-exact_color_entry | \-nearest_color_entry]
-            [\-b Band (default=1)] [\-of format] [\-co "NAME=VALUE"]* [\-q]
-where color_text_file contains lines of the format "elevation_value red green blue"
+            [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
+where color_text_file contains lines of the format \(dqelevation_value red green blue\(dq
 .ft P
 .fi
 .UNINDENT
@@ -228,7 +228,7 @@ The output raster produced
 Select the output format.
 .sp
 New in version 2.3.0: If not specified, the format is guessed from the extension
-(previously was raster.gtiff). Use the short format name.
+(previously was \fI\%GTiff \-\- GeoTIFF File Format\fP). Use the short format name.
 
 .UNINDENT
 .INDENT 0.0
@@ -252,10 +252,10 @@ and whether the file should be tiled.
 The creation options available vary by format driver, and some
 simple formats have no creation options at all. A list of options
 supported for a format can be listed with the
-\-\-formats
+\fI\%\-\-formats\fP
 command line option but the documentation for the format is the
 definitive source of information on driver creation options.
-See raster_drivers format
+See \fI\%Raster drivers\fP format
 specific documentation for legal creation options for each format.
 .UNINDENT
 .INDENT 0.0
@@ -351,7 +351,7 @@ The literature suggests Zevenbergen & Thorne to be more suited to smooth landsca
 If specified, the slope will be expressed as percent slope. Otherwise, it is expressed as degrees
 .UNINDENT
 .sp
-\fB\-s\fP
+\fI\%\-s\fP
 .INDENT 0.0
 .INDENT 3.5
 Ratio of vertical units to horizontal. If the horizontal unit of the source DEM is degrees (e.g Lat/Long WGS84 projection), you can use scale=111120 if the vertical units are meters (or scale=370400 if they are in feet).
@@ -400,7 +400,7 @@ Add an alpha channel to the output raster
 .TP
 .B \-exact_color_entry
 Use strict matching when searching in the color configuration file.
-If none matching color entry is found, the "0,0,0,0" RGBA quadruplet will be used
+If none matching color entry is found, the \(dq0,0,0,0\(dq RGBA quadruplet will be used
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -458,7 +458,7 @@ nv     0   0   0   0
 .UNINDENT
 .UNINDENT
 .sp
-To implement a "round to the floor value" mode, the elevation value can be
+To implement a \(dqround to the floor value\(dq mode, the elevation value can be
 duplicate with a new value being slightly above the threshold.
 For example to have red in [0,10], green in ]10,20] and blue in ]20,30]:
 .INDENT 0.0
@@ -520,7 +520,7 @@ The value \-9999 is used as the output nodata value.
 There are no specific options.
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALDEMProcessing()\fP\&.
+This utility is also callable from C with \fI\%GDALDEMProcessing()\fP\&.
 .sp
 New in version 2.1.
 
@@ -544,6 +544,6 @@ Documentation of related GRASS utilities:
 .SH AUTHOR
 Matthew Perry <perrygeo@gmail.com>, Even Rouault <even.rouault@spatialys.com>, Howard Butler <hobu.inc@gmail.com>, Chris Yesson <chris.yesson@ioz.ac.uk>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

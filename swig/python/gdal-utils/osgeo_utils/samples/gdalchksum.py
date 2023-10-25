@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ******************************************************************************
-#  $Id: gdalchksum.py ffccab1ee20b5151e9bd45f1a2c46245a74f1f56 2021-04-23 14:05:42 +0300 Idan Miara $
+#  $Id$
 #
 #  Project:  GDAL
 #  Purpose:  Application to checksum a GDAL image file.
@@ -34,11 +34,11 @@ from osgeo import gdal
 
 
 def Usage():
-    print('Usage: gdalchksum.py [-b band] [-srcwin xoff yoff xsize ysize] file')
-    return 1
+    print("Usage: gdalchksum.py [-b band] [-srcwin xoff yoff xsize ysize] file")
+    return 2
 
 
-def main(argv):
+def main(argv=sys.argv):
     srcwin = None
     bands = []
 
@@ -53,13 +53,17 @@ def main(argv):
     while i < len(argv):
         arg = argv[i]
 
-        if arg == '-b':
+        if arg == "-b":
             i = i + 1
             bands.append(int(argv[i]))
 
-        elif arg == '-srcwin':
-            srcwin = [int(argv[i + 1]), int(argv[i + 2]),
-                      int(argv[i + 3]), int(argv[i + 3])]
+        elif arg == "-srcwin":
+            srcwin = [
+                int(argv[i + 1]),
+                int(argv[i + 2]),
+                int(argv[i + 3]),
+                int(argv[i + 3]),
+            ]
             i = i + 4
 
         elif filename is None:
@@ -77,7 +81,7 @@ def main(argv):
 
     ds = gdal.Open(filename)
     if ds is None:
-        print('Unable to open %s' % filename)
+        print("Unable to open %s" % filename)
         return 1
 
     # Default values
@@ -87,7 +91,6 @@ def main(argv):
 
     if not bands:
         bands = list(range(1, (ds.RasterCount + 1)))
-
 
     # Generate checksums
 
@@ -99,5 +102,5 @@ def main(argv):
     ds = None
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

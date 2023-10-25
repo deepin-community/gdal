@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: RasterAttributeTable.i 2519a7eb0e1649dbf8625ae8ffc7bb7c3ef9514b 2018-07-10 12:05:23 +0100 Robert Coup $
+ * $Id$
  *
  * Name:     RAT.i
  * Project:  GDAL Python Interface

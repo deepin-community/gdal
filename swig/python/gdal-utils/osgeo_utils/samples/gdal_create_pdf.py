@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 ###############################################################################
-# $Id: gdal_create_pdf.py e4fe7cc06270e5f38dfe78e6785a6bcca4e39e29 2021-04-01 21:02:04 +0300 Idan Miara $
+# $Id$
 #
 #  Project:  GDAL samples
 #  Purpose:  Create a PDF from a XML composition file
@@ -34,8 +34,8 @@ from osgeo import gdal
 
 
 def Usage():
-    print('Usage: gdal_create_pdf composition.xml out.pdf')
-    return -1
+    print("Usage: gdal_create_pdf composition.xml out.pdf")
+    return 2
 
 
 def gdal_create_pdf(argv):
@@ -47,29 +47,29 @@ def gdal_create_pdf(argv):
         return -1
 
     for i in range(1, len(argv)):
-        if argv[i][0] == '-':
-            print('Unrecognized option : %s' % argv[i])
+        if argv[i][0] == "-":
+            print("Unrecognized option : %s" % argv[i])
             return Usage()
         elif srcfile is None:
             srcfile = argv[i]
         elif targetfile is None:
             targetfile = argv[i]
         else:
-            print('Unexpected option : %s' % argv[i])
+            print("Unexpected option : %s" % argv[i])
             return Usage()
 
     if srcfile is None or targetfile is None:
         return Usage()
 
     out_ds = gdal.GetDriverByName("PDF").Create(
-        targetfile, 0, 0, 0, gdal.GDT_Unknown,
-        options = ['COMPOSITION_FILE=' + srcfile])
+        targetfile, 0, 0, 0, gdal.GDT_Unknown, options=["COMPOSITION_FILE=" + srcfile]
+    )
     return 0 if out_ds else 1
 
 
-def main(argv):
-    gdal_create_pdf(argv)
+def main(argv=sys.argv):
+    return gdal_create_pdf(argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

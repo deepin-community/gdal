@@ -16,78 +16,64 @@ reference documentation, but the `GDAL API Tutorial`_ includes Python examples.
 Dependencies
 ------------
 
- * libgdal (3.4.2 or greater) and header files (gdal-devel)
+ * libgdal (3.7.2 or greater) and header files (gdal-devel)
  * numpy (1.0.0 or greater) and header files (numpy-devel) (not explicitly
    required, but many examples and utilities will not work without it)
 
 Installation
 ------------
 
+Conda
+~~~~~
+
+GDAL can be quite complex to build and install, particularly on Windows and MacOS.
+Pre built binaries are provided for the conda system:
+
+https://docs.conda.io/en/latest/
+
+By the conda-forge project:
+
+https://conda-forge.org/
+
+Once you have Anaconda or Miniconda installed, you should be able to install GDAL with:
+
+``conda install -c conda-forge gdal``
+
 Unix
-~~~~~~~~~~~~~
+~~~~
 
-The GDAL Python bindings support both distutils and setuptools, with a
-preference for using setuptools.  If setuptools can be imported, setup will
-use that to build an egg by default.  If setuptools cannot be imported, a
-simple distutils root install of the GDAL package (and no dependency
-chaining for numpy) will be made.
+The GDAL Python bindings requires setuptools.
 
-easy_install
-~~~~~~~~~~~~
+pip
+~~~
 
-GDAL can be installed from the Python CheeseShop::
+GDAL can be installed from the Python Package Index:
 
-  $ sudo easy_install GDAL
+  $ pip install GDAL
 
-It may be necessary to have libgdal and its development headers installed
-if easy_install is expected to do a source build because no egg is available
+It will be necessary to have libgdal and its development headers installed
+if pip is expected to do a source build because no wheel is available
 for your specified platform and Python version.
 
-setup.py
-~~~~~~~~~
+To install the version of the Python bindings matching your native GDAL library:
 
-Most of setup.py's important variables are controlled with the setup.cfg
-file.  In setup.cfg, you can modify pointers to include files and libraries.
-The most important option that will likely need to be modified is the
-gdal_config parameter.  If you installed GDAL from a package, the location
-of this program is likely /usr/bin/gdal-config, but it may be in another place
-depending on how your packager arranged things.
-
-After modifying the location of gdal-config, you can build and install
-with the setup script::
-
-  $ python setup.py build
-  $ python setup.py install
-
-If you have setuptools installed, you can also generate an egg::
-
-  $ python setup.py bdist_egg
+  $ pip install GDAL=="$(gdal-config --version).*"
 
 Building as part of the GDAL library source tree
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 You can also have the GDAL Python bindings built as part of a source
-build by specifying --with-python as part of your configure line::
+build::
 
-  $ ./configure --with-python
+  $ cmake ..
 
-Use the typical make and make install commands to complete the installation::
+Use the typical cmake build and install commands to complete the installation::
 
-  $ make
-  $ make install
-
-A note about setuptools
-.......................
-
-./configure attempts to detect if you have setuptools installed in the tree
-of the Python binary it was given (or detected on the execution path), and it
-will use an egg build by default in that instance.  If you have a need to
-use a distutils-only install, you will have to edit setup.py to ensure that
-the HAVE_SETUPTOOLS variable is ultimately set to False and proceed with a
-typical 'python setup.py install' command.
+  $ cmake --build .
+  $ cmake --build . --target install
 
 Windows
-~~~~~~~~~~~~
+~~~~~~~
 
 You will need the following items to complete an install of the GDAL Python
 bindings on Windows:
@@ -119,21 +105,8 @@ may be required.
 SWIG
 ----
 
-The GDAL Python package is built using SWIG_. The earliest version of SWIG_
-that is supported to generate the wrapper code is 1.3.40.  It is possible
-that usable bindings will build with a version earlier than 1.3.40, but no
-development efforts are targeted at versions below it.  You should not have
-to run SWIG in your development tree to generate the binding code, as it
-is usually included with the source.  However, if you do need to regenerate,
-you can do so with the following make command from within the ./swig/python
-directory::
-
-  $ make generate
-
-To ensure that all of the bindings are regenerated, you can clean the
-bindings code out before the generate command by issuing::
-
-  $ make veryclean
+The GDAL Python package is built using SWIG_. The currently supported version
+is SWIG >= 4
 
 Usage
 -----
@@ -179,10 +152,10 @@ enough to get you going.  Docstrings for GDAL and OSR are planned for a future
 release.
 
 Numpy
--------
+-----
 
 One advanced feature of the GDAL Python bindings not found in the other
-language bindings (C#, Perl) is integration with the Python numerical array
+language bindings is integration with the Python numerical array
 facilities. The gdal.Dataset.ReadAsArray() method can be used to read raster
 data as numerical arrays, ready to use with the Python numerical array
 capabilities.
@@ -202,7 +175,7 @@ data, this approach is expected to be prohibitively memory intensive.
 .. _GDAL API Tutorial: https://gdal.org/tutorials/
 .. _GDAL Windows Binaries: http://gisinternals.com/sdk/
 .. _Microsoft Knowledge Base doc: http://support.microsoft.com/kb/310519
-.. _Python Cheeseshop: http://pypi.python.org/pypi/GDAL/
+.. _Python Package Index: https://pypi.org/project/GDAL/
 .. _val_repl.py: http://trac.osgeo.org/gdal/browser/trunk/gdal/swig/python/gdal-utils/osgeo_utils/samples/val_repl.py
 .. _GDAL: http://www.gdal.org
 .. _SWIG: http://www.swig.org

@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: OSRTransform.java 1dbf45c51065fdc509e9eb5a78f7038422a8912d 2020-12-17 15:48:33 +0100 Even Rouault $
+ * $Id$
  *
  * Name:     OSRTransform.java
  * Project:  GDAL Java Interface

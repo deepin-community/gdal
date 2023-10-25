@@ -25,6 +25,7 @@ usr/bin/ogr2ogr
 usr/bin/ogrinfo
 usr/bin/ogrlineref
 usr/bin/ogrtindex
+usr/bin/sozip
 usr/share/bash-completion/*
 usr/share/man/man1/gdaladdo.1
 usr/share/man/man1/gdalbuildvrt.1
@@ -53,6 +54,7 @@ usr/share/man/man1/ogr2ogr.1
 usr/share/man/man1/ogrinfo.1
 usr/share/man/man1/ogrlineref.1
 usr/share/man/man1/ogrtindex.1
+usr/share/man/man1/sozip.1
 ################################################################################
 # Python scripts
 usr/bin/*.py
@@ -73,6 +75,7 @@ usr/share/man/man1/gdal_retile.1
 usr/share/man/man1/gdal_sieve.1
 usr/share/man/man1/gdalcompare.1
 usr/share/man/man1/gdalmove.1
+usr/share/man/man1/ogr_layer_algebra.1
 usr/share/man/man1/ogrmerge.1
 usr/share/man/man1/pct2rgb.1
 usr/share/man/man1/rgb2pct.1

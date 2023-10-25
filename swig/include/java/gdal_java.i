@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: gdal_java.i 2bd4328a9cb58844cb91956f8bd9869218a45b1a 2021-04-29 18:40:02 +0200 Even Rouault $
+ * $Id$
  *
  * Name:     gdal_java.i
  * Project:  GDAL SWIG Interface

@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALMDIMTRANSLATE" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdalmdimtranslate \- Converts multidimensional data between different formats, and perform subsetting.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,14 +27,18 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALMDIMTRANSLATE" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdalmdimtranslate \- Converts multidimensional data between different formats, and perform subsetting.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .nf
 .ft C
-gdalmdimtranslate [\-\-help\-general] [\-co "NAME=VALUE"]*
-                  [\-of format] [\-array <array_spec>]*
+gdalmdimtranslate [\-\-help\-general] [\-co \(dqNAME=VALUE\(dq]*
+                  [\-if format]* [\-of format]
+                  [\-array <array_spec>]*
                   [\-group <group_spec>]*
                   [\-subset <subset_spec>]*
                   [\-scaleaxes <scaleaxes_spec>]*
@@ -56,9 +57,20 @@ and groups, and/or subsetting operations.
 The following command line parameters can appear in any order.
 .INDENT 0.0
 .TP
+.B \-if <format>
+Format/driver name to be attempted to open the input file(s). It is generally
+not necessary to specify it, but it can be used to skip automatic driver
+detection, when it fails to select the appropriate driver.
+This option can be repeated several times to specify several candidate drivers.
+.sp
+New in version 3.2.
+
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-of <format>
 Select the output format. This can be a format that supports multidimensional
-output (such as raster.netcdf, vrt_multidimensional), or a "classic" 2D formats, if only one single 2D array
+output (such as \fI\%NetCDF: Network Common Data Form\fP, \fI\%Multidimensional VRT\fP), or a \(dqclassic\(dq 2D formats, if only one single 2D array
 results of the other specified conversion operations. When this option is
 not specified, the format is guessed when possible from the extension of the
 destination filename.
@@ -72,14 +84,14 @@ used to control particulars about the file created.
 The creation options available vary by format driver, and some
 simple formats have no creation options at all. A list of options
 supported for a format can be listed with the
-\-\-formats
+\fI\%\-\-formats\fP
 command line option but the documentation for the format is the
 definitive source of information on driver creation options.
-See raster_drivers format
+See \fI\%Raster drivers\fP format
 specific documentation for legal creation options for each format.
 .sp
 Array\-level creation options may be passed by prefixing them with \fBARRAY:\fP\&.
-See \fBGDALGroup::CopyFrom()\fP for further details regarding such options.
+See \fI\%GDALGroup::CopyFrom()\fP for further details regarding such options.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -93,10 +105,10 @@ syntax (/group/subgroup/array_name). Or it can be a combination of options
 with the syntax:
 name={src_array_name}[,dstname={dst_array_name}][,transpose=[{axis1},{axis2},...][,view={view_expr}]
 .sp
-[{axis1},{axis2},...] is the argument of  \fBGDALMDArray::Transpose()\fP\&.
+[{axis1},{axis2},...] is the argument of  \fI\%GDALMDArray::Transpose()\fP\&.
 For example, transpose=[1,0] switches the axis order of a 2D array.
 .sp
-{view_expr} is the value of the \fIviewExpr\fP argument of \fBGDALMDArray::GetView()\fP
+{view_expr} is the value of the \fIviewExpr\fP argument of \fI\%GDALMDArray::GetView()\fP
 .sp
 When specifying a view_expr that performs a slicing or subsetting on a dimension, the
 equivalent operation will be applied to the corresponding indexing variable.
@@ -167,7 +179,7 @@ The destination file name.
 .UNINDENT
 .SH C API
 .sp
-This utility is also callable from C with \fBGDALMultiDimTranslate()\fP\&.
+This utility is also callable from C with \fI\%GDALMultiDimTranslate()\fP\&.
 .SH EXAMPLES
 .INDENT 0.0
 .IP \(bu 2
@@ -192,7 +204,7 @@ Extract a 2D slice of a time,Y,X array
 .sp
 .nf
 .ft C
-$ gdalmdimtranslate in.nc out.tif \-subset \(aqtime("2010\-01\-01")\(aq \-array temperature
+$ gdalmdimtranslate in.nc out.tif \-subset \(aqtime(\(dq2010\-01\-01\(dq)\(aq \-array temperature
 .ft P
 .fi
 .UNINDENT
@@ -206,7 +218,7 @@ Subsample along X and Y axis
 .sp
 .nf
 .ft C
-$ gdalmdimtranslate in.nc out.nc \-scaleaxes "X(2),Y(2)"
+$ gdalmdimtranslate in.nc out.nc \-scaleaxes \(dqX(2),Y(2)\(dq
 .ft P
 .fi
 .UNINDENT
@@ -221,7 +233,7 @@ to bottom\-to\-top (or the reverse)
 .sp
 .nf
 .ft C
-$ gdalmdimtranslate in.nc out.nc \-array "name=temperature,view=[:,::\-1,:]"
+$ gdalmdimtranslate in.nc out.nc \-array \(dqname=temperature,view=[:,::\-1,:]\(dq
 .ft P
 .fi
 .UNINDENT
@@ -235,7 +247,7 @@ Transpose an array that has X,Y,time dimension order to time,Y,X
 .sp
 .nf
 .ft C
-$ gdalmdimtranslate in.nc out.nc \-array "name=temperature,transpose=[2,1,0]"
+$ gdalmdimtranslate in.nc out.nc \-array \(dqname=temperature,transpose=[2,1,0]\(dq
 .ft P
 .fi
 .UNINDENT
@@ -243,6 +255,6 @@ $ gdalmdimtranslate in.nc out.nc \-array "name=temperature,transpose=[2,1,0]"
 .SH AUTHOR
 Even Rouault <even.rouault@spatialys.com>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

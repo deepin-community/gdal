@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # ******************************************************************************
-#  $Id: gdalimport.py ffccab1ee20b5151e9bd45f1a2c46245a74f1f56 2021-04-23 14:05:42 +0300 Idan Miara $
+#  $Id$
 #
 #  Name:     gdalimport
 #  Project:  GDAL Python Interface
@@ -36,27 +36,27 @@ from osgeo import gdal
 
 
 def progress_cb(complete, message, cb_data):
-    print('%s %d' % (cb_data, complete))
+    print("%s %d" % (cb_data, complete))
 
 
-def main(argv):
+def main(argv=sys.argv):
     argv = gdal.GeneralCmdLineProcessor(argv)
     if argv is None:
         return 0
 
     if len(argv) < 2:
         print("Usage: gdalimport.py [--help-general] source_file [newfile]")
-        return 1
+        return 2
 
     filename = argv[1]
     dataset = gdal.Open(filename)
     if dataset is None:
-        print('Unable to open %s' % filename)
+        print("Unable to open %s" % filename)
         return 1
 
     geotiff = gdal.GetDriverByName("GTiff")
     if geotiff is None:
-        print('GeoTIFF driver not registered.')
+        print("GeoTIFF driver not registered.")
         return 1
 
     if len(argv) < 3:
@@ -69,20 +69,27 @@ def main(argv):
     else:
         newfile = argv[2]
 
-    print('Importing to Tiled GeoTIFF file: %s' % newfile)
-    new_dataset = geotiff.CreateCopy(newfile, dataset, 0,
-                                     ['TILED=YES', ],
-                                     callback=progress_cb,
-                                     callback_data='Translate: ')
+    print("Importing to Tiled GeoTIFF file: %s" % newfile)
+    new_dataset = geotiff.CreateCopy(
+        newfile,
+        dataset,
+        0,
+        [
+            "TILED=YES",
+        ],
+        callback=progress_cb,
+        callback_data="Translate: ",
+    )
     dataset = None
 
-    print('Building overviews')
-    new_dataset.BuildOverviews("average", callback=progress_cb,
-                               callback_data='Overviews: ')
+    print("Building overviews")
+    new_dataset.BuildOverviews(
+        "average", callback=progress_cb, callback_data="Overviews: "
+    )
     new_dataset = None
 
-    print('Done')
+    print("Done")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(sys.argv))

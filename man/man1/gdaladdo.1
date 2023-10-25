@@ -1,8 +1,5 @@
 .\" Man page generated from reStructuredText.
 .
-.TH "GDALADDO" "1" "Mar 08, 2022" "" "GDAL"
-.SH NAME
-gdaladdo \- Builds or rebuilds overview images.
 .
 .nr rst2man-indent-level 0
 .
@@ -30,6 +27,9 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
+.TH "GDALADDO" "1" "Sep 05, 2023" "" "GDAL"
+.SH NAME
+gdaladdo \- Builds or rebuilds overview images.
 .SH SYNOPSIS
 .INDENT 0.0
 .INDENT 3.5
@@ -156,11 +156,17 @@ The photometric interpretation can be set with the \fBPHOTOMETRIC_OVERVIEW\fP
 =RGB/YCBCR/... configuration option,
 and the interleaving with the \fBINTERLEAVE_OVERVIEW\fP =PIXEL/BAND configuration option.
 .sp
+Since GDAL 3.6, \fBCOMPRESS_OVERVIEW\fP and decl_configoption:\fIINTERLEAVE_OVERVIEW\fP
+are honoured when creating internal overviews of TIFF files.
+.sp
 For JPEG compressed external and internal overviews, the JPEG quality can be set with
 \fB\-\-config JPEG_QUALITY_OVERVIEW value\fP\&.
 .sp
 For WEBP compressed external and internal overviews, the WEBP quality level can be set with
 \fB\-\-config WEBP_LEVEL_OVERVIEW value\fP\&. If not set, will default to 75.
+.sp
+For WEBP compressed external and internal overviews, the WEBP lossless/lossy switch can be set with
+\fB\-\-config WEBP_LOSSLESS_OVERVIEW value\fP\&. If not set, will default to NO (lossy). Added in GDAL 3.6.0
 .sp
 For LERC compressed external and internal overviews, the max error threshold can be set with
 \fB\-\-config MAX_Z_ERROR_OVERVIEW value\fP\&. If not set, will default to 0 (lossless). Added in GDAL 3.4.1
@@ -209,7 +215,7 @@ Sparse GeoTIFF overview files (that is tiles which are omitted if all their pixe
 at the nodata value, when there\(aqs one, or at 0 otherwise) can be obtained with
 \fB\-\-config SPARSE_OK_OVERVIEW ON\fP\&. Added in GDAL 3.4.1
 .sp
-See the documentation of the raster.gtiff driver for further explanations on all those options.
+See the documentation of the \fI\%GTiff \-\- GeoTIFF File Format\fP driver for further explanations on all those options.
 .SH SETTING BLOCKSIZE IN GEOTIFF OVERVIEWS
 .sp
 \fB\-\-config GDAL_TIFF_OVR_BLOCKSIZE <size>\fP
@@ -218,6 +224,32 @@ Example: \fB\-\-config GDAL_TIFF_OVR_BLOCKSIZE 256\fP
 .sp
 Default value is 128, or starting with GDAL 3.1, if creating overviews on a tiled GeoTIFF file, the tile size of the full resolution image.
 Note: without this setting, the file can have the full resolution image with a blocksize different from overviews blocksize.(e.g. full resolution image at blocksize 256, overviews at blocksize 128)
+.SH NODATA / SOURCE VALIDITY MASK HANDLING DURING RESAMPLING
+.sp
+Invalid values in source pixels, either identified through a nodata value
+metadata set on the source band, a mask band, an alpha band will not be used
+during resampling.
+.sp
+The details of how it is taken into account depends on the resampling kernel:
+.INDENT 0.0
+.IP \(bu 2
+for nearest resampling, for each target pixel, one of the potential contributing
+source pixels is selected (in an implementation specific way). Its value is used
+as it, be it valid or invalid.
+.IP \(bu 2
+for bilinear, cubic, cubicspline and lanczos, for each target pixel, the weights
+of contributing source pixels is set to zero to ignore them when they are masked.
+There is an extra specificity for cubic: given that some of the weights in the
+kernel are negative, such strategy could lead to strong overshoot/undershoot
+when there is an alternance of valid and invalid pixels. Consequently, if any
+of the horizontal or vertical direction, if the maximum number of valid source
+pixels in each dimension is less than the radius of the resampling kernel,
+the target pixel is considered as nodata.
+.IP \(bu 2
+for the other resampling methods, source pixels contributing to the target pixel
+are ignored if masked. Only the valid ones are taken into account. If there are
+none, the target pixel is considered as nodata.
+.UNINDENT
 .SH MULTITHREADING
 .sp
 New in version 3.2.
@@ -228,7 +260,7 @@ The \fBGDAL_NUM_THREADS\fP configuration option can be set to
 overview computation.
 .SH C API
 .sp
-Functionality of this utility can be done from C with \fBGDALBuildOverviews()\fP\&.
+Functionality of this utility can be done from C with \fI\%GDALBuildOverviews()\fP\&.
 .SH EXAMPLES
 .sp
 Create overviews, embedded in the supplied TIFF file, with automatic computation
@@ -295,7 +327,7 @@ gdaladdo \-\-config USE_RRD YES airphoto.jpg 3 9 27 81
 .UNINDENT
 .UNINDENT
 .sp
-Create overviews for a specific subdataset, like for example one of potentially many raster layers in a GeoPackage (the "filename" parameter must be driver prefix, filename and subdataset name, like e.g. shown by gdalinfo):
+Create overviews for a specific subdataset, like for example one of potentially many raster layers in a GeoPackage (the \(dqfilename\(dq parameter must be driver prefix, filename and subdataset name, like e.g. shown by gdalinfo):
 .INDENT 0.0
 .INDENT 3.5
 .sp
@@ -309,6 +341,6 @@ gdaladdo GPKG:file.gpkg:layer
 .SH AUTHOR
 Frank Warmerdam <warmerdam@pobox.com>, Silke Reimer <silke@intevation.de>
 .SH COPYRIGHT
-1998-2022
+1998-2023
 .\" Generated by docutils manpage writer.
 .

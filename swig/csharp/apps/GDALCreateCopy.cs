@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: GDALCreateCopy.cs 65a24c56ebe59cdef9245fbaed0b203b2765d7c9 2018-05-28 19:40:31 +0300 Igor $
+ * $Id$
  *
  * Name:     GDALWrite.cs
  * Project:  GDAL CSharp Interface

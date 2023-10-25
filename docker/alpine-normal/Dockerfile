@@ -3,9 +3,9 @@
 
 # This file is available at the option of the licensee under:
 # Public domain
-# or licensed under X/MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
+# or licensed under MIT (LICENSE.TXT) Copyright 2019 Even Rouault <even.rouault@spatialys.com>
 
-ARG ALPINE_VERSION=3.15
+ARG ALPINE_VERSION=3.17
 FROM alpine:${ALPINE_VERSION} as builder
 
 # Derived from osgeo/proj by Howard Butler <howard@hobu.co>
@@ -24,46 +24,27 @@ RUN \
 # For PROJ and GDAL
 ARG POPPLER_DEV=poppler-dev
 RUN apk add --no-cache \
-    linux-headers \
+    cmake linux-headers gnu-libiconv-dev \
     curl-dev tiff-dev \
     zlib-dev zstd-dev xz-dev snappy-dev \
-    libjpeg-turbo-dev libpng-dev openjpeg-dev libwebp-dev expat-dev \
-    py3-numpy-dev python3-dev py3-setuptools py3-numpy \
+    libjpeg-turbo-dev libpng-dev openjpeg-dev libwebp-dev expat-dev libkml-dev \
+    py3-numpy-dev python3-dev py3-setuptools py3-numpy swig \
     ${POPPLER_DEV} postgresql-dev \
     openexr-dev libheif-dev xerces-c-dev geos-dev cfitsio-dev \
     netcdf-dev hdf5-dev freexl-dev \
-    lz4-dev \
+    lz4-dev blosc-dev libdeflate-dev brotli-dev uriparser-dev \
+    libarchive-dev \
+    kealib-dev libjxl-dev \
+    json-c-dev giflib-dev \
+    mariadb-connector-c-dev \
+    pcre2-dev \
+    qhull-dev \
+    unixodbc-dev \
+    libpq-dev \
+    apache-arrow-dev \
     # For spatialite (and GDAL)
     libxml2-dev \
     && mkdir -p /build_thirdparty/usr/lib
-
-# Build blosc
-ARG BLOSC_VERSION=1.21.0
-RUN if test "${BLOSC_VERSION}" != ""; then ( \
-    apk add --no-cache cmake \
-    && wget -q https://github.com/Blosc/c-blosc/archive/refs/tags/v${BLOSC_VERSION}.tar.gz \
-    && tar xzf v${BLOSC_VERSION}.tar.gz \
-    && rm -f v${BLOSC_VERSION}.tar.gz \
-    && cd c-blosc-${BLOSC_VERSION} \
-    && cmake . \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DBUILD_SHARED=ON \
-        -DBUILD_STATIC=OFF \
-        -DBUILD_BENCHMARKS=OFF \
-        -DBUILD_FUZZERS=OFF \
-        -DBUILD_TESTS=OFF \
-        -DPREFER_EXTERNAL_LZ4=ON \
-        -DPREFER_EXTERNAL_ZLIB=ON \
-        -DPREFER_EXTERNAL_ZSTD=ON \
-        -DDEACTIVATE_SNAPPY=OFF \
-    && make -j$(nproc) \
-    && make install \
-    && cp -P /usr/lib/libblosc*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf c-blosc-${BLOSC_VERSION} \
-    ); fi
 
 # Build szip
 ARG SZIP_VERSION=2.1.1
@@ -82,12 +63,12 @@ RUN if test "${SZIP_VERSION}" != ""; then ( \
     ); fi
 
 # Build hdf4
-ARG HDF4_VERSION=4.2.15
+ARG HDF4_VERSION=4.2.16
 RUN if test "${HDF4_VERSION}" != "" -a "$(uname -m)" = "x86_64"; then ( \
     apk add --no-cache byacc flex portablexdr-dev \
     && mkdir hdf4 \
     && wget -q https://support.hdfgroup.org/ftp/HDF/releases/HDF${HDF4_VERSION}/src/hdf-${HDF4_VERSION}.tar.gz -O - \
-        | tar xz -C hdf4 --strip-components=1 \
+        | tar xz -C hdf4 --strip-components=2 \
     && cd hdf4 \
     && LDFLAGS=-lportablexdr ./configure --prefix=/usr --enable-shared --disable-static \
         --with-szlib=/usr --disable-fortran --disable-netcdf \
@@ -101,31 +82,10 @@ RUN if test "${HDF4_VERSION}" != "" -a "$(uname -m)" = "x86_64"; then ( \
     && apk del byacc flex portablexdr-dev \
     ); fi
 
-# Build likbkea
-ARG KEA_VERSION=1.4.13
-RUN if test "${KEA_VERSION}" != ""; then ( \
-    apk add --no-cache cmake \
-    && wget -q https://github.com/ubarsc/kealib/archive/kealib-${KEA_VERSION}.zip \
-    && unzip -q kealib-${KEA_VERSION}.zip \
-    && rm -f kealib-${KEA_VERSION}.zip \
-    && cd kealib-kealib-${KEA_VERSION} \
-    && cmake . -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr -DHDF5_INCLUDE_DIR=/usr/include/hdf5 \
-        -DHDF5_LIB_PATH=/usr/lib -DLIBKEA_WITH_GDAL=OFF \
-    && make -j$(nproc) \
-    && make install \
-    && cd .. \
-    && rm -rf kealib-kealib-${KEA_VERSION} \
-    && cp -P /usr/lib/libkea*.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && apk del cmake \
-    ); fi
-
 # Build openjpeg
 # ARG OPENJPEG_VERSION=2.3.1
 RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
-    apk add --no-cache cmake \
-    && wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
+    wget -q https://github.com/uclouvain/openjpeg/archive/v${OPENJPEG_VERSION}.tar.gz \
     && tar xzf v${OPENJPEG_VERSION}.tar.gz \
     && rm -f v${OPENJPEG_VERSION}.tar.gz \
     && cd openjpeg-${OPENJPEG_VERSION} \
@@ -138,21 +98,6 @@ RUN if test "${OPENJPEG_VERSION}" != ""; then ( \
     && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
     && cd .. \
     && rm -rf openjpeg-${OPENJPEG_VERSION} \
-    && apk del cmake \
-    ); fi
-
-# Build libdeflate
-ARG LIBDEFLATE_VERSION=1.7
-RUN if test "${LIBDEFLATE_VERSION}" != ""; then ( \
-    mkdir libdeflate \
-    && wget -q https://github.com/ebiggers/libdeflate/archive/v${LIBDEFLATE_VERSION}.tar.gz -O - \
-        | tar xz -C libdeflate --strip-components=1 \
-    && cd libdeflate \
-    && make -j$(nproc) PREFIX=/usr install \
-    && cp -P /usr/lib/libdeflate.so* /build_thirdparty/usr/lib \
-    && for i in /build_thirdparty/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && cd .. \
-    && rm -rf libdeflate \
     ); fi
 
 RUN apk add --no-cache rsync ccache
@@ -161,7 +106,6 @@ ARG RSYNC_REMOTE
 # Build PROJ
 ARG PROJ_VERSION=master
 RUN mkdir proj \
-    && apk add --no-cache cmake \
     && wget -q https://github.com/OSGeo/PROJ/archive/${PROJ_VERSION}.tar.gz -O - \
         | tar xz -C proj --strip-components=1 \
     && cd proj \
@@ -196,8 +140,7 @@ RUN mkdir proj \
     && cd .. \
     && rm -rf proj \
     && for i in /build_proj/usr/lib/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done \
-    && apk del cmake
+    && for i in /build_proj/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build spatialite
 ARG SPATIALITE_VERSION=5.0.1
@@ -250,29 +193,14 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
     && if test "x${GDAL_BUILD_IS_RELEASE}" = "x"; then \
         export GDAL_SHA1SUM=${GDAL_VERSION}; \
     fi \
-    && export GDAL_EXTRA_ARGS="" \
-    && export GDAL_EXTRA_ARGS="--with-geos ${GDAL_EXTRA_ARGS}" \
-    && if test "${XERCESC_VERSION}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-xerces ${GDAL_EXTRA_ARGS}"; \
-    fi \
     && if test "${HDF4_VERSION}" != "" -a "$(uname -m)" = "x86_64"; then \
         apk add --no-cache portablexdr-dev \
-        && export LDFLAGS="-lportablexdr ${LDFLAGS}" \
-        && export GDAL_EXTRA_ARGS="--with-hdf4 ${GDAL_EXTRA_ARGS}"; \
+        && export LDFLAGS="-lportablexdr ${LDFLAGS}"; \
     fi \
-    && export GDAL_EXTRA_ARGS="--with-hdf5 ${GDAL_EXTRA_ARGS}" \
-    && export GDAL_EXTRA_ARGS="--with-netcdf ${GDAL_EXTRA_ARGS}" \
-    && if test "${SPATIALITE_VERSION}" != "" -a "$(uname -m)" = "x86_64"; then \
-        export GDAL_EXTRA_ARGS="--with-spatialite ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && if test "${POPPLER_DEV}" != ""; then \
-        export GDAL_EXTRA_ARGS="--with-poppler ${GDAL_EXTRA_ARGS}"; \
-    fi \
-    && echo ${GDAL_EXTRA_ARGS} \
     && mkdir gdal \
     && wget -q https://github.com/${GDAL_REPOSITORY}/archive/${GDAL_VERSION}.tar.gz -O - \
         | tar xz -C gdal --strip-components=1 \
-    && cd gdal/gdal \
+    && cd gdal \
     && if test "${RSYNC_REMOTE}" != ""; then \
         echo "Downloading cache..."; \
         rsync -ra ${RSYNC_REMOTE}/gdal/$(uname -m)/ $HOME/; \
@@ -287,19 +215,19 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
         mkdir -p "$HOME/.ccache"; \
         ccache -M 1G; \
     fi \
-    && ./autogen.sh \
-    && ./configure --prefix=/usr --sysconfdir=/etc --without-libtool \
-    --with-hide-internal-symbols \
-    --with-liblzma \
-    --with-proj=/usr \
-    --with-libtiff=internal --with-rename-internal-libtiff-symbols \
-    --with-geotiff=internal --with-rename-internal-libgeotiff-symbols \
-    # --enable-lto
-    ${GDAL_EXTRA_ARGS} \
-    --with-python \
+    && mkdir build \
+    && cd build \
+    && cmake .. \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGDAL_USE_TIFF_INTERNAL=ON \
+        -DGDAL_USE_GEOTIFF_INTERNAL=ON \
+        -DIconv_INCLUDE_DIR=/usr/include/gnu-libiconv \
+        -DIconv_LIBRARY=/usr/lib/libiconv.so \
     && make -j$(nproc) \
     && make install DESTDIR="/build" \
-    && (cd apps && make -j$(nproc) multireadtest && cp multireadtest /build/usr/bin) \
+    && (make -j$(nproc) multireadtest && cp apps/multireadtest /build/usr/bin) \
+    && cd .. \
     && if test "${RSYNC_REMOTE}" != ""; then \
         ccache -s; \
         echo "Uploading cache..."; \
@@ -309,7 +237,7 @@ RUN if test "${GDAL_VERSION}" = "master"; then \
         unset CC; \
         unset CXX; \
     fi \
-    && cd ../.. \
+    && cd .. \
     && rm -rf gdal \
     && mkdir -p /build_gdal_python/usr/lib \
     && mkdir -p /build_gdal_python/usr/bin \
@@ -339,15 +267,24 @@ RUN date
 ARG POPPLER=poppler
 RUN apk add --no-cache \
         libstdc++ \
+        gnu-libiconv \
         sqlite-libs \
         libcurl tiff \
         zlib zstd-libs xz-libs snappy \
-        libjpeg-turbo libpng libwebp expat \
+        libjpeg-turbo libpng libwebp expat libkml \
         icu-libs \
-        python3 py3-numpy ${POPPLER} pcre libpq libxml2 portablexdr openjpeg \
+        python3 py3-numpy ${POPPLER} pcre2 libpq libxml2 portablexdr openjpeg \
         netcdf hdf5 freexl \
         openexr libheif xerces-c geos cfitsio minizip \
-        lz4-libs \
+        lz4-libs blosc libdeflate brotli-libs liburiparser \
+        libarchive \
+        kealib libjxl \
+        json-c giflib \
+        mariadb-connector-c \
+        qhull \
+        unixodbc \
+        libpq \
+        apache-arrow \
     # Remove /usr/lib/libopenjp2.so.2.3.0 since we are building v2.3.1 manually
     # && rm -f /usr/lib/libopenjp2.so.2.3.0 \
     # libturbojpeg.so is not used by GDAL. Only libjpeg.so*
@@ -355,8 +292,12 @@ RUN apk add --no-cache \
     # libpoppler-cpp.so is not used by GDAL. Only libpoppler.so*
     && rm -f /usr/lib/libpoppler-cpp.so* \
     # Only libwebp.so is used by GDAL
-    && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so* \
-    && ln -s /usr/bin/python3 /usr/bin/python
+    && rm -f /usr/lib/libwebpmux.so* /usr/lib/libwebpdemux.so* /usr/lib/libwebpdecoder.so*
+
+# Install Pillow for -antialias option of gdal2tiles
+RUN apk add --no-cache py3-pip \
+    && pip3 install Pillow \
+    && apk del py3-pip
 
 # Order layers starting with less frequently varying ones
 COPY --from=builder  /build_thirdparty/usr/ /usr/

@@ -1,5 +1,5 @@
 /******************************************************************************
- * $Id: typemaps_csharp.i 1d35ff4614d952ace3dc4436133d5b9e65be47f1 2020-09-01 22:28:17 +0200 Björn Harrtell $
+ * $Id$
  *
  * Name:     typemaps_csharp.i
  * Project:  GDAL CSharp Interface
