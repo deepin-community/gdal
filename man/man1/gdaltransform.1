@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALTRANSFORM" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALTRANSFORM" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdaltransform \- Transforms coordinates.
 .SH SYNOPSIS
@@ -36,10 +36,11 @@ gdaltransform \- Transforms coordinates.
 .sp
 .nf
 .ft C
-gdaltransform [\-\-help\-general]
-    [\-i] [\-s_srs srs_def] [\-t_srs srs_def] [\-to \(dqNAME=VALUE\(dq]
-    [\-ct proj_string] [\-order n] [\-tps] [\-rpc] [\-geoloc]
-    [\-gcp pixel line easting northing [elevation]]* [\-output_xy]
+gdaltransform [\-\-help] [\-\-help\-general]
+    [\-i] [\-s_srs <srs_def>] [\-t_srs <srs_def>] [\-to >NAME>=<VALUE>]...
+    [\-s_coord_epoch <epoch>] [\-t_coord_epoch <epoch>]
+    [\-ct <proj_string>] [\-order <n>] [\-tps] [\-rpc] [\-geoloc]
+    [\-gcp <pixel> <line> <easting> <northing> [elevation]]... [\-output_xy]
     [srcfile [dstfile]]
 .ft P
 .fi
@@ -51,6 +52,16 @@ The gdaltransform utility reprojects a list of coordinates into any supported
 projection,including GCP\-based transformations.
 .INDENT 0.0
 .TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-s_srs <srs_def>
 Set source spatial reference.
 The coordinate systems that can be passed are anything supported by the
@@ -60,12 +71,38 @@ containing well known text.
 .UNINDENT
 .INDENT 0.0
 .TP
+.B \-s_coord_epoch <epoch>
+New in version 3.8.
+
+.sp
+Assign a coordinate epoch, linked with the source SRS. Useful when the
+source SRS is a dynamic CRS. Only taken into account if \fI\%\-s_srs\fP
+is used.
+.sp
+Before PROJ 9.4, \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
+mutually exclusive, due to lack of support for transformations between two dynamic CRS.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-t_srs <srs_def>
 set target spatial reference.
 The coordinate systems that can be passed are anything supported by the
 OGRSpatialReference.SetFromUserInput() call, which includes EPSG PCS and GCSes
 (i.e. EPSG:4296), PROJ.4 declarations (as above), or the name of a .prj file
 containing well known text.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-t_coord_epoch <epoch>
+New in version 3.8.
+
+.sp
+Assign a coordinate epoch, linked with the output SRS. Useful when the
+output SRS is a dynamic CRS. Only taken into account if \fI\%\-t_srs\fP
+is used.
+.sp
+Before PROJ 9.4, \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
+mutually exclusive, due to lack of support for transformations between two dynamic CRS.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -81,7 +118,7 @@ New in version 3.0.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-to NAME=VALUE
+.B \-to <NAME>=<VALUE>
 set a transformer option suitable to pass to \fI\%GDALCreateGenImgProjTransformer2()\fP\&.
 .UNINDENT
 .INDENT 0.0

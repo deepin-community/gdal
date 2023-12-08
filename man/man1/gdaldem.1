@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALDEM" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALDEM" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdaldem \- Tools to analyze and visualize DEMs.
 .SH SYNOPSIS
@@ -36,7 +36,7 @@ gdaldem \- Tools to analyze and visualize DEMs.
 .sp
 .nf
 .ft C
-gdaldem <mode> <input> <output> <options>
+gdaldem [\-\-help] [\-\-help\-general] <mode> <input> <output> <options>
 .ft P
 .fi
 .UNINDENT
@@ -48,11 +48,11 @@ Generate a shaded relief map from any GDAL\-supported elevation raster:
 .sp
 .nf
 .ft C
-gdaldem hillshade input_dem output_hillshade
-            [\-z ZFactor (default=1)] [\-s scale* (default=1)]
-            [\-az Azimuth (default=315)] [\-alt Altitude (default=45)]
-            [\-alg Horn|ZevenbergenThorne] [\-combined | \-multidirectional | \-igor]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
+gdaldem hillshade <input_dem> <output_hillshade>
+            [\-z <zfactor>] [\-s <scale>]
+            [\-az <azimuth>] [\-alt <altitude>]
+            [\-alg ZevenbergenThorne] [\-combined | \-multidirectional | \-igor]
+            [\-compute_edges] [\-b <Band>] [\-of <format>] [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -64,10 +64,10 @@ Generate a slope map from any GDAL\-supported elevation raster:
 .sp
 .nf
 .ft C
-gdaldem slope input_dem output_slope_map
-            [\-p use percent slope (default=degrees)] [\-s scale* (default=1)]
-            [\-alg Horn|ZevenbergenThorne]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
+gdaldem slope <input_dem> <output_slope_map>
+            [\-p] [\-s <scale>]
+            [\-alg ZevenbergenThorne]
+            [\-compute_edges] [\-b <band>] [\-of <format>] [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -80,10 +80,10 @@ outputs a 32\-bit float raster with pixel values from 0\-360 indicating azimuth:
 .sp
 .nf
 .ft C
-gdaldem aspect input_dem output_aspect_map
+gdaldem aspect <input_dem> <output_aspect_map>
             [\-trigonometric] [\-zero_for_flat]
-            [\-alg Horn|ZevenbergenThorne]
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
+            [\-alg ZevenbergenThorne]
+            [\-compute_edges] [\-b <band>] [\-of format] [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -95,9 +95,10 @@ Generate a color relief map from any GDAL\-supported elevation raster:
 .sp
 .nf
 .ft C
-gdaldem color\-relief input_dem color_text_file output_color_relief_map
-            [\-alpha] [\-exact_color_entry | \-nearest_color_entry]
-            [\-b Band (default=1)] [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-q]
+gdaldem color\-relief <input_dem> <color_text_file> <output_color_relief_map>
+             [\-alpha] [\-exact_color_entry | \-nearest_color_entry]
+             [\-b <band>] [\-of format] [\-co <NAME>=<VALUE>]... [\-q]
+
 where color_text_file contains lines of the format \(dqelevation_value red green blue\(dq
 .ft P
 .fi
@@ -124,8 +125,8 @@ Generate a Topographic Position Index (TPI) map from any GDAL\-supported elevati
 .sp
 .nf
 .ft C
-gdaldem TPI input_dem output_TPI_map
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-q]
+gdaldem TPI <input_dem> <output_TPI_map>
+            [\-compute_edges] [\-b <band>] [\-of <format>] [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -137,8 +138,8 @@ Generate a roughness map from any GDAL\-supported elevation raster:
 .sp
 .nf
 .ft C
-gdaldem roughness input_dem output_roughness_map
-            [\-compute_edges] [\-b Band (default=1)] [\-of format] [\-q]
+gdaldem roughness <input_dem> <output_roughness_map>
+            [\-compute_edges] [\-b <band>] [\-of <format>] [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -214,12 +215,22 @@ Generate a map of roughness from any GDAL\-supported elevation raster.
 The following general options are available:
 .INDENT 0.0
 .TP
-.B input_dem
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B <input_dem>
 The input DEM raster to be processed
 .UNINDENT
 .INDENT 0.0
 .TP
-.B output_xxx_map
+.B <output_xxx_map>
 The output raster produced
 .UNINDENT
 .INDENT 0.0
@@ -243,7 +254,7 @@ Select an input band to be processed. Bands are numbered from 1.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "SOZIP" "1" "Sep 05, 2023" "" "GDAL"
+.TH "SOZIP" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 sozip \- Generate a seek-optimized (SOZip) file.
 .sp
@@ -39,18 +39,19 @@ New in version 3.7.
 .sp
 .nf
 .ft C
-sozip [\-\-quiet|\-\-verbose]
+sozip [\-\-help] [\-\-help\-general]
+      [\-\-quiet|\-\-verbose]
       [[\-g|\-\-grow] | [\-\-overwrite]]
       [\-r|\-\-recurse\-paths]
       [\-j|\-\-junk\-paths]
       [\-l|\-\-list]
       [\-\-optimize\-from=<input.zip>]
       [\-\-validate]
-      [\-\-enable\-sozip=auto/yes/no]
-      [\-\-sozip\-chunk\-size=value]
-      [\-\-sozip\-min\-file\-size=value]
-      [\-\-content\-type=value]
-      zip_filename [filename]*
+      [\-\-enable\-sozip={auto|yes|no}]
+      [\-\-sozip\-chunk\-size=<value>]
+      [\-\-sozip\-min\-file\-size=<value>]
+      [\-\-content\-type=<value>]
+      <zip_filename> [<filename>]...
 .ft P
 .fi
 .UNINDENT
@@ -69,6 +70,16 @@ list the contents of a ZIP/SOZip file
 validate a SOZip file
 .IP \(bu 2
 convert an existing Zip file in a SOZip optimized one
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -135,7 +146,7 @@ Re\-process {input.zip} to generate a SOZip\-optimized .zip. Options
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-enable\-sozip=auto/yes/no
+.B \-\-enable\-sozip={auto|yes|no}
 In \fBauto\fP mode, a file is seek\-optimized only if its size is above the
 value of \fI\%\-\-sozip\-chunk\-size\fP\&.
 In \fByes\fP mode, all input files will be seek\-optimized.
@@ -143,14 +154,14 @@ In \fBno\fP mode, no input files will be seek\-optimized.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-sozip\-chunk\-size
+.B \-\-sozip\-chunk\-size=<value>
 Chunk size for a seek\-optimized file. Defaults to 32768 bytes. The value
 is specified in bytes, or K and M suffix can be respectively used to
 specify a value in kilo\-bytes or mega\-bytes.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-sozip\-min\-file\-size
+.B \-\-sozip\-min\-file\-size=<value>
 Minimum file size to decide if a file should be seek\-optimized, in
 \-\-enable\-sozip=auto mode. Defaults to 1 MB byte. The value
 is specified in bytes, or K, M or G suffix can be respectively used to
@@ -174,7 +185,7 @@ Filename of the file to add.
 .UNINDENT
 .SH MULTITHREADING
 .sp
-The \fBGDAL_NUM_THREADS\fP configuration option can be set to
+The \fI\%GDAL_NUM_THREADS\fP configuration option can be set to
 \fBALL_CPUS\fP or a integer value to specify the number of threads to use for
 SOZip\-compressed files. Defaults to \fBALL_CPUS\fP\&.
 .SH C API

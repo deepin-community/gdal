@@ -269,6 +269,7 @@ using namespace std;
 #include "cpl_string.h"
 #include "ogr_srs_api.h"
 #include "ogr_recordbatch.h"
+#include "ogr_p.h"
 
 #define FIELD_INDEX_ERROR_TMPL "Invalid field index: '%i'"
 #define FIELD_NAME_ERROR_TMPL "Invalid field name: '%s'"
@@ -466,6 +467,11 @@ typedef void retGetPoints;
 %constant F_VAL_WIDTH = 0x00000004; /**< Validate that (string) fields respect field width */
 %constant F_VAL_ALLOW_NULL_WHEN_DEFAULT = 0x00000008; /***<Allow fields that are null when there's an associated default value. */
 %constant F_VAL_ALL = 0xFFFFFFFF; /**< Enable all validation tests */
+
+%constant TZFLAG_UNKNOWN = 0;
+%constant TZFLAG_LOCALTIME = 1;
+%constant TZFLAG_MIXED_TZ = 2;
+%constant TZFLAG_UTC = 100;
 
 /** Flag for OGR_L_GetGeometryTypes() indicating that
  * OGRGeometryTypeCounter::nCount value is not needed */
@@ -870,8 +876,13 @@ public:
   char const *name;
 %mutable;
 
+
   ~OGRDataSourceShadow() {
     OGRReleaseDataSource(self);
+  }
+
+  CPLErr Close() {
+    return GDALClose(self);
   }
 
   int GetRefCount() {
@@ -1018,6 +1029,10 @@ class ArrowArray {
 public:
 %extend {
 
+  ArrowArray() {
+    return (struct ArrowArray* )calloc(1, sizeof(struct ArrowArray));
+  }
+
   ~ArrowArray() {
     if( self->release )
       self->release(self);
@@ -1045,6 +1060,10 @@ class ArrowSchema {
 public:
 %extend {
 
+  ArrowSchema() {
+    return (struct ArrowSchema* )calloc(1, sizeof(struct ArrowSchema));
+  }
+
   ~ArrowSchema() {
     if( self->release )
       self->release(self);
@@ -1055,8 +1074,21 @@ public:
     return self;
   }
 
+  const char* GetName() {
+    return self->name;
+  }
+
   GIntBig GetChildrenCount() {
     return self->n_children;
+  }
+
+  const ArrowSchema* GetChild(int iChild) {
+    if( iChild < 0 || iChild >= self->n_children )
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Wrong index");
+        return NULL;
+    }
+    return self->children[iChild];
   }
 
 } /* %extend */
@@ -1242,8 +1274,12 @@ public:
     return OGR_L_SyncToDisk(self);
   }
 
+  %newobject GetLayerDefn;
   OGRFeatureDefnShadow *GetLayerDefn() {
-    return (OGRFeatureDefnShadow*) OGR_L_GetLayerDefn(self);
+    auto defn = (OGRFeatureDefnShadow*) OGR_L_GetLayerDefn(self);
+    if (defn)
+        OGR_FD_Reference(defn);
+    return defn;
   }
 
 #ifndef SWIGJAVA
@@ -1471,6 +1507,27 @@ public:
           return NULL;
       }
   }
+#endif
+
+#ifdef SWIGPYTHON
+    void IsArrowSchemaSupported(const struct ArrowSchema *schema, bool* pbRet, char **errorMsg, char** options = NULL)
+    {
+        *pbRet = OGR_L_IsArrowSchemaSupported(self, schema, options, errorMsg);
+    }
+#endif
+
+#ifdef SWIGPYTHON
+    OGRErr CreateFieldFromArrowSchema(const struct ArrowSchema *schema, char** options = NULL)
+    {
+        return OGR_L_CreateFieldFromArrowSchema(self, schema, options) ? OGRERR_NONE : OGRERR_FAILURE;
+    }
+#endif
+
+#ifdef SWIGPYTHON
+    OGRErr WriteArrowBatch(const struct ArrowSchema *schema, struct ArrowArray *array, char** options = NULL)
+    {
+        return OGR_L_WriteArrowBatch(self, schema, array, options) ? OGRERR_NONE : OGRERR_FAILURE;
+    }
 #endif
 
 #ifdef SWIGPYTHON
@@ -1978,6 +2035,10 @@ public:
     OGR_F_DumpReadable(self, NULL);
   }
 
+  retStringAndCPLFree* DumpReadableAsString(char** options=NULL) {
+    return OGR_F_DumpReadableAsString(self, options);
+  }
+
   void UnsetField(int id) {
     OGR_F_UnsetField(self, id);
   }
@@ -2092,6 +2153,12 @@ public:
       OGR_F_SetFieldStringList(self, id, pList);
   }
 %clear char**pList;
+
+#if defined(SWIGPYTHON)
+  void _SetFieldBinary(int id, int nLen, char *pBuf) {
+      OGR_F_SetFieldBinary(self, id, nLen, pBuf);
+  }
+#endif
 
   void SetFieldBinaryFromHexString(int id, const char* pszValue)
   {
@@ -2496,6 +2563,13 @@ public:
         OGR_Fld_SetType(self, type);
   }
 
+#ifdef SWIGJAVA
+  // Alias for backward compatibility
+  OGRFieldType GetFieldType() {
+    return OGR_Fld_GetType(self);
+  }
+#endif
+
   OGRFieldSubType GetSubType() {
     return OGR_Fld_GetSubType(self);
   }
@@ -2527,6 +2601,14 @@ public:
 
   void SetPrecision(int precision) {
     OGR_Fld_SetPrecision(self, precision);
+  }
+
+  int GetTZFlag() {
+    return OGR_Fld_GetTZFlag(self);
+  }
+
+  void SetTZFlag(int tzflag) {
+    OGR_Fld_SetTZFlag(self, tzflag);
   }
 
   /* Interface method added for GDAL 1.7.0 */
@@ -3111,6 +3193,10 @@ public:
 
   double Area() {
     return OGR_G_Area(self);
+  }
+
+  bool IsClockwise() {
+    return OGR_G_IsClockwise(self);
   }
 
   /* old, non-standard API */
@@ -3706,7 +3792,7 @@ public:
     OGR_FldDomain_SetMergePolicy(self, policy);
   }
 
-#ifdef SWIGPYTHON
+#if defined(SWIGPYTHON) || defined(SWIGJAVA)
   const OGRCodedValue* GetEnumeration() {
     return OGR_CodedFldDomain_GetEnumeration(self);
   }
@@ -3724,6 +3810,28 @@ public:
       if( eType == OFTReal )
           return psVal->Real;
       return CPLAtof("-inf");
+  }
+
+  const char* GetMinAsString() {
+    const OGRField* psVal = OGR_RangeFldDomain_GetMin(self, NULL);
+      if( psVal == NULL || OGR_RawField_IsUnset(psVal) )
+          return NULL;
+      const OGRFieldType eType = OGR_FldDomain_GetFieldType(self);
+      if( eType == OFTInteger )
+          return CPLSPrintf("%d", psVal->Integer);
+      if( eType == OFTInteger64 )
+          return CPLSPrintf(CPL_FRMT_GIB, psVal->Integer64);
+      if( eType == OFTReal )
+          return CPLSPrintf("%.18g", psVal->Real);
+      if( eType == OFTDateTime )
+          return CPLSPrintf("%04d-%02d-%02dT%02d:%02d:%02d",
+                     psVal->Date.Year,
+                     psVal->Date.Month,
+                     psVal->Date.Day,
+                     psVal->Date.Hour,
+                     psVal->Date.Minute,
+                     static_cast<int>(psVal->Date.Second + 0.5));
+     return NULL;
   }
 
   bool IsMinInclusive() {
@@ -3746,6 +3854,28 @@ public:
       return CPLAtof("inf");
   }
 
+  const char* GetMaxAsString() {
+    const OGRField* psVal = OGR_RangeFldDomain_GetMax(self, NULL);
+      if( psVal == NULL || OGR_RawField_IsUnset(psVal) )
+          return NULL;
+      const OGRFieldType eType = OGR_FldDomain_GetFieldType(self);
+      if( eType == OFTInteger )
+          return CPLSPrintf("%d", psVal->Integer);
+      if( eType == OFTInteger64 )
+          return CPLSPrintf(CPL_FRMT_GIB, psVal->Integer64);
+      if( eType == OFTReal )
+          return CPLSPrintf("%.18g", psVal->Real);
+      if( eType == OFTDateTime )
+          return CPLSPrintf("%04d-%02d-%02dT%02d:%02d:%02d",
+                     psVal->Date.Year,
+                     psVal->Date.Month,
+                     psVal->Date.Day,
+                     psVal->Date.Hour,
+                     psVal->Date.Minute,
+                     static_cast<int>(psVal->Date.Second + 0.5));
+     return NULL;
+  }
+
   bool IsMaxInclusive() {
       bool isInclusive = false;
       (void)OGR_RangeFldDomain_GetMax(self, &isInclusive);
@@ -3760,7 +3890,7 @@ public:
 
 }; /* class OGRFieldDomainShadow */
 
-#ifdef SWIGPYTHON
+#if defined(SWIGPYTHON) || defined(SWIGJAVA)
 %newobject CreateCodedFieldDomain;
 %apply Pointer NONNULL {const char* name};
 %inline %{
@@ -3820,6 +3950,42 @@ OGRFieldDomainShadow* CreateRangeFieldDomain( const char *name,
                                                             maxIsInclusive );
 }
 %}
+
+%inline %{
+static
+OGRFieldDomainShadow* CreateRangeFieldDomainDateTime( const char *name,
+                                              const char* description,
+                                              const char* min,
+                                              bool minIsInclusive,
+                                              const char* max,
+                                              double maxIsInclusive) {
+  OGRField sMin;
+  OGRField sMax;
+  if( !OGRParseXMLDateTime(min, &sMin))
+  {
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "Invalid min: %s",
+             min);
+    return NULL;
+  }
+  if( !OGRParseXMLDateTime(max, &sMax))
+  {
+    CPLError(CE_Failure, CPLE_AppDefined,
+             "Invalid max: %s",
+             max);
+    return NULL;
+  }
+  return (OGRFieldDomainShadow*) OGR_RangeFldDomain_Create( name,
+                                                            description,
+                                                            OFTDateTime,
+                                                            OFSTNone,
+                                                            &sMin,
+                                                            minIsInclusive,
+                                                            &sMax,
+                                                            maxIsInclusive );
+}
+%}
+
 %clear const char* name;
 
 %newobject CreateGlobFieldDomain;

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_PANSHARPEN" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_PANSHARPEN" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_pansharpen \-  Perform a pansharpen operation.
 .SH SYNOPSIS
@@ -36,12 +36,15 @@ gdal_pansharpen \-  Perform a pansharpen operation.
 .sp
 .nf
 .ft C
-gdal_pansharpen [\-\-help\-general] pan_dataset {spectral_dataset[,band=num]}+ out_dataset
-                [\-of format] [\-b band]* [\-w weight_val]*
-                [\-r {nearest,bilinear,cubic,cubicspline,lanczos,average}]
-                [\-threads {ALL_CPUS|number}] [\-bitdepth val] [\-nodata val]
-                [\-spat_adjust {union,intersection,none,nonewithoutwarning}]
-                [\-co NAME=VALUE]* [\-q]
+gdal_pansharpen [\-\-help] [\-\-help\-general]
+                <pan_dataset>
+                <spectral_dataset>[,band=<num>] [<spectral_dataset>[,band=<num>]]...
+                <out_dataset>
+                [\-of <format>] [\-b <band>]... [\-w <weight_val>]...
+                [\-r {nearest|bilinear|cubic|cubicspline|lanczos|average}]
+                [\-threads {ALL_CPUS|<number>}] [\-bitdepth <val>] [\-nodata <val>]
+                [\-spat_adjust {union|intersection|none|nonewithoutwarning}]
+                [\-co <NAME>=<VALUE>]... [\-q]
 .ft P
 .fi
 .UNINDENT
@@ -55,7 +58,17 @@ dataset describing the pan\-sharpening operation.
 More details can be found in the \fI\%Pansharpened VRT\fP section.
 .INDENT 0.0
 .TP
-.B \-of <format>:
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-of <format>
 Select the output format. Starting with GDAL 2.3, if not specified,
 the format is guessed from the extension (previously was \fBGTiff\fP). Use
 the short format name. \fBVRT\fP can also be used.
@@ -76,14 +89,14 @@ value. There must be as many \-w switches as input spectral bands.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-r {nearest,bilinear,cubic (default),cubicspline,lanczos,average}
-Select a resampling algorithm.
+.B \-r {nearest|bilinear|cubic|cubicspline|lanczos|average}
+Select a resampling algorithm. \fBcubic\fP is the default.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-threads {ALL_CPUS,number}
+.B \-threads {ALL_CPUS|<number>}
 Specify number of threads to use to do the resampling and
-pan\-sharpening itself. Can be an integer number or ALL_CPUS.
+pan\-sharpening itself. Can be an integer number or \fBALL_CPUS\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -101,13 +114,14 @@ input bands, provided they have a consistent setting.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-spat_adjust {union(default),intersection,none,nonewithoutwarning}
+.B \-spat_adjust {union|intersection|none|nonewithoutwarning}
 Select behavior when bands have not the same extent. See
 \fISpatialExtentAdjustment\fP documentation in \fI\%Pansharpened VRT\fP
+\fBunion\fP is the default.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,
@@ -134,7 +148,7 @@ Dataset with panchromatic band (first band will be used).
 .UNINDENT
 .INDENT 0.0
 .TP
-.B <spectral_dataset>[,band=num]
+.B <spectral_dataset>[,band=<num>]
 Dataset with one or several spectral bands. If the band option is
 not specified, all bands of the datasets are taken into account.
 Otherwise, only the specified (num)th band. The same dataset can be

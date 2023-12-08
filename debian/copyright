@@ -18,10 +18,13 @@ Files-Excluded: data/cubewerx_extra.wkt
  .gitattributes
 
 Files: *
-Copyright:                     2007-2023, Even Rouault <even dot rouault at spatialys dot com>
+Copyright:                     2007-2024, Even Rouault <even dot rouault at spatialys dot com>
+                    2015-2018, 2022-2023, Planet Labs
                               2019, 2023, TileDB, Inc
+                               2020-2023, Joshua J Baker
                                     2023, kikitte.lee <kikitte.lee@gmail.com>
-                         2015-2018, 2022, Planet Labs
+                                    2023, Grok Image Compression Inc.
+                                    2023, Alessandro Pasotti
                                2016-2022, Dmitry Baryshnikov
                                     2022, ISciences LLC
                                     2022, Michael Sumner
@@ -562,6 +565,10 @@ Copyright: 1984, 1989-1990, 2000-2015, Free Software Foundation, Inc.
                                  2012, Even Rouault <even dot rouault at mines-paris dot org>
 License: Expat and GPL-3+ with Bison exception
 
+Files: ogr/ogrsf_frmts/pmtiles/pmtiles/*
+Copyright: 2021, Protomaps LLC
+License: BSD-3-Clause
+
 Files: ogr/ogrsf_frmts/pg/ogrpglayer.cpp
 Copyright: 1994, The Regents of the University of California
       1996-2006, PostgreSQL Global Development Group
@@ -719,6 +726,10 @@ Copyright: 2000, Atlantis Scientific Inc. (www.atlsci.com)
            2005, Gabriel Ebner <ge@gabrielebner.at>
       2009-2011, Even Rouault <even dot rouault at mines-paris dot org>
 License: LGPL-2+
+
+Files: third_party/fast_float/*
+Copyright: 2021, The fast_float authors
+License: Expat
 
 Files: third_party/LercLib/*
 Copyright: 2015-2018, Esri

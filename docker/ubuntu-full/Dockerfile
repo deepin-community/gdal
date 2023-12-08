@@ -67,10 +67,11 @@ RUN . /buildscripts/bh-set-envvars.sh \
        libdeflate-dev${APT_ARCH_SUFFIX} libblosc-dev${APT_ARCH_SUFFIX} liblz4-dev${APT_ARCH_SUFFIX} libbz2-dev${APT_ARCH_SUFFIX} \
        libbrotli-dev${APT_ARCH_SUFFIX} \
        libarchive-dev${APT_ARCH_SUFFIX} \
+       libaec-dev${APT_ARCH_SUFFIX} \
     && rm -rf /var/lib/apt/lists/*
 
 # Build likbkea
-ARG KEA_VERSION=1.5.0
+ARG KEA_VERSION=1.5.2
 RUN . /buildscripts/bh-set-envvars.sh \
     && wget -q https://github.com/ubarsc/kealib/archive/kealib-${KEA_VERSION}.zip \
     && unzip -q kealib-${KEA_VERSION}.zip \
@@ -88,7 +89,7 @@ RUN . /buildscripts/bh-set-envvars.sh \
     && for i in /build_thirdparty/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build mongo-c-driver
-ARG MONGO_C_DRIVER_VERSION=1.23.2
+ARG MONGO_C_DRIVER_VERSION=1.24.4
 RUN . /buildscripts/bh-set-envvars.sh \
     && mkdir mongo-c-driver \
     && wget -q https://github.com/mongodb/mongo-c-driver/releases/download/${MONGO_C_DRIVER_VERSION}/mongo-c-driver-${MONGO_C_DRIVER_VERSION}.tar.gz -O - \
@@ -107,7 +108,7 @@ RUN . /buildscripts/bh-set-envvars.sh \
     && for i in /build_thirdparty/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build mongocxx
-ARG MONGOCXX_VERSION=3.7.0
+ARG MONGOCXX_VERSION=3.8.1
 RUN . /buildscripts/bh-set-envvars.sh \
     && mkdir mongocxx \
     && wget -q https://github.com/mongodb/mongo-cxx-driver/archive/r${MONGOCXX_VERSION}.tar.gz -O - \
@@ -115,7 +116,7 @@ RUN . /buildscripts/bh-set-envvars.sh \
     && cd mongocxx \
     && mkdir build_cmake \
     && cd build_cmake \
-    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DBSONCXX_POLY_USE_BOOST=ON -DMONGOCXX_ENABLE_SLOW_TESTS=NO -DCMAKE_BUILD_TYPE=Release -DBUILD_VERSION=${MONGOCXX_VERSION} \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DBSONCXX_POLY_USE_BOOST=ON -DENABLE_TESTS=OFF -DMONGOCXX_ENABLE_SLOW_TESTS=NO -DCMAKE_BUILD_TYPE=Release -DBUILD_VERSION=${MONGOCXX_VERSION} \
     && make -j$(nproc) \
     && make install DESTDIR="/build_thirdparty" \
     && make install \
@@ -125,15 +126,18 @@ RUN . /buildscripts/bh-set-envvars.sh \
     && for i in /build_thirdparty/usr/bin/*; do strip -s $i 2>/dev/null || /bin/true; done
 
 # Build tiledb
-ARG TILEDB_VERSION=2.14.1
+ARG TILEDB_VERSION=2.17.4
 RUN . /buildscripts/bh-set-envvars.sh \
+    && apt-get update -y \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        libspdlog-dev${APT_ARCH_SUFFIX} \
     && mkdir tiledb \
     && wget -q https://github.com/TileDB-Inc/TileDB/archive/${TILEDB_VERSION}.tar.gz -O - \
         | tar xz -C tiledb --strip-components=1 \
     && cd tiledb \
     && mkdir build_cmake \
     && cd build_cmake \
-    && ../bootstrap --prefix=/usr --disable-werror \
+    && ../bootstrap --prefix=/usr --disable-werror --disable-tests \
     && make -j$(nproc) \
     && make install-tiledb DESTDIR="/build_thirdparty" \
     && make install-tiledb \
@@ -193,12 +197,12 @@ RUN . /buildscripts/bh-set-envvars.sh \
 
 ARG WITH_PDFIUM=yes
 RUN if echo "$WITH_PDFIUM" | grep -Eiq "^(y(es)?|1|true)$"  ; then ( \
-  wget -q https://github.com/rouault/pdfium_build_gdal_3_7/releases/download/pdfium_5461_v1/install-ubuntu2004-rev5461.tar.gz \
-  && tar -xzf install-ubuntu2004-rev5461.tar.gz \
+  wget -q https://github.com/rouault/pdfium_build_gdal_3_8/releases/download/pdfium_5952_v1/install-ubuntu2004-rev5952.tar.gz \
+  && tar -xzf install-ubuntu2004-rev5952.tar.gz \
   && chown -R root:root install \
   && mv install/lib/* /usr/lib/ \
   && mv install/include/* /usr/include/ \
-  && rm -rf install-ubuntu2004-rev5461.tar.gz install \
+  && rm -rf install-ubuntu2004-rev5952.tar.gz install \
   && apt-get update -y \
   && apt-get install -y --fix-missing --no-install-recommends liblcms2-dev${APT_ARCH_SUFFIX} \
   && rm -rf /var/lib/apt/lists/* \
@@ -223,9 +227,9 @@ RUN . /buildscripts/bh-set-envvars.sh \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Arrow C++
-ARG ARROW_VERSION=11.0.0-1
+ARG ARROW_VERSION=14.0.1-1
 # ARROW_SOVERSION to be updated in the "Build final image" section too
-ARG ARROW_SOVERSION=1100
+ARG ARROW_SOVERSION=1400
 RUN . /buildscripts/bh-set-envvars.sh \
     && apt-get update -y \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y -V ca-certificates lsb-release wget \
@@ -284,12 +288,13 @@ FROM $TARGET_BASE_IMAGE as runner
 USER root
 RUN date
 ARG JAVA_VERSION=17
-ARG ARROW_SOVERSION=1100
+ARG ARROW_SOVERSION=1400
 
 # Update distro
 RUN apt-get update -y && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
+ARG TARGET_ARCH=
 RUN apt-get update \
 # PROJ dependencies
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
@@ -310,6 +315,8 @@ RUN apt-get update \
         libdeflate0 libblosc1 liblz4-1 \
         libbrotli1 \
         libarchive13 \
+        libaec0 \
+        libspdlog1 \
         python-is-python3 \
         # pil for antialias option of gdal2tiles
         python3-pil \

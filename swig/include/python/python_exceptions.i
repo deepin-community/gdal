@@ -4,14 +4,26 @@
  * it was moved into this file.
  */
 %{
+#include "cpl_string.h"
+#include "cpl_conv.h"
+
 static int bUseExceptions=0;
 static int bUserHasSpecifiedIfUsingExceptions = FALSE;
 static thread_local int bUseExceptionsLocal = -1;
-static thread_local CPLErrorHandler pfnPreviousHandler = CPLDefaultErrorHandler;
+
+struct PythonBindingErrorHandlerContext
+{
+    std::string     osInitialMsg{};
+    std::string     osFailureMsg{};
+    CPLErrorNum     nLastCode = CPLE_None;
+};
 
 static void CPL_STDCALL
-PythonBindingErrorHandler(CPLErr eclass, int code, const char *msg )
+PythonBindingErrorHandler(CPLErr eclass, CPLErrorNum err_no, const char *msg )
 {
+  PythonBindingErrorHandlerContext* ctxt = static_cast<
+      PythonBindingErrorHandlerContext*>(CPLGetErrorHandlerUserData());
+
   /*
   ** Generally we want to suppress error reporting if we have exceptions
   ** enabled as the error message will be in the exception thrown in
@@ -22,7 +34,7 @@ PythonBindingErrorHandler(CPLErr eclass, int code, const char *msg )
      because the CPL support code does an abort() before any exception
      can be generated */
   if (eclass == CE_Fatal ) {
-    pfnPreviousHandler(eclass, code, msg );
+    CPLCallPreviousHandler(eclass, err_no, msg );
   }
 
   /*
@@ -30,13 +42,24 @@ PythonBindingErrorHandler(CPLErr eclass, int code, const char *msg )
   ** they won't be translated into exceptions.
   */
   else if (eclass != CE_Failure ) {
-    pfnPreviousHandler(eclass, code, msg );
+    CPLCallPreviousHandler(eclass, err_no, msg );
   }
   else {
-    CPLSetThreadLocalConfigOption("__last_error_message", msg);
-    CPLSetThreadLocalConfigOption("__last_error_code", CPLSPrintf("%d", code));
+    ctxt->nLastCode = err_no;
+    if( ctxt->osFailureMsg.empty() ) {
+      ctxt->osFailureMsg = msg;
+      ctxt->osInitialMsg = ctxt->osFailureMsg;
+    } else {
+      if( ctxt->osFailureMsg.size() < 10000 ) {
+        ctxt->osFailureMsg = std::string(msg) + "\nMay be caused by: " + ctxt->osFailureMsg;
+        ctxt->osInitialMsg = ctxt->osFailureMsg;
+      }
+      else
+        ctxt->osFailureMsg = std::string(msg) + "\n[...]\nMay be caused by: " + ctxt->osInitialMsg;
+    }
   }
 }
+
 %}
 
 %exception GetUseExceptions
@@ -132,47 +155,25 @@ template<class T> static T ReturnSame(T x)
     return 0;
 }
 
-static void ClearErrorState()
-{
-    CPLSetThreadLocalConfigOption("__last_error_message", NULL);
-    CPLSetThreadLocalConfigOption("__last_error_code", NULL);
-    CPLErrorReset();
-}
-
-static void StoreLastException() CPL_UNUSED;
-
-static void StoreLastException()
-{
-    const char* pszLastErrorMessage =
-        CPLGetThreadLocalConfigOption("__last_error_message", NULL);
-    const char* pszLastErrorCode =
-        CPLGetThreadLocalConfigOption("__last_error_code", NULL);
-    if( pszLastErrorMessage != NULL && pszLastErrorCode != NULL )
-    {
-        CPLErrorSetState( CE_Failure,
-            static_cast<CPLErrorNum>(atoi(pszLastErrorCode)),
-            pszLastErrorMessage);
-    }
-}
-
 static void pushErrorHandler()
 {
-    ClearErrorState();
-    void* pPreviousHandlerUserData = NULL;
-    CPLErrorHandler previousHandler = CPLGetErrorHandler(&pPreviousHandlerUserData);
-    if(previousHandler != PythonBindingErrorHandler)
-    {
-        // Store the previous handler only if it is not ourselves (which might
-        // happen in situations where a GDAL function will end up calling python
-        // again), to avoid infinite recursion.
-        pfnPreviousHandler = previousHandler;
-    }
-    CPLPushErrorHandlerEx(PythonBindingErrorHandler, pPreviousHandlerUserData);
+    CPLErrorReset();
+    PythonBindingErrorHandlerContext* ctxt = new PythonBindingErrorHandlerContext();
+    CPLPushErrorHandlerEx(PythonBindingErrorHandler, ctxt);
 }
 
 static void popErrorHandler()
 {
+    PythonBindingErrorHandlerContext* ctxt = static_cast<
+      PythonBindingErrorHandlerContext*>(CPLGetErrorHandlerUserData());
     CPLPopErrorHandler();
+    if( !ctxt->osFailureMsg.empty() )
+    {
+      CPLErrorSetState(
+          CPLGetLastErrorType() == CE_Failure ? CE_Failure: CE_Warning,
+          ctxt->nLastCode, ctxt->osFailureMsg.c_str());
+    }
+    delete ctxt;
 }
 
 %}
@@ -216,7 +217,6 @@ static void popErrorHandler()
     }
 %#endif
     if( result != NULL && bLocalUseExceptions ) {
-        StoreLastException();
 %#ifdef SED_HACKS
         bLocalUseExceptionsCode = FALSE;
 %#endif
@@ -241,7 +241,6 @@ static void popErrorHandler()
     }
 %#endif
     if( result != NULL && bLocalUseExceptions ) {
-        StoreLastException();
 %#ifdef SED_HACKS
         bLocalUseExceptionsCode = FALSE;
 %#endif
@@ -266,7 +265,6 @@ static void popErrorHandler()
     }
 %#endif
     if( result != NULL && bLocalUseExceptions ) {
-        StoreLastException();
 %#ifdef SED_HACKS
         bLocalUseExceptionsCode = FALSE;
 %#endif
@@ -312,6 +310,13 @@ static void popErrorHandler()
           """
           self.currentUseExceptions = _GetExceptionsLocal()
           _SetExceptionsLocal(self.requestedUseExceptions)
+          if ExceptionMgr.__module__ == "osgeo.gdal":
+              try:
+                  from . import gdal_array
+              except ImportError:
+                  gdal_array = None
+              if gdal_array:
+                  gdal_array._SetExceptionsLocal(self.requestedUseExceptions)
 
       def __exit__(self, exc_type, exc_val, exc_tb):
           """
@@ -319,6 +324,14 @@ static void popErrorHandler()
           current on entry to the context
           """
           _SetExceptionsLocal(self.currentUseExceptions)
+          if ExceptionMgr.__module__ == "osgeo.gdal":
+              try:
+                  from . import gdal_array
+              except ImportError:
+                  gdal_array = None
+              if gdal_array:
+                  gdal_array._SetExceptionsLocal(self.currentUseExceptions)
+
 %}
 
 
@@ -331,6 +344,11 @@ def UseExceptions():
     try:
         from . import gdal
         gdal._UseExceptions()
+    except ImportError:
+        pass
+    try:
+        from . import gdal_array
+        gdal_array._UseExceptions()
     except ImportError:
         pass
     try:
@@ -356,6 +374,11 @@ def DontUseExceptions():
     try:
         from . import gdal
         gdal._DontUseExceptions()
+    except ImportError:
+        pass
+    try:
+        from . import gdal_array
+        gdal_array._DontUseExceptions()
     except ImportError:
         pass
     try:

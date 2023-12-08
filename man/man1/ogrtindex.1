@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRTINDEX" "1" "Sep 05, 2023" "" "GDAL"
+.TH "OGRTINDEX" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 ogrtindex \- Creates a tileindex.
 .SH SYNOPSIS
@@ -36,12 +36,13 @@ ogrtindex \- Creates a tileindex.
 .sp
 .nf
 .ft C
-ogrtindex [\-lnum n]... [\-lname name]... [\-f output_format]
+ogrtindex [\-\-help] [\-\-help\-general]
+          [\-lnum <n>]... [\-lname <name>]... [\-f <output_format>]
           [\-write_absolute_path] [\-skip_different_projection]
-          [\-t_srs target_srs]
-          [\-src_srs_name field_name] [\-src_srs_format [AUTO|WKT|EPSG|PROJ]
+          [\-t_srs <target_srs>]
+          [\-src_srs_name <field_name>] [\-src_srs_format {AUTO|WKT|EPSG|PROJ}]
           [\-accept_different_schemas]
-          <output_dataset> <src_dataset>...
+          <output_dataset> <src_dataset> <src_dataset>...
 .ft P
 .fi
 .UNINDENT
@@ -53,6 +54,16 @@ containing a list of the identities of a bunch of other files along with
 their spatial extents. This is primarily intended to be used with
 \fI\%MapServer\fP for tiled access to layers using
 the OGR connection type.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-lnum <n>
@@ -107,7 +118,7 @@ New in version 2.2.0.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-src_srs_format <format>
+.B \-src_srs_format {AUTO|WKT|EPSG|PROJ}
 The format in which the SRS of each tile must be written.
 Available formats are: \fBAUTO\fP, \fBWKT\fP, \fBEPSG\fP, \fBPROJ\fP\&.
 .sp

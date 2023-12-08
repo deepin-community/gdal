@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_FILLNODATA" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_FILLNODATA" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_fillnodata \- Fill raster regions by interpolation from edges.
 .SH SYNOPSIS
@@ -50,6 +50,16 @@ nodata areas) by interpolating from valid pixels around the edges of the area.
 .sp
 Additional details on the algorithm are available in the
 \fI\%GDALFillNodata()\fP docs.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-q

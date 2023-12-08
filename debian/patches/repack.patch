@@ -4,7 +4,7 @@ Forwarded: not-needed
 
 --- a/gdal.cmake
 +++ b/gdal.cmake
-@@ -652,9 +652,7 @@ set(GDAL_DATA_FILES
+@@ -660,9 +660,7 @@ set(GDAL_DATA_FILES
      data/GDALLogoColor.svg
      data/GDALLogoGS.svg
      data/bag_template.xml

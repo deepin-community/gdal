@@ -198,7 +198,6 @@ class OGRGPXDataSource final : public OGRDataSource
 
 #ifdef HAVE_EXPAT
     OGRGPXValidity validity;
-    int nElementsRead;
     char *pszVersion;
     XML_Parser oCurrentParser;
     int nDataHandlerCounter;
@@ -236,7 +235,8 @@ class OGRGPXDataSource final : public OGRDataSource
     }
     OGRLayer *GetLayer(int) override;
 
-    OGRLayer *ICreateLayer(const char *pszLayerName, OGRSpatialReference *poSRS,
+    OGRLayer *ICreateLayer(const char *pszLayerName,
+                           const OGRSpatialReference *poSRS,
                            OGRwkbGeometryType eType,
                            char **papszOptions) override;
 

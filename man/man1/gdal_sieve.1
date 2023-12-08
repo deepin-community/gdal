@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_SIEVE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_SIEVE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_sieve \- Removes small raster polygons.
 .SH SYNOPSIS
@@ -36,8 +36,9 @@ gdal_sieve \- Removes small raster polygons.
 .sp
 .nf
 .ft C
-gdal_sieve.py [\-q] [\-st threshold] [\-4] [\-8] [\-o name=value]
-        srcfile [\-nomask] [\-mask filename] [\-of format] [dstfile]
+gdal_sieve.py [\-\-help] [\-\-help\-general]
+              [\-q] [\-st threshold] [\-4] [\-8] [\-o name=value]
+              <srcfile> [\-nomask] [\-mask filename] [\-of format] [<dstfile>]
 .ft P
 .fi
 .UNINDENT

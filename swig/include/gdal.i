@@ -80,6 +80,7 @@ typedef void GDALDatasetShadow;
 typedef void GDALRasterBandShadow;
 typedef void GDALColorTableShadow;
 typedef void GDALRasterAttributeTableShadow;
+typedef void GDALSubdatasetInfoShadow;
 typedef void GDALTransformerInfoShadow;
 typedef void GDALAsyncReaderShadow;
 typedef void GDALRelationshipShadow;
@@ -374,6 +375,7 @@ $1;
 %rename (ParseXMLString) CPLParseXMLString;
 %rename (SerializeXMLTree) CPLSerializeXMLTree;
 %rename (GetJPEG2000Structure) GDALGetJPEG2000Structure;
+%rename (GetFilenameFromSubdatasetName) GDALGetFilenameFromSubdatasetName;
 
 //************************************************************************
 //
@@ -602,6 +604,13 @@ RETURN_NONE GDALGCPsToGeoTransform( int nGCPs, GDAL_GCP const * pGCPs,
 //
 //************************************************************************
 %include "RasterAttributeTable.i"
+
+//************************************************************************
+//
+// Define the SubdatasetInfo object.
+//
+//************************************************************************
+%include "SubdatasetInfo.i"
 
 //************************************************************************
 //
@@ -1072,6 +1081,7 @@ static void CPL_STDCALL StackingErrorHandler( CPLErr eErr, CPLErrorNum no,
 static void PushStackingErrorHandler(std::vector<ErrorStruct>* paoErrors)
 {
     CPLPushErrorHandlerEx(StackingErrorHandler, paoErrors);
+    CPLSetCurrentErrorHandlerCatchDebug(false);
 }
 
 static void PopStackingErrorHandler(std::vector<ErrorStruct>* paoErrors, bool bSuccess)
@@ -1088,7 +1098,7 @@ static void PopStackingErrorHandler(std::vector<ErrorStruct>* paoErrors, bool bS
         CPLErr eErrClass = (*paoErrors)[iError].type;
         if( bSuccess && eErrClass == CE_Failure )
         {
-            pfnPreviousHandler( eErrClass,
+            CPLCallPreviousHandler( eErrClass,
                                 (*paoErrors)[iError].no,
                                 (*paoErrors)[iError].msg );
         }
@@ -1801,6 +1811,111 @@ GDALDatasetShadow* wrapper_GDALRasterizeDestName( const char* dest,
 %}
 
 //************************************************************************
+// gdal.Footprint()
+//************************************************************************
+
+#ifdef SWIGJAVA
+%rename (FootprintOptions) GDALFootprintOptions;
+#endif
+struct GDALFootprintOptions {
+%extend {
+    GDALFootprintOptions(char** options) {
+        return GDALFootprintOptionsNew(options, NULL);
+    }
+
+    ~GDALFootprintOptions() {
+        GDALFootprintOptionsFree( self );
+    }
+}
+};
+
+/* Note: we must use 2 distinct names due to different ownership of the result */
+
+#ifdef SWIGJAVA
+%rename (Footprint) wrapper_GDALFootprintDestDS;
+#endif
+%inline %{
+int wrapper_GDALFootprintDestDS( GDALDatasetShadow* dstDS,
+                            GDALDatasetShadow* srcDS,
+                            GDALFootprintOptions* options,
+                            GDALProgressFunc callback=NULL,
+                            void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALFootprintOptionsNew(NULL, NULL);
+        }
+        GDALFootprintOptionsSetProgress(options, callback, callback_data);
+    }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    bool bRet = (GDALFootprint(NULL, dstDS, srcDS, options, &usageError) != NULL);
+    if( bFreeOptions )
+        GDALFootprintOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, bRet);
+    }
+#endif
+    return bRet;
+}
+%}
+
+#ifdef SWIGJAVA
+%rename (Footprint) wrapper_GDALFootprintDestName;
+#endif
+%newobject wrapper_GDALFootprintDestName;
+
+%inline %{
+GDALDatasetShadow* wrapper_GDALFootprintDestName( const char* dest,
+                                             GDALDatasetShadow* srcDS,
+                                             GDALFootprintOptions* options,
+                                             GDALProgressFunc callback=NULL,
+                                             void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALFootprintOptionsNew(NULL, NULL);
+        }
+        GDALFootprintOptionsSetProgress(options, callback, callback_data);
+    }
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    GDALDatasetH hDSRet = GDALFootprint(dest, NULL, srcDS, options, &usageError);
+    if( bFreeOptions )
+        GDALFootprintOptionsFree(options);
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
+    return hDSRet;
+}
+%}
+
+//************************************************************************
 // gdal.BuildVRT()
 //************************************************************************
 
@@ -1978,3 +2093,4 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
 
 
 %clear (const char* dest);
+

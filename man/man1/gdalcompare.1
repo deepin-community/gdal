@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALCOMPARE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALCOMPARE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalcompare \-  Compare two images.
 .SH SYNOPSIS
@@ -36,7 +36,11 @@ gdalcompare \-  Compare two images.
 .sp
 .nf
 .ft C
-gdalcompare.py [\-sds] golden_file new_file
+gdalcompare.py [\-\-help] [\-\-help\-general]
+               [\-dumpdiffs] [\-skip_binary] [\-skip_overviews]
+               [\-skip_geolocation] [\-skip_geotransform]
+               [\-skip_metadata] [\-skip_rpc] [\-skip_srs]
+               [\-sds] <golden_file> <new_file>
 .ft P
 .fi
 .UNINDENT
@@ -52,6 +56,81 @@ Image pixels, and various metadata are checked. There is also a byte by
 byte comparison done which will count as one difference. So if it is
 only important that the GDAL visible data is identical a difference
 count of 1 (the binary difference) should be considered acceptable.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-dumpdiffs
+New in version 3.8.
+
+.sp
+Whether to output the difference in pixel content in a TIFF file in the
+current directory.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_binary
+New in version 3.8.
+
+.sp
+Whether to skip exact comparison of binary content.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_overviews
+New in version 3.8.
+
+.sp
+Whether to skip comparison of overviews.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_geolocation
+New in version 3.8.
+
+.sp
+Whether to skip comparison of GEOLOCATION metadata domain.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_geotransform
+New in version 3.8.
+
+.sp
+Whether to skip comparison of geotransform matrix.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_metadata
+New in version 3.8.
+
+.sp
+Whether to skip comparison of metadata
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_rpc
+New in version 3.8.
+
+.sp
+Whether to skip comparison of Rational Polynomial Coefficients (RPC) metadata domain.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-skip_srs
+New in version 3.8.
+
+.sp
+Whether to skip comparison of spatial reference systems (SRS).
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-sds

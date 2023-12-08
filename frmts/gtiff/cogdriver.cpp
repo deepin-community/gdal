@@ -126,15 +126,12 @@ static const char *GetPredictor(GDALDataset *poSrcDS, const char *pszPredictor)
 }
 
 /************************************************************************/
-/*                     COGGetWarpingCharacteristics()                   */
+/*                            COGGetTargetSRS()                         */
 /************************************************************************/
 
-static bool COGGetWarpingCharacteristics(
-    GDALDataset *poSrcDS, const char *const *papszOptions,
-    CPLString &osResampling, CPLString &osTargetSRS, int &nXSize, int &nYSize,
-    double &dfMinX, double &dfMinY, double &dfMaxX, double &dfMaxY,
-    double &dfRes, std::unique_ptr<gdal::TileMatrixSet> &poTM, int &nZoomLevel,
-    int &nAlignedLevels)
+static bool COGGetTargetSRS(const char *const *papszOptions,
+                            CPLString &osTargetSRS,
+                            std::unique_ptr<gdal::TileMatrixSet> &poTM)
 {
     osTargetSRS = CSLFetchNameValueDef(papszOptions, "TARGET_SRS", "");
     CPLString osTilingScheme(
@@ -142,8 +139,6 @@ static bool COGGetWarpingCharacteristics(
     if (EQUAL(osTargetSRS, "") && EQUAL(osTilingScheme, "CUSTOM"))
         return false;
 
-    const CPLString osExtent(CSLFetchNameValueDef(papszOptions, "EXTENT", ""));
-    const CPLString osRes(CSLFetchNameValueDef(papszOptions, "RES", ""));
     if (!EQUAL(osTilingScheme, "CUSTOM"))
     {
         poTM = gdal::TileMatrixSet::parse(osTilingScheme);
@@ -191,6 +186,39 @@ static bool COGGetWarpingCharacteristics(
         }
     }
 
+    return true;
+}
+
+// Used by gdalwarp
+bool COGGetTargetSRS(const char *const *papszOptions, CPLString &osTargetSRS)
+{
+    std::unique_ptr<gdal::TileMatrixSet> poTM;
+    return COGGetTargetSRS(papszOptions, osTargetSRS, poTM);
+}
+
+// Used by gdalwarp
+std::string COGGetResampling(GDALDataset *poSrcDS,
+                             const char *const *papszOptions)
+{
+    return CSLFetchNameValueDef(papszOptions, "WARP_RESAMPLING",
+                                CSLFetchNameValueDef(papszOptions, "RESAMPLING",
+                                                     GetResampling(poSrcDS)));
+}
+
+/************************************************************************/
+/*                     COGGetWarpingCharacteristics()                   */
+/************************************************************************/
+
+static bool COGGetWarpingCharacteristics(
+    GDALDataset *poSrcDS, const char *const *papszOptions,
+    CPLString &osResampling, CPLString &osTargetSRS, int &nXSize, int &nYSize,
+    double &dfMinX, double &dfMinY, double &dfMaxX, double &dfMaxY,
+    double &dfRes, std::unique_ptr<gdal::TileMatrixSet> &poTM, int &nZoomLevel,
+    int &nAlignedLevels)
+{
+    if (!COGGetTargetSRS(papszOptions, osTargetSRS, poTM))
+        return false;
+
     CPLStringList aosTO;
     aosTO.SetNameValue("DST_SRS", osTargetSRS);
     void *hTransformArg = nullptr;
@@ -213,7 +241,8 @@ static bool COGGetWarpingCharacteristics(
         adfSrcGeoTransform[5] < 0)
     {
         const auto poSrcSRS = poSrcDS->GetSpatialRef();
-        if (poSrcSRS && poSrcSRS->IsGeographic())
+        if (poSrcSRS && poSrcSRS->IsGeographic() &&
+            !poSrcSRS->IsDerivedGeographic())
         {
             double maxLat = adfSrcGeoTransform[3];
             double minLat = adfSrcGeoTransform[3] +
@@ -278,7 +307,8 @@ static bool COGGetWarpingCharacteristics(
     double adfGeoTransform[6];
     double adfExtent[4];
 
-    if (GDALSuggestedWarpOutput2(poSrcDS, psInfo->pfnTransform, hTransformArg,
+    if (GDALSuggestedWarpOutput2(poTmpDS ? poTmpDS.get() : poSrcDS,
+                                 psInfo->pfnTransform, hTransformArg,
                                  adfGeoTransform, &nXSize, &nYSize, adfExtent,
                                  0) != CE_None)
     {
@@ -296,6 +326,8 @@ static bool COGGetWarpingCharacteristics(
     dfMaxY = adfExtent[3];
     dfRes = adfGeoTransform[1];
 
+    const CPLString osExtent(CSLFetchNameValueDef(papszOptions, "EXTENT", ""));
+    const CPLString osRes(CSLFetchNameValueDef(papszOptions, "RES", ""));
     if (poTM)
     {
         if (!osExtent.empty())
@@ -501,10 +533,7 @@ static bool COGGetWarpingCharacteristics(
     nXSize = static_cast<int>(std::round((dfMaxX - dfMinX) / dfRes));
     nYSize = static_cast<int>(std::round((dfMaxY - dfMinY) / dfRes));
 
-    osResampling =
-        CSLFetchNameValueDef(papszOptions, "WARP_RESAMPLING",
-                             CSLFetchNameValueDef(papszOptions, "RESAMPLING",
-                                                  GetResampling(poSrcDS)));
+    osResampling = COGGetResampling(poSrcDS, papszOptions);
 
     return true;
 }
@@ -687,6 +716,7 @@ struct GDALCOGCreator final
 {
     std::unique_ptr<GDALDataset> m_poReprojectedDS{};
     std::unique_ptr<GDALDataset> m_poRGBMaskDS{};
+    std::unique_ptr<GDALDataset> m_poVRTWithOrWithoutStats{};
     CPLString m_osTmpOverviewFilename{};
     CPLString m_osTmpMskOverviewFilename{};
 
@@ -703,12 +733,13 @@ struct GDALCOGCreator final
 
 GDALCOGCreator::~GDALCOGCreator()
 {
+    // Destroy m_poRGBMaskDS before m_poReprojectedDS since the former
+    // may reference the later
+    m_poRGBMaskDS.reset();
+
     if (m_poReprojectedDS)
     {
         CPLString osProjectedDSName(m_poReprojectedDS->GetDescription());
-        // Destroy m_poRGBMaskDS before m_poReprojectedDS since the former
-        // references the later
-        m_poRGBMaskDS.reset();
         m_poReprojectedDS.reset();
         VSIUnlink(osProjectedDSName);
     }
@@ -744,6 +775,30 @@ GDALDataset *GDALCOGCreator::Create(const char *pszFilename,
 
     CPLConfigOptionSetter oSetterReportDirtyBlockFlushing(
         "GDAL_REPORT_DIRTY_BLOCK_FLUSHING", "NO", true);
+
+    const char *pszStatistics =
+        CSLFetchNameValueDef(papszOptions, "STATISTICS", "AUTO");
+    auto poSrcFirstBand = poSrcDS->GetRasterBand(1);
+    const bool bSrcHasStatistics =
+        poSrcFirstBand->GetMetadataItem("STATISTICS_MINIMUM") &&
+        poSrcFirstBand->GetMetadataItem("STATISTICS_MAXIMUM") &&
+        poSrcFirstBand->GetMetadataItem("STATISTICS_MEAN") &&
+        poSrcFirstBand->GetMetadataItem("STATISTICS_STDDEV");
+    bool bNeedStats = false;
+    bool bRemoveStats = false;
+    bool bWrkHasStatistics = bSrcHasStatistics;
+    if (EQUAL(pszStatistics, "AUTO"))
+    {
+        // nothing
+    }
+    else if (CPLTestBool(pszStatistics))
+    {
+        bNeedStats = true;
+    }
+    else
+    {
+        bRemoveStats = true;
+    }
 
     double dfCurPixels = 0;
     double dfTotalPixelsToProcess = 0;
@@ -823,25 +878,42 @@ GDALDataset *GDALCOGCreator::Create(const char *pszFilename,
             if (!m_poReprojectedDS)
                 return nullptr;
             poCurDS = m_poReprojectedDS.get();
+
+            if (bSrcHasStatistics && !bNeedStats && !bRemoveStats)
+            {
+                bNeedStats = true;
+            }
+            bWrkHasStatistics = false;
         }
     }
 
     CPLString osCompress = CSLFetchNameValueDef(papszOptions, "COMPRESS",
                                                 gbHasLZW ? "LZW" : "NONE");
-    if (EQUAL(osCompress, "JPEG") && poCurDS->GetRasterCount() == 4 &&
-        poCurDS->GetRasterBand(4)->GetColorInterpretation() == GCI_AlphaBand)
+    if (EQUAL(osCompress, "JPEG") &&
+        (poCurDS->GetRasterCount() == 2 || poCurDS->GetRasterCount() == 4) &&
+        poCurDS->GetRasterBand(poCurDS->GetRasterCount())
+                ->GetColorInterpretation() == GCI_AlphaBand)
     {
         char **papszArg = nullptr;
         papszArg = CSLAddString(papszArg, "-of");
         papszArg = CSLAddString(papszArg, "VRT");
         papszArg = CSLAddString(papszArg, "-b");
         papszArg = CSLAddString(papszArg, "1");
-        papszArg = CSLAddString(papszArg, "-b");
-        papszArg = CSLAddString(papszArg, "2");
-        papszArg = CSLAddString(papszArg, "-b");
-        papszArg = CSLAddString(papszArg, "3");
-        papszArg = CSLAddString(papszArg, "-mask");
-        papszArg = CSLAddString(papszArg, "4");
+        if (poCurDS->GetRasterCount() == 2)
+        {
+            papszArg = CSLAddString(papszArg, "-mask");
+            papszArg = CSLAddString(papszArg, "2");
+        }
+        else
+        {
+            CPLAssert(poCurDS->GetRasterCount() == 4);
+            papszArg = CSLAddString(papszArg, "-b");
+            papszArg = CSLAddString(papszArg, "2");
+            papszArg = CSLAddString(papszArg, "-b");
+            papszArg = CSLAddString(papszArg, "3");
+            papszArg = CSLAddString(papszArg, "-mask");
+            papszArg = CSLAddString(papszArg, "4");
+        }
         GDALTranslateOptions *psOptions =
             GDALTranslateOptionsNew(papszArg, nullptr);
         CSLDestroy(papszArg);
@@ -854,11 +926,62 @@ GDALDataset *GDALCOGCreator::Create(const char *pszFilename,
         }
         m_poRGBMaskDS.reset(GDALDataset::FromHandle(hRGBMaskDS));
         poCurDS = m_poRGBMaskDS.get();
+
+        if (bSrcHasStatistics && !bNeedStats && !bRemoveStats)
+        {
+            bNeedStats = true;
+        }
+        else if (bRemoveStats && bWrkHasStatistics)
+        {
+            poCurDS->ClearStatistics();
+            bRemoveStats = false;
+        }
     }
 
     const int nBands = poCurDS->GetRasterCount();
     const int nXSize = poCurDS->GetRasterXSize();
     const int nYSize = poCurDS->GetRasterYSize();
+
+    const auto CreateVRTWithOrWithoutStats = [this, &poCurDS]()
+    {
+        const char *const apszOptions[] = {"-of", "VRT", nullptr};
+        GDALTranslateOptions *psOptions =
+            GDALTranslateOptionsNew(const_cast<char **>(apszOptions), nullptr);
+        GDALDatasetH hVRTDS = GDALTranslate("", GDALDataset::ToHandle(poCurDS),
+                                            psOptions, nullptr);
+        GDALTranslateOptionsFree(psOptions);
+        if (!hVRTDS)
+            return false;
+        m_poVRTWithOrWithoutStats.reset(GDALDataset::FromHandle(hVRTDS));
+        poCurDS = m_poVRTWithOrWithoutStats.get();
+        return true;
+    };
+
+    if (bNeedStats && !bWrkHasStatistics)
+    {
+        if (poSrcDS == poCurDS && !CreateVRTWithOrWithoutStats())
+        {
+            return nullptr;
+        }
+
+        // Avoid source files to be modified
+        CPLConfigOptionSetter enablePamDirtyDisabler(
+            "GDAL_PAM_ENABLE_MARK_DIRTY", "NO", true);
+
+        for (int i = 1; i <= nBands; ++i)
+        {
+            poCurDS->GetRasterBand(i)->ComputeStatistics(
+                /*bApproxOK=*/FALSE, nullptr, nullptr, nullptr, nullptr,
+                nullptr, nullptr);
+        }
+    }
+    else if (bRemoveStats && bWrkHasStatistics)
+    {
+        if (!CreateVRTWithOrWithoutStats())
+            return nullptr;
+
+        m_poVRTWithOrWithoutStats->ClearStatistics();
+    }
 
     CPLString osBlockSize(CSLFetchNameValueDef(papszOptions, "BLOCKSIZE", ""));
     if (osBlockSize.empty())
@@ -1115,6 +1238,9 @@ GDALDataset *GDALCOGCreator::Create(const char *pszFilename,
     {
         aosOptions.SetNameValue("MAX_Z_ERROR",
                                 CSLFetchNameValue(papszOptions, "MAX_Z_ERROR"));
+        aosOptions.SetNameValue(
+            "MAX_Z_ERROR_OVERVIEW",
+            CSLFetchNameValue(papszOptions, "MAX_Z_ERROR_OVERVIEW"));
     }
 
     if (STARTS_WITH_CI(osCompress, "JXL"))
@@ -1222,6 +1348,15 @@ GDALDataset *GDALCOGCreator::Create(const char *pszFilename,
 
     CPLConfigOptionSetter oSetterInternalMask("GDAL_TIFF_INTERNAL_MASK", "YES",
                                               false);
+
+    const char *pszCopySrcMDD = CSLFetchNameValue(papszOptions, "COPY_SRC_MDD");
+    if (pszCopySrcMDD)
+        aosOptions.SetNameValue("COPY_SRC_MDD", pszCopySrcMDD);
+    char **papszSrcMDD = CSLFetchNameValueMultiple(papszOptions, "SRC_MDD");
+    for (CSLConstList papszSrcMDDIter = papszSrcMDD;
+         papszSrcMDDIter && *papszSrcMDDIter; ++papszSrcMDDIter)
+        aosOptions.AddNameValue("SRC_MDD", *papszSrcMDDIter);
+    CSLDestroy(papszSrcMDD);
 
     CPLDebug("COG", "Generating final product: start");
     auto poRet =
@@ -1367,7 +1502,10 @@ void GDALCOGDriver::InitializeCreationOptionList()
         osOptions +=
             ""
             "   <Option name='MAX_Z_ERROR' type='float' description='Maximum "
-            "error for LERC compression' default='0'/>";
+            "error for LERC compression' default='0'/>"
+            "   <Option name='MAX_Z_ERROR_OVERVIEW' type='float' "
+            "description='Maximum error for LERC compression in overviews' "
+            "default='0'/>";
     }
 #ifdef HAVE_JXL
     osOptions +=
@@ -1473,6 +1611,12 @@ void GDALCOGDriver::InitializeCreationOptionList()
 #endif
         "   <Option name='SPARSE_OK' type='boolean' description='Should empty "
         "blocks be omitted on disk?' default='FALSE'/>"
+        "   <Option name='STATISTICS' type='string-select' default='AUTO' "
+        "description='Which to add statistics to the output file'>"
+        "       <Value>AUTO</Value>"
+        "       <Value>YES</Value>"
+        "       <Value>NO</Value>"
+        "   </Option>"
         "</CreationOptionList>";
 
     SetMetadataItem(GDAL_DMD_CREATIONOPTIONLIST, osOptions.c_str());

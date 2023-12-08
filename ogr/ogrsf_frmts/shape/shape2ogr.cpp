@@ -112,7 +112,8 @@ static OGRLinearRing *CreateLinearRing(SHPObject *psShape, int ring, bool bHasZ,
 /*      representation.                                                 */
 /************************************************************************/
 
-OGRGeometry *SHPReadOGRObject(SHPHandle hSHP, int iShape, SHPObject *psShape)
+OGRGeometry *SHPReadOGRObject(SHPHandle hSHP, int iShape, SHPObject *psShape,
+                              bool &bHasWarnedWrongWindingOrder)
 {
 #if DEBUG_VERBOSE
     CPLDebug("Shape", "SHPReadOGRObject( iShape=%d )", iShape);
@@ -326,8 +327,112 @@ OGRGeometry *SHPReadOGRObject(SHPHandle hSHP, int iShape, SHPObject *psShape)
                     CreateLinearRing(psShape, iRing, bHasZ, bHasM));
             }
 
+            // Tries to detect bad geometries where a multi-part multipolygon is
+            // written as a single-part multipolygon with its parts as inner
+            // rings, like done by QGIS <= 3.28.11 with GDAL >= 3.7
+            // Cf https://github.com/qgis/QGIS/issues/54537
+            bool bUseSlowMethod = false;
+            if (!bHasZ && !bHasM)
+            {
+                bool bFoundCW = false;
+                for (int iRing = 1; iRing < psShape->nParts; iRing++)
+                {
+                    if (tabPolygons[iRing]->getExteriorRing()->isClockwise())
+                    {
+                        bFoundCW = true;
+                        break;
+                    }
+                }
+                if (!bFoundCW)
+                {
+                    // Only inner rings
+                    OGREnvelope sFirstEnvelope;
+                    OGREnvelope sCurEnvelope;
+                    auto poExteriorRing = tabPolygons[0]->getExteriorRing();
+                    tabPolygons[0]->getEnvelope(&sFirstEnvelope);
+                    for (int iRing = 1; iRing < psShape->nParts; iRing++)
+                    {
+                        tabPolygons[iRing]->getEnvelope(&sCurEnvelope);
+                        if (!sFirstEnvelope.Intersects(sCurEnvelope))
+                        {
+                            // If the envelopes of the rings don't intersect,
+                            // then it is clearly a multi-part polygon
+                            bUseSlowMethod = true;
+                            break;
+                        }
+                        else
+                        {
+                            // Otherwise take 4 points at each extremity of
+                            // the inner rings and check if there are in the
+                            // outer ring. If none are within it, then it is
+                            // very likely a outer ring (or an invalid ring
+                            // which is neither a outer nor a inner ring)
+                            auto poRing = tabPolygons[iRing]->getExteriorRing();
+                            const auto nNumPoints = poRing->getNumPoints();
+                            OGRPoint p;
+                            OGRPoint leftPoint(
+                                std::numeric_limits<double>::infinity(), 0);
+                            OGRPoint rightPoint(
+                                -std::numeric_limits<double>::infinity(), 0);
+                            OGRPoint bottomPoint(
+                                0, std::numeric_limits<double>::infinity());
+                            OGRPoint topPoint(
+                                0, -std::numeric_limits<double>::infinity());
+                            for (int iPoint = 0; iPoint < nNumPoints - 1;
+                                 ++iPoint)
+                            {
+                                poRing->getPoint(iPoint, &p);
+                                if (p.getX() < leftPoint.getX() ||
+                                    (p.getX() == leftPoint.getX() &&
+                                     p.getY() < leftPoint.getY()))
+                                {
+                                    leftPoint = p;
+                                }
+                                if (p.getX() > rightPoint.getX() ||
+                                    (p.getX() == rightPoint.getX() &&
+                                     p.getY() > rightPoint.getY()))
+                                {
+                                    rightPoint = p;
+                                }
+                                if (p.getY() < bottomPoint.getY() ||
+                                    (p.getY() == bottomPoint.getY() &&
+                                     p.getX() > bottomPoint.getX()))
+                                {
+                                    bottomPoint = p;
+                                }
+                                if (p.getY() > topPoint.getY() ||
+                                    (p.getY() == topPoint.getY() &&
+                                     p.getX() < topPoint.getX()))
+                                {
+                                    topPoint = p;
+                                }
+                            }
+                            if (!poExteriorRing->isPointInRing(&leftPoint) &&
+                                !poExteriorRing->isPointInRing(&rightPoint) &&
+                                !poExteriorRing->isPointInRing(&bottomPoint) &&
+                                !poExteriorRing->isPointInRing(&topPoint))
+                            {
+                                bUseSlowMethod = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (bUseSlowMethod && !bHasWarnedWrongWindingOrder)
+                    {
+                        bHasWarnedWrongWindingOrder = true;
+                        CPLError(CE_Warning, CPLE_AppDefined,
+                                 "%s contains polygon(s) with rings with "
+                                 "invalid winding order. Autocorrecting them, "
+                                 "but that shapefile should be corrected using "
+                                 "ogr2ogr for example.",
+                                 VSI_SHP_GetFilename(hSHP->fpSHP));
+                    }
+                }
+            }
+
             int isValidGeometry = FALSE;
-            const char *papszOptions[] = {"METHOD=ONLY_CCW", nullptr};
+            const char *papszOptions[] = {
+                bUseSlowMethod ? "METHOD=DEFAULT" : "METHOD=ONLY_CCW", nullptr};
             OGRGeometry **tabGeom =
                 reinterpret_cast<OGRGeometry **>(tabPolygons);
             poOGR = OGRGeometryFactory::organizePolygons(
@@ -1199,7 +1304,8 @@ OGRFeatureDefn *SHPReadOGRFeatureDefn(const char *pszName, SHPHandle hSHP,
 
 OGRFeature *SHPReadOGRFeature(SHPHandle hSHP, DBFHandle hDBF,
                               OGRFeatureDefn *poDefn, int iShape,
-                              SHPObject *psShape, const char *pszSHPEncoding)
+                              SHPObject *psShape, const char *pszSHPEncoding,
+                              bool &bHasWarnedWrongWindingOrder)
 
 {
     if (iShape < 0 || (hSHP != nullptr && iShape >= hSHP->nRecords) ||
@@ -1232,7 +1338,8 @@ OGRFeature *SHPReadOGRFeature(SHPHandle hSHP, DBFHandle hDBF,
     {
         if (!poDefn->IsGeometryIgnored())
         {
-            OGRGeometry *poGeometry = SHPReadOGRObject(hSHP, iShape, psShape);
+            OGRGeometry *poGeometry = SHPReadOGRObject(
+                hSHP, iShape, psShape, bHasWarnedWrongWindingOrder);
 
             // Two possibilities are expected here (both are tested by
             // GDAL Autotests):
@@ -1339,12 +1446,6 @@ OGRFeature *SHPReadOGRFeature(SHPHandle hSHP, DBFHandle hDBF,
 
                 const char *const pszDateValue =
                     DBFReadStringAttribute(hDBF, iShape, iField);
-
-                // Some DBF files have fields filled with spaces
-                // (trimmed by DBFReadStringAttribute) to indicate null
-                // values for dates (#4265).
-                if (pszDateValue[0] == '\0')
-                    continue;
 
                 OGRField sFld;
                 memset(&sFld, 0, sizeof(sFld));
@@ -1655,6 +1756,12 @@ OGRErr SHPWriteOGRFeature(SHPHandle hSHP, DBFHandle hDBF,
                     CPLError(
                         CE_Warning, CPLE_NotSupported,
                         "Year < 0 or > 9999 is not a valid date for shapefile");
+                }
+                else if (psField->Date.Year == 0 && psField->Date.Month == 0 &&
+                         psField->Date.Day == 0)
+                {
+                    DBFWriteNULLAttribute(
+                        hDBF, static_cast<int>(poFeature->GetFID()), iField);
                 }
                 else
                 {

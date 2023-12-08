@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_CONTOUR" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_CONTOUR" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_contour \- Builds vector contour lines from a raster elevation model.
 .SH SYNOPSIS
@@ -36,10 +36,10 @@ gdal_contour \- Builds vector contour lines from a raster elevation model.
 .sp
 .nf
 .ft C
-gdal_contour [\-b <band>] [\-a <attribute_name>] [\-amin <attribute_name>] [\-amax <attribute_name>]
-             [\-3d] [\-inodata]
-             [\-snodata n] [\-i <interval>]
-             [\-f <formatname>] [[\-dsco NAME=VALUE] ...] [[\-lco NAME=VALUE] ...]
+gdal_contour [\-\-help] [\-\-help\-general]
+             [\-b <band>] [\-a <attribute_name>] [\-amin <attribute_name>] [\-amax <attribute_name>]
+             [\-3d] [\-inodata] [\-snodata <n>] [\-f <formatname>] [\-i <interval>]
+             [\-dsco <NAME>=<VALUE>]... [\-lco <NAME>=<VALUE>]...
              [\-off <offset>] [\-fl <level> <level>...] [\-e <exp_base>]
              [\-nln <outlayername>] [\-q] [\-p]
              <src_filename> <dst_filename>
@@ -54,6 +54,16 @@ raster elevation model (DEM).
 .sp
 The contour line\-strings are oriented consistently and the high side will
 be on the right, i.e. a line string goes clockwise around a top.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-b <band>
@@ -112,12 +122,12 @@ New in version 2.3.0: If not specified, the format is guessed from the extension
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-dsco <NAME=VALUE>
+.B \-dsco <NAME>=<VALUE>
 Dataset creation option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-lco <NAME=VALUE>
+.B \-lco <NAME>=<VALUE>
 Layer creation option (format specific)
 .UNINDENT
 .INDENT 0.0

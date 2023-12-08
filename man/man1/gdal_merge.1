@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_MERGE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_MERGE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_merge \- Mosaics a set of images.
 .SH SYNOPSIS
@@ -36,11 +36,12 @@ gdal_merge \- Mosaics a set of images.
 .sp
 .nf
 .ft C
-gdal_merge.py [\-o out_filename] [\-of out_format] [\-co NAME=VALUE]*
-              [\-ps pixelsize_x pixelsize_y] [\-tap] [\-separate] [\-q] [\-v] [\-pct]
-              [\-ul_lr ulx uly lrx lry] [\-init \(dqvalue [value...]\(dq]
-              [\-n nodata_value] [\-a_nodata output_nodata_value]
-              [\-ot datatype] [\-createonly] input_files
+gdal_merge.py [\-\-help] [\-\-help\-general]
+              [\-o <out_filename>] [\-of <out_format>] [\-co <NAME>=<VALUE>]...
+              [\-ps <pixelsize_x> <pixelsize_y>] [\-tap] [\-separate] [\-q] [\-v] [\-pct]
+              [\-ul_lr <ulx> <uly> <lrx> <lry>] [\-init \(dq<value>[ <value>]...\(dq]
+              [\-n <nodata_value>] [\-a_nodata <output_nodata_value>]
+              [\-ot <datatype>] [\-createonly] <intput_file> [<intput_file>]...
 .ft P
 .fi
 .UNINDENT
@@ -56,6 +57,16 @@ one source band will not set a nodata/transparent value on all bands for the
 target pixel in the resulting raster nor will it overwrite a valid pixel value.
 .INDENT 0.0
 .TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-o <out_filename>
 The name of the output file,
 which will be created if it does not already exist (defaults to \(dqout.tif\(dq).
@@ -69,7 +80,7 @@ format name.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,
@@ -162,9 +173,8 @@ gdal_merge.py is a Python script, and will only work if GDAL was built
 with Python support.
 .UNINDENT
 .UNINDENT
-.SH EXAMPLE
-.sp
-Create an image with the pixels in all bands initialized to 255.
+.SH EXAMPLES
+.SS Creating an image with the pixels in all bands initialized to 255
 .INDENT 0.0
 .INDENT 3.5
 .sp
@@ -175,15 +185,86 @@ gdal_merge.py \-init 255 \-o out.tif in1.tif in2.tif
 .fi
 .UNINDENT
 .UNINDENT
+.SS Creating an RGB image that shows blue in pixels with no data
 .sp
-Create an RGB image that shows blue in pixels with no data. The first two bands
-will be initialized to 0 and the third band will be initialized to 255.
+The first two bands will be initialized to 0 and the third band will be
+initialized to 255.
 .INDENT 0.0
 .INDENT 3.5
 .sp
 .nf
 .ft C
 gdal_merge.py \-init \(dq0 0 255\(dq \-o out.tif in1.tif in2.tif
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.SS Passing a large list of files to \fBgdal_merge\fP
+.sp
+A large list of files can be passed to \fBgdal_merge\fP by
+listing them in a text file using:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ls \-1 *.tif > tiff_list.txt
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+on Linux, or
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+dir /b /s *.tif > tiff_list.txt
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+on Windows. The text file can then be passed to \fBgdal_merge\fP
+using \fI\-\-optfile\fP:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdal_merge.py \-o mosaic.tif \-\-optfile tiff_list.txt
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.SS Creating an RGB image by merging 3 different greyscale bands
+.sp
+Conduct \(dqmerging by stacking\(dq with the \fI\%\-separate\fP flag. Given three
+greyscale files that cover the same area, you can run:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdal_merge.py \-separate 1.tif 2.tif 3.tif \-o rgb.tif
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+This maps \fB1.tif\fP to red, \fB2.tif\fP to green and \fB3.tif\fP to blue.
+.SS Specifying overlap precedence
+.sp
+The last image in the input line comes out on top of the finished image stack.
+You might also need to use \fI\%\-n\fP to note which value should not be
+copied into the destination image if it is not already defined as nodata.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdal_merge.py \-o merge.tif \-n 0 image1.tif image2.tif image3.tif image4.tif
 .ft P
 .fi
 .UNINDENT
