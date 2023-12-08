@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALWARP" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALWARP" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalwarp \- Image reprojection and warping utility.
 .SH SYNOPSIS
@@ -36,25 +36,25 @@ gdalwarp \- Image reprojection and warping utility.
 .sp
 .nf
 .ft C
-gdalwarp [\-\-help\-general] [\-\-formats]
-    [\-b|\-srcband n]* [\-dstband n]*
-    [\-s_srs srs_def] [\-t_srs srs_def] [\-ct string]
-    [\-to \(dqNAME=VALUE\(dq]* [\-vshift | \-novshift]
-    [[\-s_coord_epoch epoch] | [\-t_coord_epoch epoch]]
-    [\-order n | \-tps | \-rpc | \-geoloc] [\-et err_threshold]
-    [\-refine_gcps tolerance [minimum_gcps]]
-    [\-te xmin ymin xmax ymax] [\-te_srs srs_def]
-    [\-tr xres yres]|[\-tr square] [\-tap] [\-ts width height]
-    [\-ovr level|AUTO|AUTO\-n|NONE] [\-wo \(dqNAME=VALUE\(dq] [\-ot Byte/Int16/...] [\-wt Byte/Int16]
-    [\-srcnodata \(dqvalue [value...]\(dq] [\-dstnodata \(dqvalue [value...]\(dq]
+gdalwarp [\-\-help] [\-\-help\-general] [\-\-formats]
+    [\-b|\-srcband <n>]... [\-dstband <n>]...
+    [\-s_srs <srs_def>] [\-t_srs <srs_def>] [\-ct <string>]
+    [\-to <NAME>=<VALUE>]... [\-vshift | \-novshift]
+    [\-s_coord_epoch <epoch>] [\-t_coord_epoch <epoch>]
+    [\-order n | \-tps | \-rpc | \-geoloc] [\-et <err_threshold>]
+    [\-refine_gcps <tolerance> [<minimum_gcps>]]
+    [\-te <xmin> <ymin> <xmax> <ymax>] [\-te_srs <srs_def>]
+    [\-tr <xres> <yres>]|[\-tr square] [\-tap] [\-ts <width> <height>]
+    [\-ovr <level>|AUTO|AUTO\-<n>|NONE] [\-wo <NAME>=<VALUE>]... [\-ot Byte/Int16/...] [\-wt Byte/Int16]
+    [\-srcnodata \(dq<value>[ <value>...]\(dq][\-dstnodata \(dq<value>[ <value>...]\(dq]
     [\-srcalpha|\-nosrcalpha] [\-dstalpha]
-    [\-r resampling_method] [\-wm memory_in_mb] [\-multi] [\-q]
-    [\-cutline datasource] [\-cl layer] [\-cwhere expression]
-    [\-csql statement] [\-cblend dist_in_pixels] [\-crop_to_cutline]
-    [\-if format]* [\-of format] [\-co \(dqNAME=VALUE\(dq]* [\-overwrite]
-    [\-nomd] [\-cvmd meta_conflict_value] [\-setci] [\-oo NAME=VALUE]*
-    [\-doo NAME=VALUE]*
-    srcfile* dstfile
+    [\-r <resampling_method>] [\-wm <memory_in_mb>] [\-multi] [\-q]
+    [\-cutline <datasource>] [\-cl <layer>] [\-cwhere <expression>]
+    [\-csql <statement>] [\-cblend <dist_in_pixels>] [\-crop_to_cutline]
+    [\-if <format>]... [\-of <format>] [\-co <NAME>=<VALUE>]... [\-overwrite]
+    [\-nomd] [\-cvmd <meta_conflict_value>] [\-setci] [\-oo <NAME>=<VALUE>]...
+    [\-doo <NAME>=<VALUE>]...
+    <srcfile>... <dstfile>
 .ft P
 .fi
 .UNINDENT
@@ -65,6 +65,16 @@ The \fBgdalwarp\fP utility is an image mosaicing, reprojection and warping
 utility. The program can reproject to any supported projection,
 and can also apply GCPs stored with the image if the image is \(dqraw\(dq
 with control information.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-b <n>
@@ -163,7 +173,7 @@ Assign a coordinate epoch, linked with the source SRS. Useful when the
 source SRS is a dynamic CRS. Only taken into account if \fI\%\-s_srs\fP
 is used.
 .sp
-Currently \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
+Before PROJ 9.4, \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
 mutually exclusive, due to lack of support for transformations between two dynamic CRS.
 .UNINDENT
 .INDENT 0.0
@@ -195,7 +205,7 @@ Assign a coordinate epoch, linked with the target SRS. Useful when the
 target SRS is a dynamic CRS. Only taken into account if \fI\%\-t_srs\fP
 is used.
 .sp
-Currently \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
+Before PROJ 9.4, \fI\%\-s_coord_epoch\fP and \fI\%\-t_coord_epoch\fP are
 mutually exclusive, due to lack of support for transformations between two dynamic CRS.
 .UNINDENT
 .INDENT 0.0
@@ -206,13 +216,17 @@ starting with +proj=pipeline), a WKT2 string describing a CoordinateOperation,
 or a \fI\%urn:ogc:def:coordinateOperation:EPSG::XXXX\fP URN overriding the default
 transformation from the source to the target CRS. It must take into account the
 axis order of the source and target CRS.
+When creating a new output file, using \fI\%\-t_srs\fP is still necessary
+to have the target CRS written in the metadata of the output file,
+but the parameters of the CoordinateOperation will override those of the
+standard transformation.
 .sp
 New in version 3.0.
 
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-to <NAME=VALUE>
+.B \-to <NAME>=<VALUE>
 Set a transformer option suitable to pass to \fI\%GDALCreateGenImgProjTransformer2()\fP\&.
 See \fI\%GDALCreateRPCTransformerV2()\fP for RPC specific options.
 .UNINDENT
@@ -273,7 +287,7 @@ err_threshold=0, will be used).
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-refine_gcps <tolerance minimum_gcps>
+.B \-refine_gcps <tolerance> [<minimum_gcps>]
 Refines the GCPs by automatically eliminating outliers.
 Outliers will be eliminated until minimum_gcps are left or when no outliers can be detected.
 The tolerance is passed to adjust when a GCP will be eliminated.
@@ -283,7 +297,7 @@ If minimum_gcps is not provided, the minimum GCPs according to the polynomial mo
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-te <xmin ymin xmax ymax>
+.B \-te <xmin> <ymin> <xmax> <ymax>
 Set georeferenced extents of output file to be created (in target SRS by
 default, or in the SRS specified with \fI\%\-te_srs\fP)
 .UNINDENT
@@ -318,7 +332,9 @@ It is possible to ask square pixels to still be generated, by specifying
 .B \-tap
 (target aligned pixels) align the coordinates of the extent of the output
 file to the values of the \fI\%\-tr\fP, such that the aligned extent
-includes the minimum extent. Alignment means that xmin / resx, ymin / resy,
+includes the minimum extent (edges lines/columns that are detected as
+blank, before actual warping, will be removed starting with GDAL 3.8).
+Alignment means that xmin / resx, ymin / resy,
 xmax / resx and ymax / resy are integer values.
 .UNINDENT
 .INDENT 0.0
@@ -330,7 +346,7 @@ the other dimension will be guessed from the computed resolution. Note that
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-ovr <level|AUTO|AUTO\-n|NONE>
+.B \-ovr <level>|AUTO|AUTO\-<n>|NONE
 To specify which overview level of source files must be used. The default choice,
 AUTO, will select the overview level whose resolution is the closest to the
 target resolution. Specify an integer value (0\-based, i.e. 0=1st overview level)
@@ -342,7 +358,7 @@ higher quality resampling method).
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-wo \(ga\(dqNAME=VALUE\(dq\(ga
+.B \-wo <NAME>=<VALUE>
 Set a warp option.  The \fI\%GDALWarpOptions::papszWarpOptions\fP docs show all options.
 Multiple \fI\%\-wo\fP options may be listed.
 .UNINDENT
@@ -410,7 +426,7 @@ be used.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-srcnodata <value [value...]>
+.B \-srcnodata \(dq<value>[ <value>]...\(dq
 Set nodata masking values for input bands (different values can be supplied
 for each band). If more than one value is supplied all values should be quoted
 to keep them together as a single operating system argument.
@@ -428,7 +444,7 @@ by default.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-dstnodata <value [value...]>
+.B \-dstnodata \(dq<value>[ <value>]...\(dq
 Set nodata values
 for output bands (different values can be supplied for each band).  If more
 than one value is supplied all values should be quoted to keep them together
@@ -464,6 +480,15 @@ Set the amount of memory that the
 warp API is allowed to use for caching. The value is interpreted as being
 in megabytes if the value is less than 10000. For values >=10000, this is
 interpreted as bytes.
+.sp
+The warper will total up the memory required to hold the input and output
+image arrays and any auxiliary masking arrays and if they are larger than
+the \(dqwarp memory\(dq allowed it will subdivide the chunk into smaller chunks
+and try again.
+.sp
+If the \-wm value is very small there is some extra overhead in doing many
+small chunks so setting it larger is better but it is a matter of
+diminishing returns.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -499,7 +524,7 @@ format name.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,
@@ -573,12 +598,12 @@ the source dataset.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo <NAME=VALUE>
+.B \-oo <NAME>=<VALUE>
 Dataset open option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-doo <NAME=VALUE>
+.B \-doo <NAME>=<VALUE>
 Output dataset open option (format specific)
 .sp
 New in version 2.1.
@@ -625,7 +650,7 @@ is considered as nodata.
 .IP \(bu 2
 for bilinear, cubic, cubicspline and lanczos, for each target pixel, the
 coordinate of its center is projected back to source coordinates and a
-correspond source pixel is identified. If this source pixel is invalid, the
+corresponding source pixel is identified. If this source pixel is invalid, the
 target pixel is considered as nodata.
 Given that those resampling kernels have a non\-null kernel radius, this source
 pixel is just one among other several source pixels, and it might be possible
@@ -636,6 +661,170 @@ to ignore them.
 for the other resampling methods, source pixels contributing to the target pixel
 are ignored if invalid. Only the valid ones are taken into account. If there are
 none, the target pixel is considered as nodata.
+.UNINDENT
+.sp
+If using \fI\%\-srcnodata\fP for multiple images with different invalid
+values, you need to either (a) pre\-process them to have the same to\-be\-ignored
+value, or (b) set the nodata flag for each file. Use (b) if you need to preserve
+the original values for some reason, for example:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+# for this image we want to ignore black (0)
+gdalwarp \-srcnodata 0 \-dstnodata 0 orig\-ignore\-black.tif black\-nodata.tif
+
+# and now we want to ignore white (0)
+gdalwarp \-srcnodata 255 \-dstnodata 255 orig\-ignore\-white.tif white\-nodata.tif
+
+# and finally ignore a particular blue\-grey (RGB 125 125 150)
+gdalwarp \-srcnodata \(dq125 125 150\(dq \-dstnodata \(dq125 125 150\(dq orig\-ignore\-grey.tif grey\-nodata.tif
+
+# now we can mosaic them all and not worry about nodata parameters
+gdalwarp black\-nodata.tif grey\-nodata.tif white\-nodata.tif final\-mosaic.tif
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.SH APPROXIMATE TRANSFORMATION
+.sp
+By default \fBgdalwarp\fP uses a linear approximator for the
+transformations with a permitted error of 0.125 pixels. The approximator
+basically transforms three points on a scanline: the start, end and middle.
+Then it compares the linear approximation of the center based on the end points
+to the real thing and checks the error. If the error is less than the error
+threshold then the remaining points are approximated (in two chunks utilizing
+the center point). If the error exceeds the threshold, the scanline is split
+into two sections, and the approximator is recursively applied to each section
+until the error is less than the threshold or all points have been exactly
+computed.
+.sp
+The error threshold (in pixels) can be controlled with the gdalwarp
+\fI\%\-et\fP switch. If you want to compare a true pixel\-by\-pixel reprojection
+use \fI\%\-et 0\fP which disables this approximator entirely.
+.SH MEMORY USAGE
+.sp
+Adding RAM will almost certainly increase the speed of \fBgdalwarp\fP\&.
+That\(aqs not at all the same as saying that it is worth it, or that the speed
+increase will be significant. Disks are the slowest part of the process.  By
+default \fBgdalwarp\fP won\(aqt take much advantage of RAM. Using the flag
+\fI\%\-wm 500\fP will operate on 500MB chunks at a time which is better than
+the default. The warp memory specified by \fI\%\-wm\fP is shared among all
+threads, so it is especially beneficial to increase this value when running
+\fBgdalwarp\fP with \fI\%\-wo NUM_THREADS\fP (or its equivalent
+\fI\%GDAL_NUM_THREADS\fP) greater than 1.
+.sp
+Increasing the I/O block cache size may also help. This can be done by
+setting the \fI\%GDAL_CACHEMAX\fP configuration like:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdalwarp \-\-config GDAL_CACHEMAX 500 \-wm 500 ...
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+This uses 500MB of RAM for read/write caching, and 500MB of RAM for working
+buffers during the warp. Beyond that it is doubtful more memory will make a
+substantial difference.
+.sp
+Check CPU usage while \fBgdalwarp\fP is running. If it is substantially
+less than 100% then you know things are IO bound. Otherwise they are CPU bound.
+The \fB\-\-debug\fP option may also provide useful information. For instance, after
+running the following:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdalwarp \-\-debug on abc.tif def.tif
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+a message like the following will be output:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+GDAL: 224 block reads on 32 block band 1 of utm.tif
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+In this case it is saying that band 1 of \fButm.tif\fP has 32 blocks, but
+that 224 block reads were done, implying that lots of data was having to be
+re\-read, presumably because of a limited IO cache. You will also see messages
+like:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+GDAL: GDALWarpKernel()::GWKNearestNoMasksByte()
+Src=0,0,512x512 Dst=0,0,512x512
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+The Src/Dst windows show you the \(dqchunk size\(dq being used. In this case my whole
+image which is very small. If you find things are being broken into a lot of
+chunks increasing \fI\%\-wm\fP may help somewhat.
+.sp
+But far more important than memory are ensuring you are going through an
+optimized path in the warper. If you ever see it reporting
+\fBGDALWarpKernel()::GWKGeneralCase()\fP you know things will be relatively slow.
+Basically, the fastest situations are nearest neighbour resampling on 8bit data
+without nodata or alpha masking in effect.
+.SH COMPRESSED OUTPUT
+.sp
+In some cases, the output of \fBgdalwarp\fP may be much larger than the
+original, even if the same compression algorithm is used. By default,
+\fBgdalwarp\fP operates on chunks that are not necessarily aligned with
+the boundaries of the blocks/tiles/strips of the output format, so this might
+cause repeated compression/decompression of partial blocks, leading to lost
+space in the output format.
+.sp
+The situation can be improved by using the \fBOPTIMIZE_SIZE\fP warping option
+(\fI\%\-wo OPTIMIZE_SIZE=YES\fP), but note that depending on the source and
+target projections, it might also significantly slow down the warping process.
+.sp
+Another possibility is to use \fBgdalwarp\fP without compression and then
+follow up with \fBgdal_translate\fP with compression:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdalwarp infile tempfile.tif ...options...
+gdal_translate tempfile.tif outfile.tif \-co compress=lzw ...etc.
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Alternatively, you can use a VRT file as the output format of \fBgdalwarp\fP\&. The
+VRT file is just an XML file that will be created immediately. The
+\fBgdal_translate\fP operations will be of course a bit slower as it will do the
+real warping operation.
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+gdalwarp \-of VRT infile tempfile.vrt ...options...
+gdal_translate tempfile.vrt outfile.tif \-co compress=lzw ...etc.
+.ft P
+.fi
+.UNINDENT
 .UNINDENT
 .SH EXAMPLES
 .INDENT 0.0

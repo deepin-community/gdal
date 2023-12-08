@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_POLYGONIZE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_POLYGONIZE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_polygonize \- Produces a polygon feature layer from a raster.
 .SH SYNOPSIS
@@ -36,8 +36,10 @@ gdal_polygonize \- Produces a polygon feature layer from a raster.
 .sp
 .nf
 .ft C
-gdal_polygonize.py [\-8] [\-o name=value]* [\-nomask] [\-mask filename] <raster_file> [\-b band]
-                   [\-q] [\-f ogr_format] [\-lco name=value]* <out_file> [layer] [fieldname]
+gdal_polygonize.py [\-\-help] [\-\-help\-general]
+                   [\-8] [\-o <name>=<value>]... [\-nomask] [\-mask <filename>] <raster_file> [\-b <band>]
+                   [\-q] [\-f <ogr_format>] [\-lco <name>=<value>]... [\-overwrite]
+                   <out_file> [<layer>] [<fieldname>]
 .ft P
 .fi
 .UNINDENT
@@ -49,11 +51,21 @@ the raster sharing a common pixel value.  Each polygon is created with an
 attribute indicating the pixel value of that polygon.  A raster mask
 may also be provided to determine which pixels are eligible for processing.
 .sp
-The utility will create the output vector datasource if it does not already
-exist, defaulting to GML format.
+The utility will create the output vector datasource if it does not already exist,
+otherwise it will try to append to an existing one.
 .sp
 The utility is based on the :\fI\%GDALPolygonize()\fP function which has additional
 details on the algorithm.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-8
@@ -94,7 +106,7 @@ was GML). Use the short format name
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-o NAME=VALUE
+.B \-o <NAME>=<VALUE>
 New in version 3.7.
 
 .sp
@@ -102,11 +114,19 @@ Polygonize option. See :\fI\%GDALPolygonize()\fP documentation.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-lco NAME=VALUE
+.B \-lco <NAME>=<VALUE>
 New in version 3.7.
 
 .sp
 Layer creation option (format specific)
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-overwrite
+New in version 3.8.
+
+.sp
+Overwrite the output layer if it already exists.
 .UNINDENT
 .INDENT 0.0
 .TP

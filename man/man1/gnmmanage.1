@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GNMMANAGE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GNMMANAGE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gnmmanage \- Manages networks
 .SH SYNOPSIS
@@ -36,17 +36,17 @@ gnmmanage \- Manages networks
 .sp
 .nf
 .ft C
-gnmmanage [\-\-help][\-q][\-quiet][\-\-long\-usage]
-        [info]
-        [create [\-f <format_name>] [\-t_srs <srs_name>] [\-dsco NAME=VALUE]... ]
-        [import src_dataset_name] [\-l layer_name]
-        [connect <gfid_src> <gfid_tgt> <gfid_con> [\-c <cost>] [\-ic <inv_cost>] [\-dir <dir>]]
-        [disconnect <gfid_src> <gfid_tgt> <gfid_con>]
-        [rule <rule_str>]
-        [autoconnect <tolerance>]
-        [delete]
-        [change [\-bl gfid][\-unbl gfid][\-unblall]]
-        <gnm_name> [<layer> [<layer> ...]]
+gnmmanage [\-\-help] [\-\-help\-general] [\-q] [\-quiet] [\-\-long\-usage]
+          [info]
+          [create [\-f <format_name>] [\-t_srs <srs_name>] [\-dsco <NAME>=<VALUE>]... ]
+          [import <src_dataset_name>] [\-l <layer_name>]
+          [connect <gfid_src> <gfid_tgt> <gfid_con> [\-c <cost>] [\-ic <inv_cost>] [\-dir <dir>]]
+          [disconnect <gfid_src> <gfid_tgt> <gfid_con>]
+          [rule <rule_str>]
+          [autoconnect <tolerance>]
+          [delete]
+          [change [\-bl <gfid>][\-unbl <gfid>][\-unblall]]
+          <gnm_name> [<layer> [<layer>]...]
 .ft P
 .fi
 .UNINDENT
@@ -54,6 +54,16 @@ gnmmanage [\-\-help][\-q][\-quiet][\-\-long\-usage]
 .SH DESCRIPTION
 .sp
 The \fBgnmmanage\fP program can perform various managing operations on geographical networks in GDAL. In addition to creating and deleting networks this includes capabilities of managing network\(aqs features, topology and rules.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-info
@@ -75,7 +85,7 @@ Spatial reference input.
 .UNINDENT
 .INDENT 7.0
 .TP
-.B \-dsco NAME=VALUE
+.B \-dsco <NAME>=<VALUE>
 Network creation option set as pair name=value.
 .UNINDENT
 .UNINDENT
@@ -85,10 +95,9 @@ Network creation option set as pair name=value.
 Import layer with dataset name to copy.
 .INDENT 7.0
 .TP
-.B \-l layer_name
-.UNINDENT
-.sp
+.B \-l <layer_name>
 Layer name in dataset. If unset, 0 layer is copied.
+.UNINDENT
 .UNINDENT
 .INDENT 0.0
 .TP

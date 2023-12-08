@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALMOVE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALMOVE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalmove \- Transform georeferencing of raster file in place.
 .SH SYNOPSIS
@@ -36,7 +36,8 @@ gdalmove \- Transform georeferencing of raster file in place.
 .sp
 .nf
 .ft C
-gdalmove.py [\-s_srs <srs_defn>] \-t_srs <srs_defn>
+gdalmove.py [\-\-help] [\-\-help\-general]
+            [\-s_srs <srs_defn>] \-t_srs <srs_defn>
             [\-et <max_pixel_err>] <target_file>
 .ft P
 .fi
@@ -59,6 +60,16 @@ being introduced is less than the indicate threshold (in pixels).
 Currently the transformed geotransform is computed based on the transformation
 of the top left, top right, and bottom left corners. A reduced overall error
 could be produced using a least squares fit of at least all four corner points.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-s_srs <srs_defn>

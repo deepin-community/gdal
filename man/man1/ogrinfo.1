@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRINFO" "1" "Sep 05, 2023" "" "GDAL"
+.TH "OGRINFO" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 ogrinfo \- Lists information about an OGR-supported data source.
 .SH SYNOPSIS
@@ -36,14 +36,15 @@ ogrinfo \- Lists information about an OGR-supported data source.
 .sp
 .nf
 .ft C
-ogrinfo [\-\-help\-general] [\-json] [\-ro] [\-q] [\-where restricted_where|@filename]
-        [\-spat xmin ymin xmax ymax] [\-geomfield field] [\-fid fid]
-        [\-sql statement|@filename] [\-dialect dialect] [\-al] [\-rl]
-        [\-so|\-features] [\-fields={YES/NO}]
-        [\-geom={YES/NO/SUMMARY/WKT/ISO_WKT}] [\-\-formats] [[\-oo NAME=VALUE] ...]
-        [\-nomd] [\-listmdd] [\-mdd domain|\(gaall\(ga]*
-        [\-nocount] [\-noextent] [\-nogeomtype] [\-wkt_format WKT1|WKT2|...]
-        [\-fielddomain name]
+ogrinfo [\-\-help] [\-\-help\-general]
+        [\-json] [\-ro] [\-q] [\-where <restricted_where>|@f<ilename>]
+        [\-spat <xmin> <ymin> <xmax> <ymax>] [\-geomfield <field>] [\-fid <fid>]
+        [\-sql <statement>|@<filename>] [\-dialect <sql_dialect>] [\-al] [\-rl]
+        [\-so|\-features] [\-fields={YES|NO}]]
+        [\-geom={YES|NO|SUMMARY|WKT|ISO_WKT}] [\-oo <NAME>=<VALUE>]...
+        [\-nomd] [\-listmdd] [\-mdd <domain>|all]...
+        [\-nocount] [\-noextent] [\-nogeomtype] [\-wkt_format WKT1|WKT2|<other_values>]
+        [\-fielddomain <name>]
         <datasource_name> [<layer> [<layer> ...]]
 .ft P
 .fi
@@ -54,6 +55,16 @@ ogrinfo [\-\-help\-general] [\-json] [\-ro] [\-q] [\-where restricted_where|@fil
 The \fBogrinfo\fP program lists various information about an OGR\-supported data
 source to stdout (the terminal). By executing SQL statements it is also possible to
 edit data.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-json
@@ -160,7 +171,7 @@ would select features 1, 3 and 5.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-fields YES|NO:
+.B \-fields=YES|NO
 If set to \fBNO\fP, the feature dump will not display field values. Default value
 is \fBYES\fP\&.
 .UNINDENT
@@ -174,7 +185,7 @@ Display details about a field domain.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-geom YES|NO|SUMMARY|WKT|ISO_WKT
+.B \-geom=YES|NO|SUMMARY|WKT|ISO_WKT
 If set to \fBNO\fP, the feature dump will not display the geometry. If set to
 \fBSUMMARY\fP, only a summary of the geometry will be displayed. If set to
 \fBYES\fP or \fBISO_WKT\fP, the geometry will be reported in full OGC WKT format.
@@ -184,7 +195,7 @@ which also changes the default to ISO_WKT)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo NAME=VALUE
+.B \-oo <NAME>=<VALUE>
 Dataset open option (format\-specific)
 .UNINDENT
 .INDENT 0.0
@@ -225,7 +236,28 @@ New in version 3.1.
 .INDENT 0.0
 .TP
 .B \-\-formats
-List the format drivers that are enabled.
+List all vector formats supported by this GDAL build (read\-only and
+read\-write) and exit. The format support is indicated as follows:
+.INDENT 7.0
+.IP \(bu 2
+\fBro\fP is read\-only driver
+.IP \(bu 2
+\fBrw\fP is read or write (i.e. supports \fI\%GDALDriver::CreateCopy()\fP)
+.IP \(bu 2
+\fBrw+\fP is read, write and update (i.e. supports \fI\%GDALDriver::Create()\fP)
+.IP \(bu 2
+A \fBv\fP is appended for formats supporting virtual IO (\fB/vsimem\fP, \fB/vsigzip\fP, \fB/vsizip\fP, etc).
+.IP \(bu 2
+A \fBs\fP is appended for formats supporting subdatasets.
+.UNINDENT
+.sp
+The order in which drivers are listed is the one in which they are registered,
+which determines the order in which they are successively probed when opening
+a dataset. Most of the time, this order does not matter, but in some situations,
+several drivers may recognize the same file. The \fB\-if\fP option of some utilities
+can be specified to ask to use a particular driver to open the dataset.
+Alternatively, the \fI\%GDAL_SKIP\fP configuration option can also be used
+to exclude one or several drivers.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -616,6 +648,18 @@ Example of updating a value of an attribute in a shapefile with SQL by using the
 .nf
 .ft C
 ogrinfo test.shp \-dialect sqlite \-sql \(dqupdate test set attr=\(aqbar\(aq where attr=\(aqfoo\(aq\(dq
+.ft P
+.fi
+.UNINDENT
+.UNINDENT
+.sp
+Adding a column to an input file:
+.INDENT 0.0
+.INDENT 3.5
+.sp
+.nf
+.ft C
+ogrinfo input.shp \-sql \(dqALTER TABLE input ADD fieldX float\(dq
 .ft P
 .fi
 .UNINDENT

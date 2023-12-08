@@ -33,7 +33,6 @@
 #include "ogr_p.h"
 #include "ogr_recordbatch.h"
 #include "ogr_swq.h"
-#include "ogr_wkb.h"
 
 #include <algorithm>
 #include <limits>
@@ -76,7 +75,7 @@ template <> struct GetType<TILEDB_UINT16>
 #ifdef HAS_TILEDB_BOOL
 template <> struct GetType<TILEDB_BOOL>
 {
-    using EltType = std::vector<uint8_t>;
+    using EltType = VECTOR_OF_BOOL;
 };
 #endif
 
@@ -335,10 +334,10 @@ OGRLayer *OGRTileDBDataset::ExecuteSQL(const char *pszSQLCommand,
 /***********************************************************************/
 /*                           ICreateLayer()                            */
 /***********************************************************************/
-OGRLayer *OGRTileDBDataset::ICreateLayer(const char *pszName,
-                                         OGRSpatialReference *poSpatialRef,
-                                         OGRwkbGeometryType eGType,
-                                         char **papszOptions)
+OGRLayer *
+OGRTileDBDataset::ICreateLayer(const char *pszName,
+                               const OGRSpatialReference *poSpatialRef,
+                               OGRwkbGeometryType eGType, char **papszOptions)
 {
     if (eAccess != GA_Update)
     {
@@ -511,7 +510,6 @@ OGRLayer *OGRTileDBDataset::ICreateLayer(const char *pszName,
     poLayer->m_poFeatureDefn->GetGeomFieldDefn(0)->SetName(pszGeomColName);
 
     poLayer->m_eCurrentMode = OGRTileDBLayer::CurrentMode::WriteInProgress;
-    poLayer->m_nNextFID = 1;
 
     const char *pszTileDBStringType =
         CSLFetchNameValue(papszOptions, "TILEDB_STRING_TYPE");
@@ -761,7 +759,7 @@ bool OGRTileDBLayer::InitFromStorage(tiledb::Context *poCtx,
             case TILEDB_BOOL:
                 eType = bIsSingle ? OFTInteger : OFTIntegerList;
                 eSubType = OFSTBoolean;
-                fieldValues.push_back(std::make_shared<std::vector<uint8_t>>());
+                fieldValues.push_back(std::make_shared<VECTOR_OF_BOOL>());
                 break;
 #endif
             case TILEDB_DATETIME_DAY:
@@ -1290,10 +1288,14 @@ void OGRTileDBLayer::SetReadBuffers(bool bGrowVariableSizeArrays)
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
                 {
-                    auto &v = *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                        fieldValues));
+                    auto &v = *(
+                        std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues));
                     v.resize(m_nBatchSize);
+#ifdef VECTOR_OF_BOOL_IS_NOT_UINT8_T
+                    m_query->set_buffer(pszFieldName, v.data(), v.size());
+#else
                     m_query->set_buffer(pszFieldName, v);
+#endif
                 }
                 else
 #endif
@@ -1344,14 +1346,18 @@ void OGRTileDBLayer::SetReadBuffers(bool bGrowVariableSizeArrays)
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
                 {
-                    auto &v = *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                        fieldValues));
+                    auto &v = *(
+                        std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues));
                     v.resize(GetValueSize(
                         pszFieldName, m_anFieldValuesCapacity[i], nMulFactor));
                     m_anFieldValuesCapacity[i] = v.capacity();
                     anOffsets.resize(m_nBatchSize);
                     m_query->set_offsets_buffer(pszFieldName, anOffsets);
+#ifdef VECTOR_OF_BOOL_IS_NOT_UINT8_T
+                    m_query->set_data_buffer(pszFieldName, v.data(), v.size());
+#else
                     m_query->set_data_buffer(pszFieldName, v);
+#endif
                 }
                 else
 #endif
@@ -1550,24 +1556,28 @@ template <class T> struct ResetArray
 };
 }  // namespace
 
+void OGRTileDBLayer::AllocateNewBuffers()
+{
+    m_anFIDs = std::make_shared<std::vector<int64_t>>();
+    m_adfXs = std::make_shared<std::vector<double>>();
+    m_adfYs = std::make_shared<std::vector<double>>();
+    m_adfZs = std::make_shared<std::vector<double>>();
+    m_abyGeometries = std::make_shared<std::vector<unsigned char>>();
+    m_anGeometryOffsets = std::make_shared<std::vector<uint64_t>>();
+
+    for (int i = 0; i < m_poFeatureDefn->GetFieldCount(); i++)
+    {
+        ProcessField<ResetArray>::exec(m_aeFieldTypes[i], m_aFieldValues[i]);
+
+        m_aFieldValueOffsets[i] = std::make_shared<std::vector<uint64_t>>();
+    }
+}
+
 bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
 {
     if (!m_bArrowBatchReleased)
     {
-        m_anFIDs = std::make_shared<std::vector<int64_t>>();
-        m_adfXs = std::make_shared<std::vector<double>>();
-        m_adfYs = std::make_shared<std::vector<double>>();
-        m_adfZs = std::make_shared<std::vector<double>>();
-        m_abyGeometries = std::make_shared<std::vector<unsigned char>>();
-        m_anGeometryOffsets = std::make_shared<std::vector<uint64_t>>();
-
-        for (int i = 0; i < m_poFeatureDefn->GetFieldCount(); i++)
-        {
-            ProcessField<ResetArray>::exec(m_aeFieldTypes[i],
-                                           m_aFieldValues[i]);
-
-            m_aFieldValueOffsets[i] = std::make_shared<std::vector<uint64_t>>();
-        }
+        AllocateNewBuffers();
     }
 
     m_anFIDs->clear();
@@ -1741,12 +1751,19 @@ bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
             if (!m_poFeatureDefn->GetGeomFieldDefn(0)->IsIgnored() &&
                 pszGeomColName)
             {
-                const auto &result =
-                    result_buffer_elements.find(pszGeomColName)->second;
-                nRowCount = std::min(nRowCount, result.first);
-                // For some reason, result.first can be 1, and result.second 0
-                if (!bHitBug && result.second == 0)
-                    nRowCount = 0;
+                auto oIter = result_buffer_elements.find(pszGeomColName);
+                if (oIter != result_buffer_elements.end())
+                {
+                    const auto &result = oIter->second;
+                    nRowCount = std::min(nRowCount, result.first);
+                    // For some reason, result.first can be 1, and result.second 0
+                    if (!bHitBug && result.second == 0)
+                        nRowCount = 0;
+                }
+                else
+                {
+                    CPLAssert(false);
+                }
             }
             for (int i = 0; i < m_poFeatureDefn->GetFieldCount(); ++i)
             {
@@ -1755,14 +1772,21 @@ bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
                 if (!poFieldDefn->IsIgnored())
                 {
                     const char *pszFieldName = poFieldDefn->GetNameRef();
-                    const auto &result =
-                        result_buffer_elements.find(pszFieldName)->second;
-                    if (result.first == 0)
+                    auto oIter = result_buffer_elements.find(pszFieldName);
+                    if (oIter != result_buffer_elements.end())
                     {
-                        nRowCount = std::min(nRowCount, result.second);
+                        const auto &result = oIter->second;
+                        if (result.first == 0)
+                        {
+                            nRowCount = std::min(nRowCount, result.second);
+                        }
+                        else
+                            nRowCount = std::min(nRowCount, result.first);
                     }
                     else
-                        nRowCount = std::min(nRowCount, result.first);
+                    {
+                        CPLAssert(false);
+                    }
                 }
             }
 
@@ -1847,8 +1871,13 @@ bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
                 continue;
             const char *pszFieldName = poFieldDefn->GetNameRef();
             auto &anOffsets = *(m_aFieldValueOffsets[i]);
-            const auto &result =
-                result_buffer_elements.find(pszFieldName)->second;
+            auto oIter = result_buffer_elements.find(pszFieldName);
+            if (oIter == result_buffer_elements.end())
+            {
+                CPLAssert(false);
+                continue;
+            }
+            const auto &result = oIter->second;
             if (poFieldDefn->IsNullable())
                 m_aFieldValidity[i].resize(nRowCount);
             auto &fieldValues = m_aFieldValues[i];
@@ -1859,9 +1888,8 @@ bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
 #ifdef HAS_TILEDB_BOOL
                     if (m_aeFieldTypes[i] == TILEDB_BOOL)
                     {
-                        auto &v =
-                            *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                                fieldValues));
+                        auto &v = *(std::get<std::shared_ptr<VECTOR_OF_BOOL>>(
+                            fieldValues));
                         v.resize(result.second);
                     }
                     else
@@ -1906,9 +1934,8 @@ bool OGRTileDBLayer::SetupQuery(tiledb::QueryCondition *queryCondition)
 #ifdef HAS_TILEDB_BOOL
                     if (m_aeFieldTypes[i] == TILEDB_BOOL)
                     {
-                        auto &v =
-                            *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                                fieldValues));
+                        auto &v = *(std::get<std::shared_ptr<VECTOR_OF_BOOL>>(
+                            fieldValues));
                         if (nRowCount < result.first)
                         {
                             v.resize(anOffsets[nRowCount] / sizeof(v[0]));
@@ -2968,9 +2995,8 @@ OGRFeature *OGRTileDBLayer::TranslateCurrentFeature()
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
                 {
-                    const auto &v =
-                        *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                            fieldValues));
+                    const auto &v = *(
+                        std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues));
                     poFeature->SetFieldSameTypeUnsafe(i,
                                                       v[m_nOffsetInResultSet]);
                 }
@@ -3020,9 +3046,8 @@ OGRFeature *OGRTileDBLayer::TranslateCurrentFeature()
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
                 {
-                    const auto &v =
-                        *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                            fieldValues));
+                    const auto &v = *(
+                        std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues));
                     const size_t nEltCount = GetEltCount(
                         anOffsets, sizeof(v[0]), v.size() * sizeof(v[0]));
                     std::vector<int32_t> tmp;
@@ -3471,11 +3496,12 @@ void OGRTileDBLayer::InitializeSchemaAndArray()
         {
             auto zdim = tiledb::Dimension::create<double>(
                 *m_ctx, m_osZDim, {m_dfZStart, m_dfZEnd}, m_dfZTileExtent);
-            domain.add_dimensions(xdim, ydim, zdim);
+            domain.add_dimensions(std::move(xdim), std::move(ydim),
+                                  std::move(zdim));
         }
         else
         {
-            domain.add_dimensions(xdim, ydim);
+            domain.add_dimensions(std::move(xdim), std::move(ydim));
         }
 
         m_schema->set_domain(domain);
@@ -3539,7 +3565,7 @@ void OGRTileDBLayer::InitializeSchemaAndArray()
                     {
                         CreateAttr(TILEDB_BOOL, eType == OFTIntegerList);
                         aFieldValues.push_back(
-                            std::make_shared<std::vector<uint8_t>>());
+                            std::make_shared<VECTOR_OF_BOOL>());
                     }
                     else
 #endif
@@ -3917,7 +3943,7 @@ OGRErr OGRTileDBLayer::ICreateFeature(OGRFeature *poFeature)
                     bFieldIsValid ? poFeature->GetFieldAsIntegerUnsafe(i) : 0;
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
-                    std::get<std::shared_ptr<std::vector<uint8_t>>>(fieldValues)
+                    std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues)
                         ->push_back(static_cast<uint8_t>(nVal));
                 else
 #endif
@@ -3951,8 +3977,8 @@ OGRErr OGRTileDBLayer::ICreateFeature(OGRFeature *poFeature)
 #ifdef HAS_TILEDB_BOOL
                 if (m_aeFieldTypes[i] == TILEDB_BOOL)
                 {
-                    auto &v = *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                        fieldValues));
+                    auto &v = *(
+                        std::get<std::shared_ptr<VECTOR_OF_BOOL>>(fieldValues));
                     for (int j = 0; j < nCount; ++j)
                         v.push_back(static_cast<uint8_t>(panVal[j]));
                     anOffsets.push_back(anOffsets.back() +
@@ -4277,10 +4303,13 @@ void OGRTileDBLayer::FlushArrays()
 #ifdef HAS_TILEDB_BOOL
                     if (m_aeFieldTypes[i] == TILEDB_BOOL)
                     {
-                        auto &v =
-                            *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-                                fieldValues));
-                        query.set_data_buffer(pszFieldName, v);
+                        auto &v = *(std::get<std::shared_ptr<VECTOR_OF_BOOL>>(
+                            fieldValues));
+#ifdef VECTOR_OF_BOOL_IS_NOT_UINT8_T
+                        query.set_buffer(pszFieldName, v.data(), v.size());
+#else
+                        query.set_buffer(pszFieldName, v);
+#endif
                     }
                     else
 #endif
@@ -4459,18 +4488,26 @@ template <class T> struct ClearArray
 
 void OGRTileDBLayer::ResetBuffers()
 {
-    // Reset buffers
-    m_anFIDs->clear();
-    m_adfXs->clear();
-    m_adfYs->clear();
-    m_adfZs->clear();
-    m_abyGeometries->clear();
-    m_anGeometryOffsets->clear();
-    for (int i = 0; i < m_poFeatureDefn->GetFieldCount(); i++)
+    if (!m_bArrowBatchReleased)
     {
-        m_aFieldValueOffsets[i]->clear();
-        m_aFieldValidity[i].clear();
-        ProcessField<ClearArray>::exec(m_aeFieldTypes[i], m_aFieldValues[i]);
+        AllocateNewBuffers();
+    }
+    else
+    {
+        // Reset buffers
+        m_anFIDs->clear();
+        m_adfXs->clear();
+        m_adfYs->clear();
+        m_adfZs->clear();
+        m_abyGeometries->clear();
+        m_anGeometryOffsets->clear();
+        for (int i = 0; i < m_poFeatureDefn->GetFieldCount(); i++)
+        {
+            m_aFieldValueOffsets[i]->clear();
+            m_aFieldValidity[i].clear();
+            ProcessField<ClearArray>::exec(m_aeFieldTypes[i],
+                                           m_aFieldValues[i]);
+        }
     }
 }
 
@@ -4645,7 +4682,7 @@ void OGRTileDBLayer::SetNullBuffer(
                     {
                         psPrivateData->nullHolder =
                             std::make_shared<std::vector<uint8_t>>(
-                                (nSrcSize + 7) / 8, 0xFF);
+                                (nSrcSize + 7) / 8, static_cast<uint8_t>(0xFF));
                         pabyNull = psPrivateData->nullHolder->data();
                         psChild->buffers[0] = pabyNull;
                     }
@@ -4668,7 +4705,8 @@ void OGRTileDBLayer::SetNullBuffer(
                                 static_cast<size_t>(psChild->length);
                             psPrivateData->nullHolder =
                                 std::make_shared<std::vector<uint8_t>>(
-                                    (nDstSize + 7) / 8, 0xFF);
+                                    (nDstSize + 7) / 8,
+                                    static_cast<uint8_t>(0xFF));
                             pabyNull = psPrivateData->nullHolder->data();
                             psChild->buffers[0] = pabyNull;
                         }
@@ -4698,8 +4736,8 @@ void OGRTileDBLayer::FillBoolArray(
     psChild->buffers = static_cast<const void **>(CPLCalloc(2, sizeof(void *)));
     // TileDB used a std::vector<uint8_t> with 1 element per byte
     // whereas Arrow uses a ~ std::vector<bool> with 8 elements per byte
-    const auto &v_source = *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-        m_aFieldValues[iField]));
+    const auto &v_source =
+        *(std::get<std::shared_ptr<VECTOR_OF_BOOL>>(m_aFieldValues[iField]));
     const size_t nDstSize = abyValidityFromFilters.empty()
                                 ? v_source.size()
                                 : static_cast<size_t>(psChild->length);
@@ -4984,8 +5022,8 @@ void OGRTileDBLayer::FillBoolListArray(
     psChild->buffers = static_cast<const void **>(CPLCalloc(2, sizeof(void *)));
     auto &offsetsPtr = m_aFieldValueOffsets[iField];
     psPrivateData->offsetHolder = offsetsPtr;
-    auto &v_source = *(std::get<std::shared_ptr<std::vector<uint8_t>>>(
-        m_aFieldValues[iField]));
+    auto &v_source =
+        *(std::get<std::shared_ptr<VECTOR_OF_BOOL>>(m_aFieldValues[iField]));
 
     psChild->n_children = 1;
     psChild->children = static_cast<struct ArrowArray **>(
@@ -5066,7 +5104,7 @@ void OGRTileDBLayer::FillBoolListArray(
 /*                        GetNextArrowArray()                           */
 /************************************************************************/
 
-int OGRTileDBLayer::GetNextArrowArray(struct ArrowArrayStream *,
+int OGRTileDBLayer::GetNextArrowArray(struct ArrowArrayStream *stream,
                                       struct ArrowArray *out_array)
 {
     memset(out_array, 0, sizeof(*out_array));
@@ -5160,9 +5198,11 @@ int OGRTileDBLayer::GetNextArrowArray(struct ArrowArrayStream *,
                 const auto nNextOffset =
                     static_cast<size_t>((*m_anGeometryOffsets)[i + 1]);
                 const auto nItemLen = nNextOffset - nSrcOffset;
-                if (OGRWKBGetBoundingBox(m_abyGeometries->data() + nSrcOffset,
-                                         nItemLen, sEnvelope) &&
-                    m_sFilterEnvelope.Intersects(sEnvelope))
+                const GByte *pabyWKB = m_abyGeometries->data() + nSrcOffset;
+                const size_t nWKBSize = nItemLen;
+                if (FilterWKBGeometry(pabyWKB, nWKBSize,
+                                      /* bEnvelopeAlreadySet=*/false,
+                                      sEnvelope))
                 {
                     abyValidityFromFilters[i] = true;
                     (*m_anGeometryOffsets)[nCountIntersecting] = nAccLen;
@@ -5465,6 +5505,22 @@ int OGRTileDBLayer::GetNextArrowArray(struct ArrowArrayStream *,
             }
         }
         CPL_IGNORE_RET_VAL(iSchemaChild);
+
+        if (m_poAttrQuery &&
+            (!m_poQueryCondition || m_bAttributeFilterPartiallyTranslated))
+        {
+            struct ArrowSchema schema;
+            stream->get_schema(stream, &schema);
+            CPLAssert(schema.release != nullptr);
+            CPLAssert(schema.n_children == out_array->n_children);
+            // Spatial filter already evaluated
+            auto poFilterGeomBackup = m_poFilterGeom;
+            m_poFilterGeom = nullptr;
+            if (CanPostFilterArrowArray(&schema))
+                PostFilterArrowArray(&schema, out_array, nullptr);
+            schema.release(&schema);
+            m_poFilterGeom = poFilterGeomBackup;
+        }
     }
     catch (const std::exception &e)
     {

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALMDIMINFO" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALMDIMINFO" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalmdiminfo \- Reports structure and content of a multidimensional dataset
 .SH SYNOPSIS
@@ -36,9 +36,10 @@ gdalmdiminfo \- Reports structure and content of a multidimensional dataset
 .sp
 .nf
 .ft C
-gdalmdiminfo [\-\-help\-general] [\-oo NAME=VALUE]* [\-arrayoption NAME=VALUE]*
-             [\-detailed] [\-nopretty] [\-array {array_name}] [\-limit {number}]
-             [\-stats] [\-if format]* <datasetname>
+gdalmdiminfo [\-\-help] [\-\-help\-general]
+             [\-oo <NAME>=<VALUE>]... [\-arrayoption <NAME>=<VALUE>]...
+             [\-detailed] [\-nopretty] [\-array <array_name>] [\-limit <number>]
+             [\-stats] [\-if <format>]... <datasetname>
 .ft P
 .fi
 .UNINDENT
@@ -52,6 +53,16 @@ following \fI\%JSON schema\fP
 The following command line parameters can appear in any order
 .INDENT 0.0
 .TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
 .B \-detailed
 Most verbose output. Report attribute data types and array values.
 .UNINDENT
@@ -62,25 +73,25 @@ Outputs on a single line without any indentation.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-array {array_name}
+.B \-array <array_name>
 Name of the array used to restrict the output to the specified array.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-limit {number}
+.B \-limit <number>
 Number of values in each dimension that is used to limit the display of
 array values. By default, unlimited. Only taken into account if used with
 \-detailed.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo <NAME=VALUE>
+.B \-oo <NAME>=<VALUE>
 Dataset open option (format specific).
 This option may be used several times.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-arrayoption <NAME=VALUE>
+.B \-arrayoption <NAME>=<VALUE>
 Option passed to \fI\%GDALGroup::GetMDArrayNames()\fP to filter reported
 arrays. Such option is format specific. Consult driver documentation.
 This option may be used several times.

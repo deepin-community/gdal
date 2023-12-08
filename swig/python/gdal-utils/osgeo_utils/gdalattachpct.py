@@ -40,14 +40,14 @@ from osgeo_utils.auxiliary.color_table import ColorTableLike, get_color_table
 from osgeo_utils.auxiliary.util import GetOutputDriverFor, open_ds
 
 
-def Usage():
-    print("Usage: gdalattachpct.py <pctfile> <infile> <outfile>")
-    return 2
+def Usage(isError=True):
+    f = sys.stderr if isError else sys.stdout
+    print("Usage: gdalattachpct.py [--help] [--help-general]", file=f)
+    print("                        <pctfile> <infile> <outfile>", file=f)
+    return 2 if isError else 0
 
 
 def main(argv=sys.argv):
-    if len(argv) < 3:
-        return Usage()
     pct_filename = None
     src_filename = None
     dst_filename = None
@@ -62,7 +62,10 @@ def main(argv=sys.argv):
     while i < len(argv):
         arg = argv[i]
 
-        if arg == "-of" or arg == "-f":
+        if arg == "--help":
+            return Usage(isError=False)
+
+        elif arg == "-of" or arg == "-f":
             i = i + 1
             driver_name = argv[i]
 
@@ -79,6 +82,9 @@ def main(argv=sys.argv):
             return Usage()
 
         i = i + 1
+
+    if len(argv) < 3:
+        return Usage()
 
     _ds, err = doit(
         src_filename=src_filename,

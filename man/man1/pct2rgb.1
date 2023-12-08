@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "PCT2RGB" "1" "Sep 05, 2023" "" "GDAL"
+.TH "PCT2RGB" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 pct2rgb \- Convert an 8bit paletted image to 24bit RGB.
 .SH SYNOPSIS
@@ -36,7 +36,8 @@ pct2rgb \- Convert an 8bit paletted image to 24bit RGB.
 .sp
 .nf
 .ft C
-pct2rgb.py [\-of format] [\-b band] [\-rgba] [\-pct palette_file] source_file dest_file
+pct2rgb.py [\-\-help] [\-\-help\-general]
+           [\-of format] [\-b band] [\-rgba] [\-pct palette_file] <source_file> <dest_file>
 .ft P
 .fi
 .UNINDENT
@@ -45,6 +46,16 @@ pct2rgb.py [\-of format] [\-b band] [\-rgba] [\-pct palette_file] source_file de
 .sp
 This utility will convert a pseudo\-color band on the input file into an output
 RGB file of the desired format.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-of <format>

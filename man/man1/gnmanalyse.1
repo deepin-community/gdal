@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GNMANALYSE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GNMANALYSE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gnmanalyse \- Analyses networks
 .SH SYNOPSIS
@@ -36,13 +36,13 @@ gnmanalyse \- Analyses networks
 .sp
 .nf
 .ft C
-gnmanalyse [\-\-help][\-q][\-quiet][\-\-long\-usage]
-        [dijkstra <start_gfid> <end_gfid> [[\-alo NAME=VALUE] ...]]]
-        [kpaths <start_gfid> <end_gfid> <k> [[\-alo NAME=VALUE] ...]]]
-        [resource [[\-alo NAME=VALUE] ...]]]
-        [\-ds <ds_name>][\-f <ds_format>][\-l <layer_name>]
-        [[\-dsco NAME=VALUE] ...][\-lco NAME=VALUE]
-        <gnm_name>
+gnmanalyse [\-\-help] [\-\-help\-general] [\-q] [\-quiet] [\-\-long\-usage]
+           [dijkstra <start_gfid> <end_gfid [\-alo <NAME>=<VALUE>]...]
+           [kpaths <start_gfid> <end_gfid> <k> [\-alo <NAME>=<VALUE>]...]
+           [resource [\-alo <NAME>=<VALUE>]...]
+           [\-ds <ds_name>][\-f <ds_format>][\-l <layer_name>]
+           [\-dsco <NAME>=<VALUE>]... [\-lco <NAME>=<VALUE>]...
+           <gnm_name>
 .ft P
 .fi
 .UNINDENT
@@ -50,6 +50,16 @@ gnmanalyse [\-\-help][\-q][\-quiet][\-\-long\-usage]
 .SH DESCRIPTION
 .sp
 The \fBgnmanalyse\fP program provides analysing capabilities of geographical networks in GDAL. The results of calculations are return in an OGRLayer format or as a console text output if such layer is undefined. All calculations are made considering the blocking state of features.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B dijkstra <start_gfid> <end_gfid>
@@ -87,17 +97,17 @@ The network to work with (path and name).
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-dsco NAME=VALUE
+.B \-dsco <NAME>=<VALUE>
 Dataset creation option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-lco NAME=VALUE
+.B \-lco <NAME>=<VALUE>
 Layer creation option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-alo NAME=VALUE
+.B \-alo <NAME>=<VALUE>
 Algorithm option (format specific)
 .UNINDENT
 .SH AUTHOR

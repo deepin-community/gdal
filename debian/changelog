@@ -1,3 +1,99 @@
+gdal (3.8.1+dfsg-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Strip pre-releases from symbols version.
+  * Move from experimental to unstable.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Thu, 30 Nov 2023 17:11:47 +0100
+
+gdal (3.8.1~rc3+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+    (closes: #1055682)
+  * Update copyright file.
+  * Update symbols for other architectures.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Tue, 28 Nov 2023 16:43:24 +0100
+
+gdal (3.8.1~rc2+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Update symbols for other architectures.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Fri, 24 Nov 2023 13:21:41 +0100
+
+gdal (3.8.1~rc1+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Update symbols for other architectures.
+  * Fix installation of Python utilities.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Fri, 24 Nov 2023 06:22:21 +0100
+
+gdal (3.8.0+dfsg-1) unstable; urgency=medium
+
+  * Move from experimental to unstable.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Fri, 17 Nov 2023 07:50:32 +0100
+
+gdal (3.8.0+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release.
+  * Update symbols for other architectures.
+  * Strip pre-releases from symbols version.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Mon, 13 Nov 2023 18:38:12 +0100
+
+gdal (3.8.0~rc2+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Update symbols for other architectures.
+  * Drop gcc-13.patch, applied upstream.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Thu, 09 Nov 2023 11:25:09 +0100
+
+gdal (3.8.0~rc1+dfsg-1~exp2) experimental; urgency=medium
+
+  * Add patch to fix compatibility with GCC 13.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Wed, 08 Nov 2023 20:33:43 +0100
+
+gdal (3.8.0~rc1+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Update symbols for other architectures.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Mon, 06 Nov 2023 12:02:00 +0100
+
+gdal (3.8.0~beta1+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream beta release.
+  * Update copyright file.
+  * Refresh patches.
+  * Include gdal_footprint in gdal-bin package.
+  * Rename library package for SONAME bump.
+  * Update symbols for amd64.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Fri, 03 Nov 2023 15:24:56 +0100
+
+gdal (3.7.3+dfsg-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Update watch file to match only 3.7.x releases.
+  * Update symbols for other architectures.
+  * Strip pre-releases from symbols version.
+  * Move from experimental to unstable.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Fri, 03 Nov 2023 14:36:57 +0100
+
+gdal (3.7.3~rc1+dfsg-1~exp1) experimental; urgency=medium
+
+  * New upstream release candidate.
+  * Update lintian overrides.
+  * Update symbols for amd64.
+
+ -- Bas Couwenberg <sebastic@debian.org>  Mon, 30 Oct 2023 18:29:31 +0100
+
 gdal (3.7.2+dfsg-1) unstable; urgency=medium
 
   * New upstream release.

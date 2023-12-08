@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "OGRMERGE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "OGRMERGE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 ogrmerge \-  Merge several vector datasets into a single one.
 .SH SYNOPSIS
@@ -36,12 +36,13 @@ ogrmerge \-  Merge several vector datasets into a single one.
 .sp
 .nf
 .ft C
-ogrmerge.py \-o out_dsname src_dsname [src_dsname]*
-            [\-f format] [\-single] [\-nln layer_name_template]
+ogrmerge.py [\-\-help] [\-\-help\-general]
+            \-o <out_dsname> <src_dsname> [<src_dsname>]...
+            [\-f format] [\-single] [\-nln <layer_name_template>]
             [\-update | \-overwrite_ds] [\-append | \-overwrite_layer]
-            [\-src_geom_type geom_type_name[,geom_type_name]*]
-            [\-dsco NAME=VALUE]* [\-lco NAME=VALUE]*
-            [\-s_srs srs_def] [\-t_srs srs_def | \-a_srs srs_def]
+            [\-src_geom_type <geom_type_name>[,<geom_type_name>]...]
+            [\-dsco <NAME>=<VALUE>]... [\-lco <NAME>=<VALUE>]...
+            [\-s_srs <srs_def>] [\-t_srs <srs_def> | \-a_srs <srs_def>]
             [\-progress] [\-skipfailures] [\-\-help\-general]
 .ft P
 .fi
@@ -55,8 +56,8 @@ Options specific to the \fI\%\-single\fP option:
 .nf
 .ft C
 [\-field_strategy FirstLayer|Union|Intersection]
-[\-src_layer_field_name name]
-[\-src_layer_field_content layer_name_template]
+[\-src_layer_field_name <name>]
+[\-src_layer_field_content <layer_name_template>]
 .ft P
 .fi
 .UNINDENT
@@ -70,7 +71,7 @@ New in version 2.2.
 each of them having one or several vector layers, and copy them in
 a target dataset.
 .sp
-There are essential two modes:
+There are essentially two modes:
 .INDENT 0.0
 .IP \(bu 2
 the default one, where each input vector layer, is copied as a
@@ -86,6 +87,16 @@ Internally this generates a \fI\%VRT \-\- Virtual Format\fP file, and if the
 output format is not VRT, final translation is done with \fBogr2ogr\fP
 or \fBgdal.VectorTranslate()\fP\&. So, for advanced uses, output to VRT,
 potential manual editing of it and \fBogr2ogr\fP can be done.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-o <out_dsname>
@@ -120,7 +131,7 @@ value computed from the input layer being processed:
 .IP \(bu 2
 \fB{AUTO_NAME}\fP: equivalent to \fB{DS_BASENAME}_{LAYER_NAME}\fP if both
 values are different, or \fB{LAYER_NAME}\fP when they are identical
-(case of shapefile). \(aqdifferent
+(case of shapefile).
 .IP \(bu 2
 \fB{DS_NAME}\fP: name of the source dataset
 .IP \(bu 2
@@ -159,7 +170,7 @@ layer.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-src_geom_type <geom_type_name[,geom_type_name]\e*]>
+.B \-src_geom_type <geom_type_name>[,<geom_type_name>]...
 Only take into account input layers whose geometry type match the
 type(s) specified. Valid values for geom_type_name are GEOMETRY,
 POINT, LINESTRING, POLYGON, MULTIPOINT, MULTILINESTRING, MULTIPOLYGON,
@@ -168,12 +179,12 @@ MULTISURFACE, CURVE, SURFACE, TRIANGLE, POLYHEDRALSURFACE and TIN.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-dsco <NAME=VALUE>
+.B \-dsco <NAME>=<VALUE>
 Dataset creation option (format specific)
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-lco <NAME=VALUE>
+.B \-lco <NAME>=<VALUE>
 Layer creation option (format specific)
 .UNINDENT
 .INDENT 0.0

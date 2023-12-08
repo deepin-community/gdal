@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALBUILDVRT" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALBUILDVRT" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalbuildvrt \- Builds a VRT from a list of datasets.
 .SH SYNOPSIS
@@ -36,20 +36,21 @@ gdalbuildvrt \- Builds a VRT from a list of datasets.
 .sp
 .nf
 .ft C
-gdalbuildvrt [\-tileindex field_name]
-            [\-resolution {highest|lowest|average|user}]
-            [\-te xmin ymin xmax ymax] [\-tr xres yres] [\-tap]
-            [\-separate] [\-b band]* [\-sd subdataset]
-            [\-allow_projection_difference] [\-q]
-            [\-addalpha] [\-hidenodata]
-            [\-srcnodata \(dqvalue [value...]\(dq] [\-vrtnodata \(dqvalue [value...]\(dq]
-            [\-ignore_srcmaskband]
-            [\-a_srs srs_def]
-            [\-r {nearest,bilinear,cubic,cubicspline,lanczos,average,mode}]
-            [\-oo NAME=VALUE]*
-            [\-input_file_list my_list.txt] [\-overwrite]
-            [\-strict | \-non_strict]
-            output.vrt [gdalfile]*
+gdalbuildvrt [\-\-help] [\-\-help\-general]
+             [\-tileindex <field_name>]
+             [\-resolution {highest|lowest|average|user}]
+             [\-te <xmin> <ymin> <xmax> <ymax>] [\-tr <xres> <yres>] [\-tap]
+             [\-separate] [\-b <band>]... [\-sd <subdataset>]
+             [\-allow_projection_difference] [\-q]
+             [\-addalpha] [\-hidenodata]
+             [\-srcnodata \(dq<value>[ <value>]...\(dq] [\-vrtnodata \(dq<value>[ <value>]...\(dq
+             [\-ignore_srcmaskband]
+             [\-a_srs <srs_def>]
+             [\-r {nearest|bilinear|cubic|cubicspline|lanczos|average|mode}]
+             [\-oo <NAME>=<VALUE>]...
+             [\-input_file_list <filename>] [\-overwrite]
+             [\-strict | \-non_strict]
+             <output_filename.vrt> <input_raster> [<input_raster>]...
 .ft P
 .fi
 .UNINDENT
@@ -59,7 +60,7 @@ gdalbuildvrt [\-tileindex field_name]
 This program builds a VRT (Virtual Dataset) that is a mosaic of the list of
 input GDAL datasets. The list of input GDAL datasets can be specified at the end
 of the command line, or put in a text file (one filename per line) for very long lists,
-or it can be a MapServer tileindex (see ref gdaltindex utility). In the later case, all
+or it can be a MapServer tileindex (see \fI\%gdaltindex\fP utility). In the later case, all
 entries in the tile index will be added to the VRT.
 .sp
 With \-separate, each files goes into a separate band in the VRT dataset. Otherwise,
@@ -81,6 +82,16 @@ to potentially fetch data from less priority datasets, but currently, alpha chan
 is not taken into account to do alpha compositing (so a source with alpha=0
 appearing on top of another source will override is content). This might be
 changed in later versions.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-tileindex
@@ -118,7 +129,7 @@ Alignment means that xmin / resx, ymin / resy, xmax / resx and ymax / resy are i
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-te xmin ymin xmax ymax
+.B \-te <xmin> <ymin> <xmax> <ymax>
 Set georeferenced extents of VRT file. The values must be expressed in georeferenced units.
 If not specified, the extent of the VRT is the minimum bounding box of the set of source rasters.
 .UNINDENT
@@ -142,7 +153,7 @@ data.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-srcnodata <value> [<value>...]
+.B \-srcnodata \(dq<value>[ <value>]...\(dq
 Set nodata values for input bands (different values can be supplied for each band). If
 more than one value is supplied all values should be quoted to keep them
 together as a single operating system argument. If the option is not specified, the
@@ -182,7 +193,7 @@ name as an input.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-vrtnodata <value> [<value>...]
+.B \-vrtnodata \(dq<value>[ <value>]...\(dq
 Set nodata values at the VRT band level (different values can be supplied for each band).  If more
 than one value is supplied all values should be quoted to keep them together
 as a single operating system argument.  If the option is not specified,
@@ -193,9 +204,13 @@ is written in the NoDataValue element of each VRTRasterBand element. Use a value
 .INDENT 0.0
 .TP
 .B \-separate
-Place each input file into a separate band. In that case, only the first
-band of each dataset will be placed into a new band. Contrary to the default mode, it is not
+Place each input file into a separate band. Contrary to the default mode, it is not
 required that all bands have the same datatype.
+.sp
+Starting with GDAL 3.8, all bands of each input file are added as separate
+VRT bands, unless \fI\%\-b\fP is specified to select a subset of them.
+Before GDAL 3.8, only the first band of each input file was placed into a
+new VRT band, and \fI\%\-b\fP was ignored.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -212,12 +227,12 @@ complete WKT, PROJ.4, EPSG:n or a file containing the WKT. No reprojection is do
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-r {nearest (default),bilinear,cubic,cubicspline,lanczos,average,mode}
-Select a resampling algorithm.
+.B \-r {nearest|bilinear|cubic|cubicspline|lanczos|average|mode}
+Select a resampling algorithm. Nearest is the default
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo NAME=VALUE
+.B \-oo <NAME>=<VALUE>
 Dataset open option (format specific)
 .sp
 New in version 2.2.
@@ -225,7 +240,7 @@ New in version 2.2.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-input_file_list <mylist.txt>
+.B \-input_file_list <filename>
 To specify a text file with an input filename on each line
 .UNINDENT
 .INDENT 0.0
