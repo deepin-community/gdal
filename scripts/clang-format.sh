@@ -30,11 +30,19 @@ for f in $FILES; do
 	  continue
 	  ;;
 
+	*frmts/gif/giflib/*)
+	  continue
+	  ;;
+
 	*frmts/zlib/contrib/infback9/*)
 	  continue
 	  ;;
 
 	*frmts/grib/degrib/*)
+	  continue
+	  ;;
+
+	*frmts/gtiff/libgeotiff/*)
 	  continue
 	  ;;
 
@@ -46,6 +54,10 @@ for f in $FILES; do
 	  continue
 	  ;;
 
+	*frmts/pcidsk/sdk/*)
+	  continue
+	  ;;
+
 	*ogr/ogrsf_frmts/flatgeobuf/flatbuffers/*)
 	  continue
 	  ;;
@@ -54,7 +66,19 @@ for f in $FILES; do
 	  continue
 	  ;;
 
+	*ogr/ogrsf_frmts/pmtiles/pmtiles/*)
+	  continue
+	  ;;
+
+	*ogr/ogrsf_frmts/sqlite/sqlite_rtree_bulk_load/*)
+	  continue
+	  ;;
+
 	*swig/*)
+	  continue
+	  ;;
+
+	*third_party/*)
 	  continue
 	  ;;
 

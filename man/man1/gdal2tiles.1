@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL2TILES" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL2TILES" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal2tiles \- Generates directory with TMS tiles, KMLs and simple web viewers.
 .SH SYNOPSIS
@@ -36,12 +36,13 @@ gdal2tiles \- Generates directory with TMS tiles, KMLs and simple web viewers.
 .sp
 .nf
 .ft C
-gdal2tiles.py [\-p profile] [\-r resampling] [\-s srs] [\-z zoom]
-              [\-e] [\-a nodata] [\-v] [\-q] [\-h] [\-k] [\-n] [\-u url]
-              [\-w webviewer] [\-t title] [\-c copyright]
-              [\-\-processes=NB_PROCESSES] [\-\-mpi] [\-\-xyz]
-              [\-\-tilesize=PIXELS] [\-\-tmscompatible]
-              [\-g googlekey] [\-b bingkey] input_file [output_dir] [COMMON_OPTIONS]
+gdal2tiles.py [\-\-help] [\-\-help\-general]
+              [\-p <profile>] [\-r resampling] [\-s <srs>] [\-z <zoom>]
+              [\-e] [\-a nodata] [\-v] [\-q] [\-h] [\-k] [\-n] [\-u <url>]
+              [\-w <webviewer>] [\-t <title>] [\-c <copyright>]
+              [\-\-processes=<NB_PROCESSES>] [\-\-mpi] [\-\-xyz]
+              [\-\-tilesize=<PIXELS>] [\-\-tmscompatible]
+              [\-g <googlekey] [\-b <bingkey>] <input_file> [<output_dir>] [<COMMON_OPTIONS>]
 .ft P
 .fi
 .UNINDENT
@@ -75,6 +76,16 @@ rescale input to the \fBByte\fP data type using \fIgdal_translate\fP utility.
 .INDENT 3.5
 Config options of the input drivers may have an effect on the output of gdal2tiles. An example driver config option is GDAL_PDF_DPI, which can be found at \fI\%Configuration options\fP
 .UNINDENT
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
 .UNINDENT
 .INDENT 0.0
 .TP

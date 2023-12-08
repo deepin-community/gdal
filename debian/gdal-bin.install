@@ -13,6 +13,7 @@ usr/bin/gdaltransform
 usr/bin/gdalwarp
 usr/bin/gdal_contour
 usr/bin/gdal_create
+usr/bin/gdal_footprint
 usr/bin/gdal_grid
 usr/bin/gdal_rasterize
 usr/bin/gdal_translate
@@ -42,6 +43,7 @@ usr/share/man/man1/gdaltransform.1
 usr/share/man/man1/gdalwarp.1
 usr/share/man/man1/gdal_contour.1
 usr/share/man/man1/gdal_create.1
+usr/share/man/man1/gdal_footprint.1
 usr/share/man/man1/gdal_grid.1
 usr/share/man/man1/gdal_pansharpen.1
 usr/share/man/man1/gdal_rasterize.1

@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALTINDEX" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALTINDEX" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdaltindex \- Builds a shapefile as a raster tileindex.
 .SH SYNOPSIS
@@ -36,10 +36,11 @@ gdaltindex \- Builds a shapefile as a raster tileindex.
 .sp
 .nf
 .ft C
-gdaltindex [\-f format] [\-tileindex field_name] [\-write_absolute_path]
-        [\-skip_different_projection] [\-t_srs target_srs]
-        [\-src_srs_name field_name] [\-src_srs_format [AUTO|WKT|EPSG|PROJ]
-        [\-lyr_name name] index_file [gdal_file]*
+gdaltindex [\-\-help] [\-\-help\-general]
+        [\-f <format>] [\-tileindex <field_name>] [\-write_absolute_path]
+        [\-skip_different_projection] [\-t_srs <target_srs>]
+        [\-src_srs_name <field_name>] [\-src_srs_format {AUTO|WKT|EPSG|PROJ}]
+        [\-lyr_name <name>] <index_file> <gdal_file> [<gdal_file>]...
 .ft P
 .fi
 .UNINDENT
@@ -50,6 +51,16 @@ This program creates an OGR\-supported dataset with a record for each input rast
 an attribute containing the filename, and a polygon geometry outlining the
 raster.  This output is suitable for use with \fI\%MapServer\fP as a raster
 tileindex.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-f <format>
@@ -79,7 +90,7 @@ check projection and accepts all inputs.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-t_srs <target_srs>:
+.B \-t_srs <target_srs>
 Geometries of input files will be transformed to the desired target
 coordinate reference system.
 Default creates simple rectangular polygons in the same coordinate reference
@@ -93,9 +104,9 @@ used as the value of the TILESRS keyword in MapServer
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-src_srs_format <type>
+.B \-src_srs_format {AUTO|WKT|EPSG|PROJ}
 The format in which the SRS of each tile must be written. Types can be
-AUTO, WKT, EPSG, PROJ.
+\fBAUTO\fP, \fBWKT\fP, \fBEPSG\fP, \fBPROJ\fP\&.
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -104,7 +115,7 @@ Layer name to create/append to in the output tile index file.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B index_file
+.B <index_file>
 The name of the output file to create/append to. The default dataset will
 be created if it doesn\(aqt already exist, otherwise it will append to the
 existing dataset.

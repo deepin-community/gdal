@@ -1,5 +1,23 @@
+%feature("docstring") OGRDataSourceShadow "
+Python proxy of a vector :cpp:class:`GDALDataset`.
+
+Since GDAL 3.8, a DataSource can be used as a context manager.
+When exiting the context, the DataSource will be closed and
+features will be written to disk.
+"
+
 %extend OGRDataSourceShadow {
 // File: ogrdatasource_8cpp.xml
+
+%feature("docstring")  Close "
+Closes opened dataset and releases allocated resources.
+
+This method can be used to force the dataset to close
+when one more references to the dataset are still
+reachable. If Close is never called, the dataset will
+be closed automatically during garbage collection.
+"
+
 %feature("docstring")  Destroy "void OGR_DS_Destroy(OGRDataSourceH
 hDS)
 

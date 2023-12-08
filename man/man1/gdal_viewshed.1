@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_VIEWSHED" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_VIEWSHED" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_viewshed \- Calculates a viewshed raster from an input raster DEM for a user defined point
 .SH SYNOPSIS
@@ -36,13 +36,13 @@ gdal_viewshed \- Calculates a viewshed raster from an input raster DEM for a use
 .sp
 .nf
 .ft C
-gdal_viewshed [\-b <band>]
+gdal_viewshed [\-\-help] [\-\-help\-general] [\-b <band>]
               [\-a_nodata <value>] [\-f <formatname>]
               [\-oz <observer_height>] [\-tz <target_height>] [\-md <max_distance>]
               \-ox <observer_x> \-oy <observer_y>
               [\-vv <visibility>] [\-iv <invisibility>]
               [\-ov <out_of_range>] [\-cc <curvature_coef>]
-              [[\-co NAME=VALUE] ...]
+              [\-co <NAME>=<VALUE>]...
               [\-q] [\-om <output mode>]
               <src_filename> <dst_filename>
 .ft P
@@ -64,7 +64,17 @@ if the georeferencing is in a projected coordinate reference system.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created. For instance,
 the GeoTIFF driver supports creation options to control compression,

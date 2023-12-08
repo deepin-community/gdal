@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDALMDIMTRANSLATE" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDALMDIMTRANSLATE" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdalmdimtranslate \- Converts multidimensional data between different formats, and perform subsetting.
 .SH SYNOPSIS
@@ -36,14 +36,15 @@ gdalmdimtranslate \- Converts multidimensional data between different formats, a
 .sp
 .nf
 .ft C
-gdalmdimtranslate [\-\-help\-general] [\-co \(dqNAME=VALUE\(dq]*
-                  [\-if format]* [\-of format]
-                  [\-array <array_spec>]*
-                  [\-group <group_spec>]*
-                  [\-subset <subset_spec>]*
-                  [\-scaleaxes <scaleaxes_spec>]*
-                  [\-oo NAME=VALUE]*
-                  <src_filename> <dst_filename>
+gdalmdimtranslate [\-\-help] [\-\-help\-general]
+                  [\-if <format>]... [\-of <format>]
+                  [\-co <NAME>=<VALUE>]...
+                  [\-array <array_spec>]...
+                  [\-group <group_spec>]...
+                  [\-subset <subset_spec>]...
+                  [\-scaleaxes <scaleaxes_spec>]
+                  [\-oo <NAME>=<VALUE>]...
+                   <src_filename> <dst_filename>
 .ft P
 .fi
 .UNINDENT
@@ -55,6 +56,16 @@ different formats, and/or can perform selective conversion of specific arrays
 and groups, and/or subsetting operations.
 .sp
 The following command line parameters can appear in any order.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-if <format>
@@ -77,7 +88,7 @@ destination filename.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-co <NAME=VALUE>
+.B \-co <NAME>=<VALUE>
 Many formats have one or more optional creation options that can be
 used to control particulars about the file created.
 .sp
@@ -103,12 +114,21 @@ operate on different arrays.
 <array_spec> may be just an array name, potentially using a fully qualified
 syntax (/group/subgroup/array_name). Or it can be a combination of options
 with the syntax:
-name={src_array_name}[,dstname={dst_array_name}][,transpose=[{axis1},{axis2},...][,view={view_expr}]
+name={src_array_name}[,dstname={dst_array_name}][,resample=yes][,transpose=[{axis1},{axis2},...][,view={view_expr}]
 .sp
-[{axis1},{axis2},...] is the argument of  \fI\%GDALMDArray::Transpose()\fP\&.
+The following options are processed in that order:
+.INDENT 7.0
+.IP \(bu 2
+\fBresample=yes\fP asks for the array to run through \fI\%GDALMDArray::GetResampled()\fP\&.
+.IP \(bu 2
+.INDENT 2.0
+.TP
+.B [{axis1},{axis2},...] is the argument of  \fI\%GDALMDArray::Transpose()\fP\&.
 For example, transpose=[1,0] switches the axis order of a 2D array.
-.sp
+.UNINDENT
+.IP \(bu 2
 {view_expr} is the value of the \fIviewExpr\fP argument of \fI\%GDALMDArray::GetView()\fP
+.UNINDENT
 .sp
 When specifying a view_expr that performs a slicing or subsetting on a dimension, the
 equivalent operation will be applied to the corresponding indexing variable.
@@ -155,13 +175,13 @@ SCALEAXES parameter of
 \fI\%OGC WCS 2.0 Scaling Extension\fP,
 but limited to integer scale factors.
 .sp
-That is dim1_name(scale_factor)[,dim2_name(scale_factor)]*
+That is <dim1_name>(<scale_factor>)[,<dim2_name>(<scale_factor>)]...
 .sp
 Using \-scaleaxes is incompatible of specifying a \fIview\fP option in \-array.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo <NAME=VALUE>
+.B \-oo <NAME>=<VALUE>
 New in version 3.4.
 
 .sp

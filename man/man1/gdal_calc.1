@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_CALC" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_CALC" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_calc \- Command line raster calculator with numpy syntax.
 .SH SYNOPSIS
@@ -36,8 +36,9 @@ gdal_calc \- Command line raster calculator with numpy syntax.
 .sp
 .nf
 .ft C
-gdal_calc.py \-\-calc=expression \-\-outfile=out_filename [\-A filename]
-             [\-\-A_band=n] [\-B...\-Z filename] [other_options]
+gdal_calc.py [\-\-help] [\-\-help\-general]
+             \-\-calc=expression \-\-outfile=<out_filename> [\-A <filename>]
+             [\-\-A_band=<n>] [\-B...\-Z <filename>] [<other_options>]
 .ft P
 .fi
 .UNINDENT
@@ -57,12 +58,12 @@ Show this help message and exit
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-h
-The same as \fI\%\-\-help\fP\&.
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-\-calc=expression
+.B \-\-calc=<expression>
 Calculation in numpy syntax using \fB+\fP, \fB\-\fP, \fB/\fP, \fB*\fP, or any numpy array functions (i.e. \fBlog10()\fP).
 Multiple \fB\-\-calc\fP options can be listed to produce a multiband file (GDAL >= 3.2).
 .UNINDENT

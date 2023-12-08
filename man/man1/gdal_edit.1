@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "GDAL_EDIT" "1" "Sep 05, 2023" "" "GDAL"
+.TH "GDAL_EDIT" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 gdal_edit \- Edit in place various information of an existing GDAL dataset.
 .SH SYNOPSIS
@@ -36,15 +36,16 @@ gdal_edit \- Edit in place various information of an existing GDAL dataset.
 .sp
 .nf
 .ft C
-gdal_edit [\-\-help\-general] [\-ro] [\-a_srs srs_def]
-        [\-a_ullr ulx uly lrx lry] [\-a_ulurll ulx uly urx ury llx lly]
-        [\-tr xres yres] [\-unsetgt] [\-unsetrpc] [\-a_nodata value] [\-unsetnodata]
+gdal_edit [\-\-help] [\-\-help\-general] [\-ro] [\-a_srs <srs_def>]
+        [\-a_ullr <ulx> <uly> <lrx> <lry>] [\-a_ulurll <ulx> <uly> <urx> <ury> <llx> <lly>]
+        [\-tr <xres> <yres>] [\-unsetgt] [\-unsetrpc] [\-a_nodata <value>] [\-unsetnodata]
         [\-unsetstats] [\-stats] [\-approx_stats]
-        [\-setstats min max mean stddev]
-        [\-scale value] [\-offset value] [\-units value]
-        [\-colorinterp_X red|green|blue|alpha|gray|undefined]*
-        [\-gcp pixel line easting northing [elevation]]*
-        [\-unsetmd] [\-oo NAME=VALUE]* [\-mo \(dqMETA\-TAG=VALUE\(dq]*  datasetname
+        [\-setstats <min> <max> <mean> <stddev>]
+        [\-scale <value>] [\-offset <value>] [\-units <value>]
+        [\-colorinterp_<X> {red|green|blue|alpha|gray|undefined}]...
+        [\-gcp <pixel> <line> <easting> <northing> [<elevation>]]...
+        [\-unsetmd] [\-oo <NAME>=<VALUE>]... [\-mo <META\-TAG>=<VALUE>]...
+        <datasetname>
 .ft P
 .fi
 .UNINDENT
@@ -65,6 +66,11 @@ still be found in the file in a \(dqghost\(dq state, even if no longer accessibl
 through the GDAL API. This is for example the case of the \fI\%GTiff \-\- GeoTIFF File Format\fP
 format (this is not a exhaustive list).
 .UNINDENT
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
 .UNINDENT
 .INDENT 0.0
 .TP
@@ -89,12 +95,12 @@ supported besides that).
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-a_ullr ulx uly lrx lry:
+.B \-a_ullr  <ulx> <uly> <lrx> <lry>
 Assign/override the georeferenced bounds of the dataset.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-a_ulurll ulx uly urx ury llx lly:
+.B \-a_ulurll <ulx> <uly> <urx> <ury> <llx> <lly>
 Assign/override the georeferenced bounds of the dataset from three points:
 upper\-left, upper\-right and lower\-left. Unlike \fI\%\-a_ullr\fP, this also
 supports rotated datasets (edges not parallel to coordinate system axes).
@@ -139,7 +145,7 @@ New in version 2.0.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-setstats min max mean stddev
+.B \-setstats <min> <max> <mean> <stddev>
 Store user\-defined values for band statistics (minimum, maximum,
 mean and standard deviation). If any of the values is set to None,
 the real statistics are calclulated from the file and the ones set
@@ -215,7 +221,7 @@ New in version 3.1.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-colorinterp_X red|green|blue|alpha|gray|undefined
+.B \-colorinterp_<X> {red|green|blue|alpha|gray|undefined}
 Change the color interpretation of band X (where X is a valid band
 number, starting at 1).
 .sp
@@ -224,7 +230,7 @@ New in version 2.3.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-gcp pixel line easting northing [elevation]
+.B \-gcp pixel <line> <easting> <northing> [<elevation>]
 Add the indicated ground control point to the dataset.
 This option may be provided multiple times to provide a set of GCPs.
 .UNINDENT
@@ -239,14 +245,14 @@ New in version 2.0.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-mo META\-TAG=VALUE
+.B \-mo <META\-TAG>=<VALUE>
 Passes a metadata key and value to set on the output dataset if possible.
 This metadata is added to the existing metadata items, unless \fI\%\-unsetmd\fP
 is also specified.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B \-oo NAME=VALUE
+.B \-oo <NAME>=<VALUE>
 Open option (format specific).
 .sp
 New in version 2.0.

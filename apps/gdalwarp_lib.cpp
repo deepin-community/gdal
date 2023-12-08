@@ -177,6 +177,9 @@ struct GDALWarpAppOptions
         q1, q3, sum */
     GDALResampleAlg eResampleAlg = GRA_NearestNeighbour;
 
+    /*! whether -r was specified */
+    bool bResampleAlgSpecifiedByUser = false;
+
     /*! nodata masking values for input bands (different values can be supplied
         for each band). ("value1 value2 ..."). Masked values will not be used
         in interpolation. Use a value of "None" to ignore intrinsic nodata
@@ -255,8 +258,8 @@ static CPLErr LoadCutline(const std::string &osCutlineDSName,
                           const std::string &osCWHERE,
                           const std::string &osCSQL,
                           OGRGeometryH *phCutlineRet);
-static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
-                                       OGRGeometryH hCutline,
+static CPLErr TransformCutlineToSource(GDALDataset *poSrcDS,
+                                       OGRGeometry *poCutline,
                                        char ***ppapszWarpOptions,
                                        CSLConstList papszTO);
 
@@ -273,44 +276,56 @@ static void RemoveConflictingMetadata(GDALMajorObjectH hObj,
 static bool GetResampleAlg(const char *pszResampling,
                            GDALResampleAlg &eResampleAlg);
 
-static double GetAverageSegmentLength(OGRGeometryH hGeom)
+static double GetAverageSegmentLength(const OGRGeometry *poGeom)
 {
-    if (hGeom == nullptr)
+    if (!poGeom)
         return 0;
-    switch (wkbFlatten(OGR_G_GetGeometryType(hGeom)))
+    switch (wkbFlatten(poGeom->getGeometryType()))
     {
         case wkbLineString:
         {
-            if (OGR_G_GetPointCount(hGeom) == 0)
-                return 0;
+            const auto *poLS = poGeom->toLineString();
             double dfSum = 0;
-            for (int i = 0; i < OGR_G_GetPointCount(hGeom) - 1; i++)
+            const int nPoints = poLS->getNumPoints();
+            if (nPoints == 0)
+                return 0;
+            for (int i = 0; i < nPoints - 1; i++)
             {
-                double dfX1 = OGR_G_GetX(hGeom, i);
-                double dfY1 = OGR_G_GetY(hGeom, i);
-                double dfX2 = OGR_G_GetX(hGeom, i + 1);
-                double dfY2 = OGR_G_GetY(hGeom, i + 1);
+                double dfX1 = poLS->getX(i);
+                double dfY1 = poLS->getY(i);
+                double dfX2 = poLS->getX(i + 1);
+                double dfY2 = poLS->getY(i + 1);
                 double dfDX = dfX2 - dfX1;
                 double dfDY = dfY2 - dfY1;
                 dfSum += sqrt(dfDX * dfDX + dfDY * dfDY);
             }
-            return dfSum / OGR_G_GetPointCount(hGeom);
+            return dfSum / nPoints;
         }
 
         case wkbPolygon:
+        {
+            if (poGeom->IsEmpty())
+                return 0;
+            double dfSum = 0;
+            for (const auto *poLS : poGeom->toPolygon())
+            {
+                dfSum += GetAverageSegmentLength(poLS);
+            }
+            return dfSum / (1 + poGeom->toPolygon()->getNumInteriorRings());
+        }
+
         case wkbMultiPolygon:
         case wkbMultiLineString:
         case wkbGeometryCollection:
         {
-            if (OGR_G_GetGeometryCount(hGeom) == 0)
+            if (poGeom->IsEmpty())
                 return 0;
             double dfSum = 0;
-            for (int i = 0; i < OGR_G_GetGeometryCount(hGeom); i++)
+            for (const auto *poSubGeom : poGeom->toGeometryCollection())
             {
-                dfSum +=
-                    GetAverageSegmentLength(OGR_G_GetGeometryRef(hGeom, i));
+                dfSum += GetAverageSegmentLength(poSubGeom);
             }
-            return dfSum / OGR_G_GetGeometryCount(hGeom);
+            return dfSum / poGeom->toGeometryCollection()->getNumGeometries();
         }
 
         default:
@@ -389,10 +404,44 @@ static CPLString GetSrcDSProjection(GDALDatasetH hDS, CSLConstList papszTO)
 }
 
 /************************************************************************/
+/*                      CreateCTCutlineToSrc()                          */
+/************************************************************************/
+
+static std::unique_ptr<OGRCoordinateTransformation> CreateCTCutlineToSrc(
+    const OGRSpatialReference *poRasterSRS, const OGRSpatialReference *poDstSRS,
+    const OGRSpatialReference *poCutlineSRS, CSLConstList papszTO)
+{
+    const OGRSpatialReference *poCutlineOrTargetSRS =
+        poCutlineSRS ? poCutlineSRS : poDstSRS;
+    std::unique_ptr<OGRCoordinateTransformation> poCTCutlineToSrc;
+    if (poCutlineOrTargetSRS && poRasterSRS &&
+        !poCutlineOrTargetSRS->IsSame(poRasterSRS))
+    {
+        OGRCoordinateTransformationOptions oOptions;
+        // If the cutline SRS is the same as the target SRS and there is
+        // an explicit -ct between the source SRS and the target SRS, then
+        // use it in the reverse way to transform from the cutline SRS to
+        // the source SRS.
+        if (poDstSRS && poCutlineOrTargetSRS->IsSame(poDstSRS))
+        {
+            const char *pszCT =
+                CSLFetchNameValue(papszTO, "COORDINATE_OPERATION");
+            if (pszCT)
+            {
+                oOptions.SetCoordinateOperation(pszCT, /* bInverse = */ true);
+            }
+        }
+        poCTCutlineToSrc.reset(OGRCreateCoordinateTransformation(
+            poCutlineOrTargetSRS, poRasterSRS, oOptions));
+    }
+    return poCTCutlineToSrc;
+}
+
+/************************************************************************/
 /*                           CropToCutline()                            */
 /************************************************************************/
 
-static CPLErr CropToCutline(OGRGeometryH hCutline, CSLConstList papszTO,
+static CPLErr CropToCutline(const OGRGeometry *poCutline, CSLConstList papszTO,
                             CSLConstList papszWarpOptions, int nSrcCount,
                             GDALDatasetH *pahSrcDS, double &dfMinX,
                             double &dfMinY, double &dfMaxX, double &dfMaxY,
@@ -403,29 +452,28 @@ static CPLErr CropToCutline(OGRGeometryH hCutline, CSLConstList papszTO,
     // space using the source SRS. To be consistent, we reproject
     // the cutline from cutline SRS to source SRS and then from source SRS to
     // target SRS.
-    OGRSpatialReferenceH hCutlineSRS = OGR_G_GetSpatialReference(hCutline);
+    const OGRSpatialReference *poCutlineSRS = poCutline->getSpatialReference();
     const char *pszThisTargetSRS = CSLFetchNameValue(papszTO, "DST_SRS");
-    OGRSpatialReferenceH hSrcSRS = nullptr;
-    OGRSpatialReferenceH hDstSRS = nullptr;
+    std::unique_ptr<OGRSpatialReference> poSrcSRS;
+    std::unique_ptr<OGRSpatialReference> poDstSRS;
 
     const CPLString osThisSourceSRS =
         GetSrcDSProjection(nSrcCount > 0 ? pahSrcDS[0] : nullptr, papszTO);
     if (!osThisSourceSRS.empty())
     {
-        hSrcSRS = OSRNewSpatialReference(nullptr);
-        OSRSetAxisMappingStrategy(hSrcSRS, OAMS_TRADITIONAL_GIS_ORDER);
-        if (OSRSetFromUserInput(hSrcSRS, osThisSourceSRS) != OGRERR_NONE)
+        poSrcSRS = cpl::make_unique<OGRSpatialReference>();
+        poSrcSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if (poSrcSRS->SetFromUserInput(osThisSourceSRS) != OGRERR_NONE)
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Cannot compute bounding box of cutline.");
-            OSRDestroySpatialReference(hSrcSRS);
             return CE_Failure;
         }
     }
-    else if (pszThisTargetSRS == nullptr && hCutlineSRS == nullptr)
+    else if (!pszThisTargetSRS && !poCutlineSRS)
     {
         OGREnvelope sEnvelope;
-        OGR_G_GetEnvelope(hCutline, &sEnvelope);
+        poCutline->getEnvelope(&sEnvelope);
 
         dfMinX = sEnvelope.MinX;
         dfMinY = sEnvelope.MinY;
@@ -442,61 +490,65 @@ static CPLErr CropToCutline(OGRGeometryH hCutline, CSLConstList papszTO,
         return CE_Failure;
     }
 
-    if (pszThisTargetSRS != nullptr)
+    if (pszThisTargetSRS)
     {
-        hDstSRS = OSRNewSpatialReference(nullptr);
-        OSRSetAxisMappingStrategy(hDstSRS, OAMS_TRADITIONAL_GIS_ORDER);
-        if (OSRSetFromUserInput(hDstSRS, pszThisTargetSRS) != OGRERR_NONE)
+        poDstSRS = cpl::make_unique<OGRSpatialReference>();
+        poDstSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if (poDstSRS->SetFromUserInput(pszThisTargetSRS) != OGRERR_NONE)
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Cannot compute bounding box of cutline.");
-            OSRDestroySpatialReference(hSrcSRS);
-            OSRDestroySpatialReference(hDstSRS);
             return CE_Failure;
         }
     }
     else
-        hDstSRS = OSRClone(hSrcSRS);
+    {
+        poDstSRS.reset(poSrcSRS->Clone());
+    }
 
-    OGRGeometryH hCutlineGeom = OGR_G_Clone(hCutline);
-    OGRSpatialReferenceH hCutlineOrTargetSRS =
-        hCutlineSRS ? hCutlineSRS : hDstSRS;
-    OGRCoordinateTransformationH hCTCutlineToSrc = nullptr;
-    OGRCoordinateTransformationH hCTSrcToDst = nullptr;
+    auto poCutlineGeom = std::unique_ptr<OGRGeometry>(poCutline->clone());
+    auto poCTCutlineToSrc = CreateCTCutlineToSrc(poSrcSRS.get(), poDstSRS.get(),
+                                                 poCutlineSRS, papszTO);
 
-    if (!OSRIsSame(hCutlineOrTargetSRS, hSrcSRS))
-        hCTCutlineToSrc =
-            OCTNewCoordinateTransformation(hCutlineOrTargetSRS, hSrcSRS);
-    if (!OSRIsSame(hSrcSRS, hDstSRS))
-        hCTSrcToDst = OCTNewCoordinateTransformation(hSrcSRS, hDstSRS);
-
-    OSRDestroySpatialReference(hSrcSRS);
-    hSrcSRS = nullptr;
-
-    OSRDestroySpatialReference(hDstSRS);
-    hDstSRS = nullptr;
+    std::unique_ptr<OGRCoordinateTransformation> poCTSrcToDst;
+    if (!poSrcSRS->IsSame(poDstSRS.get()))
+    {
+        poCTSrcToDst.reset(
+            OGRCreateCoordinateTransformation(poSrcSRS.get(), poDstSRS.get()));
+    }
 
     // Reproject cutline to target SRS, by doing intermediate vertex
     // densification in source SRS.
-    if (hCTSrcToDst != nullptr || hCTCutlineToSrc != nullptr)
+    if (poCTSrcToDst || poCTCutlineToSrc)
     {
         OGREnvelope sLastEnvelope, sCurEnvelope;
-        OGRGeometryH hTransformedGeom = nullptr;
-        OGRGeometryH hGeomInSrcSRS = OGR_G_Clone(hCutlineGeom);
-        if (hCTCutlineToSrc != nullptr)
-            OGR_G_Transform(hGeomInSrcSRS, hCTCutlineToSrc);
+        std::unique_ptr<OGRGeometry> poTransformedGeom;
+        auto poGeomInSrcSRS =
+            std::unique_ptr<OGRGeometry>(poCutlineGeom->clone());
+        if (poCTCutlineToSrc)
+        {
+            poGeomInSrcSRS.reset(OGRGeometryFactory::transformWithOptions(
+                poGeomInSrcSRS.get(), poCTCutlineToSrc.get(), nullptr));
+            if (!poGeomInSrcSRS)
+                return CE_Failure;
+        }
 
         // Do not use a smaller epsilon, otherwise it could cause useless
         // segmentization (https://github.com/OSGeo/gdal/issues/4826)
         constexpr double epsilon = 1e-10;
         for (int nIter = 0; nIter < 10; nIter++)
         {
-            OGR_G_DestroyGeometry(hTransformedGeom);
-            hTransformedGeom = OGR_G_Clone(hGeomInSrcSRS);
-            if (hCTSrcToDst != nullptr)
-                OGR_G_Transform(hTransformedGeom, hCTSrcToDst);
-            OGR_G_GetEnvelope(hTransformedGeom, &sCurEnvelope);
-            if (nIter > 0 || hCTSrcToDst == nullptr)
+            poTransformedGeom.reset(poGeomInSrcSRS->clone());
+            if (poCTSrcToDst)
+            {
+                poTransformedGeom.reset(
+                    OGRGeometryFactory::transformWithOptions(
+                        poTransformedGeom.get(), poCTSrcToDst.get(), nullptr));
+                if (!poTransformedGeom)
+                    return CE_Failure;
+            }
+            poTransformedGeom->getEnvelope(&sCurEnvelope);
+            if (nIter > 0 || !poCTSrcToDst)
             {
                 if (std::abs(sCurEnvelope.MinX - sLastEnvelope.MinX) <=
                         epsilon *
@@ -515,31 +567,23 @@ static CPLErr CropToCutline(OGRGeometryH hCutline, CSLConstList papszTO,
                 }
             }
             double dfAverageSegmentLength =
-                GetAverageSegmentLength(hGeomInSrcSRS);
-            OGR_G_Segmentize(hGeomInSrcSRS, dfAverageSegmentLength / 4);
+                GetAverageSegmentLength(poGeomInSrcSRS.get());
+            poGeomInSrcSRS->segmentize(dfAverageSegmentLength / 4);
 
             sLastEnvelope = sCurEnvelope;
         }
 
-        OGR_G_DestroyGeometry(hGeomInSrcSRS);
-
-        OGR_G_DestroyGeometry(hCutlineGeom);
-        hCutlineGeom = hTransformedGeom;
+        poCutlineGeom = std::move(poTransformedGeom);
     }
 
-    if (hCTCutlineToSrc)
-        OCTDestroyCoordinateTransformation(hCTCutlineToSrc);
-    if (hCTSrcToDst)
-        OCTDestroyCoordinateTransformation(hCTSrcToDst);
-
     OGREnvelope sEnvelope;
-    OGR_G_GetEnvelope(hCutlineGeom, &sEnvelope);
+    poCutlineGeom->getEnvelope(&sEnvelope);
 
     dfMinX = sEnvelope.MinX;
     dfMinY = sEnvelope.MinY;
     dfMaxX = sEnvelope.MaxX;
     dfMaxY = sEnvelope.MaxY;
-    if (hCTSrcToDst == nullptr && nSrcCount > 0 && psOptions->dfXRes == 0.0 &&
+    if (!poCTSrcToDst && nSrcCount > 0 && psOptions->dfXRes == 0.0 &&
         psOptions->dfYRes == 0.0)
     {
         // No raster reprojection: stick on exact pixel boundaries of the source
@@ -585,8 +629,6 @@ static CPLErr CropToCutline(OGRGeometryH hCutline, CSLConstList papszTO,
             }
         }
     }
-
-    OGR_G_DestroyGeometry(hCutlineGeom);
 
     return CE_None;
 }
@@ -1087,6 +1129,51 @@ static bool DealWithCOGOptions(CPLStringList &aosCreateOptions, int nSrcCount,
                                GDALDatasetH *pahSrcDS,
                                GDALWarpAppOptions *psOptions)
 {
+    const auto SetDstSRS = [psOptions](const std::string &osTargetSRS)
+    {
+        const char *pszExistingDstSRS =
+            psOptions->aosTransformerOptions.FetchNameValue("DST_SRS");
+        if (pszExistingDstSRS)
+        {
+            OGRSpatialReference oSRS1;
+            oSRS1.SetFromUserInput(pszExistingDstSRS);
+            OGRSpatialReference oSRS2;
+            oSRS2.SetFromUserInput(osTargetSRS.c_str());
+            if (!oSRS1.IsSame(&oSRS2))
+            {
+                CPLError(CE_Failure, CPLE_AppDefined,
+                         "Target SRS implied by COG creation options is not "
+                         "the same as the one specified by -t_srs");
+                return false;
+            }
+        }
+        psOptions->aosTransformerOptions.SetNameValue("DST_SRS",
+                                                      osTargetSRS.c_str());
+        return true;
+    };
+
+    if (!(psOptions->dfMinX == 0 && psOptions->dfMinY == 0 &&
+          psOptions->dfMaxX == 0 && psOptions->dfMaxY == 0 &&
+          psOptions->dfXRes == 0 && psOptions->dfYRes == 0 &&
+          psOptions->nForcePixels == 0 && psOptions->nForceLines == 0))
+    {
+        CPLString osTargetSRS;
+        if (COGGetTargetSRS(aosCreateOptions.List(), osTargetSRS))
+        {
+            if (!SetDstSRS(osTargetSRS))
+                return false;
+        }
+        if (!psOptions->bResampleAlgSpecifiedByUser && nSrcCount > 0)
+        {
+            GetResampleAlg(
+                COGGetResampling(GDALDataset::FromHandle(pahSrcDS[0]),
+                                 aosCreateOptions.List())
+                    .c_str(),
+                psOptions->eResampleAlg);
+        }
+        return true;
+    }
+
     GDALWarpAppOptions oClonedOptions(*psOptions);
     oClonedOptions.bQuiet = true;
     CPLString osTmpFilename;
@@ -1115,17 +1202,16 @@ static bool DealWithCOGOptions(CPLStringList &aosCreateOptions, int nSrcCount,
     double dfMinY = 0;
     double dfMaxX = 0;
     double dfMaxY = 0;
-    if (psOptions->dfMinX == 0 && psOptions->dfMinY == 0 &&
-        psOptions->dfMaxX == 0 && psOptions->dfMaxY == 0 &&
-        psOptions->dfXRes == 0 && psOptions->dfYRes == 0 &&
-        psOptions->nForcePixels == 0 && psOptions->nForceLines == 0 &&
-        COGGetWarpingCharacteristics(GDALDataset::FromHandle(hTmpDS),
+    bool bRet = true;
+    if (COGGetWarpingCharacteristics(GDALDataset::FromHandle(hTmpDS),
                                      aosCreateOptions.List(), osResampling,
                                      osTargetSRS, nXSize, nYSize, dfMinX,
                                      dfMinY, dfMaxX, dfMaxY))
     {
-        GetResampleAlg(osResampling, psOptions->eResampleAlg);
-        psOptions->aosTransformerOptions.SetNameValue("DST_SRS", osTargetSRS);
+        if (!psOptions->bResampleAlgSpecifiedByUser)
+            GetResampleAlg(osResampling, psOptions->eResampleAlg);
+        if (!SetDstSRS(osTargetSRS))
+            bRet = false;
         psOptions->dfMinX = dfMinX;
         psOptions->dfMinY = dfMinY;
         psOptions->dfMaxX = dfMaxX;
@@ -1136,7 +1222,7 @@ static bool DealWithCOGOptions(CPLStringList &aosCreateOptions, int nSrcCount,
     }
     GDALClose(hTmpDS);
     VSIUnlink(osTmpFilename);
-    return true;
+    return bRet;
 }
 
 /************************************************************************/
@@ -1569,11 +1655,11 @@ static bool ProcessCutlineOptions(int nSrcCount, GDALDatasetH *pahSrcDS,
     if (psOptions->bCropToCutline && hCutline != nullptr)
     {
         CPLErr eError;
-        eError =
-            CropToCutline(hCutline, psOptions->aosTransformerOptions.List(),
-                          psOptions->aosWarpOptions.List(), nSrcCount, pahSrcDS,
-                          psOptions->dfMinX, psOptions->dfMinY,
-                          psOptions->dfMaxX, psOptions->dfMaxY, psOptions);
+        eError = CropToCutline(OGRGeometry::FromHandle(hCutline),
+                               psOptions->aosTransformerOptions.List(),
+                               psOptions->aosWarpOptions.List(), nSrcCount,
+                               pahSrcDS, psOptions->dfMinX, psOptions->dfMinY,
+                               psOptions->dfMaxX, psOptions->dfMaxY, psOptions);
         if (eError == CE_Failure)
         {
             return false;
@@ -2391,6 +2477,18 @@ static GDALDatasetH GDALWarpDirect(const char *pszDest, GDALDatasetH hDstDS,
          !(psOptions->dfMinX == 0.0 && psOptions->dfMinY == 0.0 &&
            psOptions->dfMaxX == 0.0 && psOptions->dfMaxY == 0.0));
 
+    const char *pszMethod =
+        psOptions->aosTransformerOptions.FetchNameValue("METHOD");
+    if (pszMethod && EQUAL(pszMethod, "GCP_TPS") &&
+        psOptions->dfErrorThreshold > 0 &&
+        !psOptions->aosTransformerOptions.FetchNameValue(
+            "SRC_APPROX_ERROR_IN_PIXEL"))
+    {
+        psOptions->aosTransformerOptions.SetNameValue(
+            "SRC_APPROX_ERROR_IN_PIXEL",
+            CPLSPrintf("%g", psOptions->dfErrorThreshold));
+    }
+
     if (hDstDS == nullptr)
     {
         hDstDS = CreateOutput(pszDest, nSrcCount, pahSrcDS, psOptions,
@@ -2559,8 +2657,6 @@ static GDALDatasetH GDALWarpDirect(const char *pszDest, GDALDatasetH hDstDS,
         /* --------------------------------------------------------------------
          */
 
-        const char *pszMethod =
-            psOptions->aosTransformerOptions.FetchNameValue("METHOD");
         if (iSrc == 0 && (GDALGetMetadata(hSrcDS, "RPC") != nullptr &&
                           (pszMethod == nullptr || EQUAL(pszMethod, "RPC"))))
         {
@@ -3013,7 +3109,8 @@ static GDALDatasetH GDALWarpDirect(const char *pszDest, GDALDatasetH hDstDS,
         {
             CPLErr eError;
             eError = TransformCutlineToSource(
-                hWrkSrcDS, hCutline, &(psWO->papszWarpOptions),
+                GDALDataset::FromHandle(hWrkSrcDS),
+                OGRGeometry::FromHandle(hCutline), &(psWO->papszWarpOptions),
                 psOptions->aosTransformerOptions.List());
             if (eError == CE_Failure)
             {
@@ -3338,6 +3435,75 @@ static GDALDatasetH GDALWarpCreateOutput(
 
     if (EQUAL(pszFormat, "VRT"))
         bVRT = true;
+
+    // Special case for geographic to Mercator (typically EPSG:4326 to EPSG:3857)
+    // where latitudes close to 90 go to infinity
+    // We clamp latitudes between ~ -85 and ~ 85 degrees.
+    const char *pszDstSRS = CSLFetchNameValue(papszTO, "DST_SRS");
+    if (nSrcCount == 1 && pszDstSRS && psOptions->dfMinX == 0.0 &&
+        psOptions->dfMinY == 0.0 && psOptions->dfMaxX == 0.0 &&
+        psOptions->dfMaxY == 0.0)
+    {
+        auto hSrcDS = pahSrcDS[0];
+        const auto osSrcSRS = GetSrcDSProjection(pahSrcDS[0], papszTO);
+        OGRSpatialReference oSrcSRS;
+        oSrcSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        oSrcSRS.SetFromUserInput(osSrcSRS.c_str());
+        OGRSpatialReference oDstSRS;
+        oDstSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        oDstSRS.SetFromUserInput(pszDstSRS);
+        const char *pszProjection = oDstSRS.GetAttrValue("PROJECTION");
+        const char *pszMethod = CSLFetchNameValue(papszTO, "METHOD");
+        double adfSrcGT[6];
+        // This MAX_LAT values is equivalent to the semi_major_axis * PI
+        // easting/northing value only for EPSG:3857, but it is also quite
+        // reasonable for other Mercator projections
+        constexpr double MAX_LAT = 85.0511287798066;
+        constexpr double EPS = 1e-3;
+        const auto GetMinLon = [&adfSrcGT]() { return adfSrcGT[0]; };
+        const auto GetMaxLon = [&adfSrcGT, hSrcDS]()
+        { return adfSrcGT[0] + adfSrcGT[1] * GDALGetRasterXSize(hSrcDS); };
+        const auto GetMinLat = [&adfSrcGT, hSrcDS]()
+        { return adfSrcGT[3] + adfSrcGT[5] * GDALGetRasterYSize(hSrcDS); };
+        const auto GetMaxLat = [&adfSrcGT]() { return adfSrcGT[3]; };
+        if (oSrcSRS.IsGeographic() && !oSrcSRS.IsDerivedGeographic() &&
+            pszProjection && EQUAL(pszProjection, SRS_PT_MERCATOR_1SP) &&
+            oDstSRS.GetNormProjParm(SRS_PP_CENTRAL_MERIDIAN, 0.0) == 0 &&
+            (pszMethod == nullptr || EQUAL(pszMethod, "GEOTRANSFORM")) &&
+            CSLFetchNameValue(papszTO, "COORDINATE_OPERATION") == nullptr &&
+            CSLFetchNameValue(papszTO, "SRC_METHOD") == nullptr &&
+            CSLFetchNameValue(papszTO, "DST_METHOD") == nullptr &&
+            GDALGetGeoTransform(hSrcDS, adfSrcGT) == CE_None &&
+            adfSrcGT[2] == 0 && adfSrcGT[4] == 0 && adfSrcGT[5] < 0 &&
+            GetMinLon() >= -180 - EPS && GetMaxLon() <= 180 + EPS &&
+            ((GetMaxLat() > MAX_LAT && GetMinLat() < MAX_LAT) ||
+             (GetMaxLat() > -MAX_LAT && GetMinLat() < -MAX_LAT)) &&
+            GDALGetMetadata(hSrcDS, "GEOLOC_ARRAY") == nullptr &&
+            GDALGetMetadata(hSrcDS, "RPC") == nullptr)
+        {
+            auto poCT = std::unique_ptr<OGRCoordinateTransformation>(
+                OGRCreateCoordinateTransformation(&oSrcSRS, &oDstSRS));
+            if (poCT)
+            {
+                double xLL = std::max(GetMinLon(), -180.0);
+                double yLL = std::max(GetMinLat(), -MAX_LAT);
+                double xUR = std::min(GetMaxLon(), 180.0);
+                double yUR = std::min(GetMaxLat(), MAX_LAT);
+                if (poCT->Transform(1, &xLL, &yLL) &&
+                    poCT->Transform(1, &xUR, &yUR))
+                {
+                    psOptions->dfMinX = xLL;
+                    psOptions->dfMinY = yLL;
+                    psOptions->dfMaxX = xUR;
+                    psOptions->dfMaxY = yUR;
+                    CPLError(CE_Warning, CPLE_AppDefined,
+                             "Clamping output bounds to (%f,%f) -> (%f, %f)",
+                             psOptions->dfMinX, psOptions->dfMinY,
+                             psOptions->dfMaxX, psOptions->dfMaxY);
+                }
+            }
+        }
+    }
 
     /* If (-ts and -te) or (-tr and -te) are specified, we don't need to compute
      * the suggested output extent */
@@ -4048,9 +4214,13 @@ static GDALDatasetH GDALWarpCreateOutput(
     }
     else if (psOptions->dfXRes != 0.0 && psOptions->dfYRes != 0.0)
     {
+        bool bDetectBlankBorders = false;
+
         if (psOptions->dfMinX == 0.0 && psOptions->dfMinY == 0.0 &&
             psOptions->dfMaxX == 0.0 && psOptions->dfMaxY == 0.0)
         {
+            bDetectBlankBorders = bNeedsSuggestedWarpOutput;
+
             psOptions->dfMinX = adfDstGeoTransform[0];
             psOptions->dfMaxX =
                 adfDstGeoTransform[0] + adfDstGeoTransform[1] * nPixels;
@@ -4063,6 +4233,8 @@ static GDALDatasetH GDALWarpCreateOutput(
             (psOptions->bCropToCutline &&
              psOptions->aosWarpOptions.FetchBool("CUTLINE_ALL_TOUCHED", false)))
         {
+            bDetectBlankBorders = true;
+
             psOptions->dfMinX = floor(psOptions->dfMinX / psOptions->dfXRes) *
                                 psOptions->dfXRes;
             psOptions->dfMaxX =
@@ -4073,19 +4245,148 @@ static GDALDatasetH GDALWarpCreateOutput(
                 ceil(psOptions->dfMaxY / psOptions->dfYRes) * psOptions->dfYRes;
         }
 
-        nPixels = static_cast<int>((psOptions->dfMaxX - psOptions->dfMinX +
-                                    (psOptions->dfXRes / 2.0)) /
-                                   psOptions->dfXRes);
-        nLines =
-            static_cast<int>((std::fabs(psOptions->dfMaxY - psOptions->dfMinY) +
-                              (psOptions->dfYRes / 2.0)) /
-                             psOptions->dfYRes);
-        adfDstGeoTransform[0] = psOptions->dfMinX;
-        adfDstGeoTransform[3] = psOptions->dfMaxY;
-        adfDstGeoTransform[1] = psOptions->dfXRes;
-        adfDstGeoTransform[5] = (psOptions->dfMaxY > psOptions->dfMinY)
-                                    ? -psOptions->dfYRes
-                                    : psOptions->dfYRes;
+        const auto UpdateGeoTransformandAndPixelLines = [&]()
+        {
+            nPixels = static_cast<int>((psOptions->dfMaxX - psOptions->dfMinX +
+                                        (psOptions->dfXRes / 2.0)) /
+                                       psOptions->dfXRes);
+            nLines = static_cast<int>(
+                (std::fabs(psOptions->dfMaxY - psOptions->dfMinY) +
+                 (psOptions->dfYRes / 2.0)) /
+                psOptions->dfYRes);
+            adfDstGeoTransform[0] = psOptions->dfMinX;
+            adfDstGeoTransform[3] = psOptions->dfMaxY;
+            adfDstGeoTransform[1] = psOptions->dfXRes;
+            adfDstGeoTransform[5] = (psOptions->dfMaxY > psOptions->dfMinY)
+                                        ? -psOptions->dfYRes
+                                        : psOptions->dfYRes;
+        };
+
+        if (bDetectBlankBorders && nSrcCount == 1 && phTransformArg &&
+            *phTransformArg != nullptr)
+        {
+            // Try to detect if the edge of the raster would be blank
+            // Cf https://github.com/OSGeo/gdal/issues/7905
+            while (true)
+            {
+                UpdateGeoTransformandAndPixelLines();
+
+                GDALSetGenImgProjTransformerDstGeoTransform(*phTransformArg,
+                                                            adfDstGeoTransform);
+
+                std::vector<double> adfX(std::max(nPixels, nLines));
+                std::vector<double> adfY(adfX.size());
+                std::vector<double> adfZ(adfX.size());
+                std::vector<int> abSuccess(adfX.size());
+
+                const auto DetectBlankBorder =
+                    [&](int nValues,
+                        std::function<bool(double, double)> funcIsOK)
+                {
+                    if (nValues > 3)
+                    {
+                        // First try with just a subsample of 3 points
+                        double adf3X[3] = {adfX[0], adfX[nValues / 2],
+                                           adfX[nValues - 1]};
+                        double adf3Y[3] = {adfY[0], adfY[nValues / 2],
+                                           adfY[nValues - 1]};
+                        double adf3Z[3] = {0};
+                        if (GDALGenImgProjTransform(*phTransformArg, TRUE, 3,
+                                                    &adf3X[0], &adf3Y[0],
+                                                    &adf3Z[0], &abSuccess[0]))
+                        {
+                            for (int i = 0; i < 3; ++i)
+                            {
+                                if (abSuccess[i] &&
+                                    funcIsOK(adf3X[i], adf3Y[i]))
+                                {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+
+                    // Do on full border to confirm
+                    if (GDALGenImgProjTransform(*phTransformArg, TRUE, nValues,
+                                                &adfX[0], &adfY[0], &adfZ[0],
+                                                &abSuccess[0]))
+                    {
+                        for (int i = 0; i < nValues; ++i)
+                        {
+                            if (abSuccess[i] && funcIsOK(adfX[i], adfY[i]))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+
+                    return true;
+                };
+
+                for (int i = 0; i < nPixels; ++i)
+                {
+                    adfX[i] = i + 0.5;
+                    adfY[i] = 0.5;
+                    adfZ[i] = 0;
+                }
+                const bool bTopBlankLine = DetectBlankBorder(
+                    nPixels, [](double, double y) { return y >= 0; });
+
+                for (int i = 0; i < nPixels; ++i)
+                {
+                    adfX[i] = i + 0.5;
+                    adfY[i] = nLines - 0.5;
+                    adfZ[i] = 0;
+                }
+                const int nSrcLines = GDALGetRasterYSize(pahSrcDS[0]);
+                const bool bBottomBlankLine =
+                    DetectBlankBorder(nPixels, [nSrcLines](double, double y)
+                                      { return y <= nSrcLines; });
+
+                for (int i = 0; i < nLines; ++i)
+                {
+                    adfX[i] = 0.5;
+                    adfY[i] = i + 0.5;
+                    adfZ[i] = 0;
+                }
+                const bool bLeftBlankCol = DetectBlankBorder(
+                    nLines, [](double x, double) { return x >= 0; });
+
+                for (int i = 0; i < nLines; ++i)
+                {
+                    adfX[i] = nPixels - 0.5;
+                    adfY[i] = i + 0.5;
+                    adfZ[i] = 0;
+                }
+                const int nSrcCols = GDALGetRasterXSize(pahSrcDS[0]);
+                const bool bRightBlankCol =
+                    DetectBlankBorder(nLines, [nSrcCols](double x, double)
+                                      { return x <= nSrcCols; });
+
+                if (!bTopBlankLine && !bBottomBlankLine && !bLeftBlankCol &&
+                    !bRightBlankCol)
+                    break;
+
+                if (bTopBlankLine)
+                {
+                    psOptions->dfMaxY -= psOptions->dfYRes;
+                }
+                if (bBottomBlankLine)
+                {
+                    psOptions->dfMinY += psOptions->dfYRes;
+                }
+                if (bLeftBlankCol)
+                {
+                    psOptions->dfMinX += psOptions->dfXRes;
+                }
+                if (bRightBlankCol)
+                {
+                    psOptions->dfMaxX -= psOptions->dfXRes;
+                }
+            }
+        }
+
+        UpdateGeoTransformandAndPixelLines();
     }
 
     else if (psOptions->nForcePixels != 0 && psOptions->nForceLines != 0)
@@ -4535,68 +4836,83 @@ static void RemoveZeroWidthSlivers(OGRGeometry *poGeom)
 /*                                                                      */
 /*      Transform cutline from its SRS to source pixel/line coordinates.*/
 /************************************************************************/
-static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
-                                       OGRGeometryH hCutline,
+static CPLErr TransformCutlineToSource(GDALDataset *poSrcDS,
+                                       OGRGeometry *poCutline,
                                        char ***ppapszWarpOptions,
                                        CSLConstList papszTO_In)
 
 {
-    RemoveZeroWidthSlivers(OGRGeometry::FromHandle(hCutline));
+    RemoveZeroWidthSlivers(poCutline);
 
-    OGRGeometryH hMultiPolygon = OGR_G_Clone(hCutline);
+    auto poMultiPolygon = std::unique_ptr<OGRGeometry>(poCutline->clone());
 
     /* -------------------------------------------------------------------- */
     /*      Checkout that if there's a cutline SRS, there's also a raster   */
     /*      one.                                                            */
     /* -------------------------------------------------------------------- */
-    OGRSpatialReferenceH hRasterSRS = nullptr;
-    const CPLString osProjection = GetSrcDSProjection(hSrcDS, papszTO_In);
+    std::unique_ptr<OGRSpatialReference> poRasterSRS;
+    const CPLString osProjection =
+        GetSrcDSProjection(GDALDataset::ToHandle(poSrcDS), papszTO_In);
     if (!osProjection.empty())
     {
-        hRasterSRS = OSRNewSpatialReference(nullptr);
-        OSRSetAxisMappingStrategy(hRasterSRS, OAMS_TRADITIONAL_GIS_ORDER);
-        if (OSRSetFromUserInput(hRasterSRS, osProjection) != OGRERR_NONE)
+        poRasterSRS = cpl::make_unique<OGRSpatialReference>();
+        poRasterSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if (poRasterSRS->SetFromUserInput(osProjection) != OGRERR_NONE)
         {
-            OSRDestroySpatialReference(hRasterSRS);
-            hRasterSRS = nullptr;
+            poRasterSRS.reset();
         }
+    }
+
+    std::unique_ptr<OGRSpatialReference> poDstSRS;
+    const char *pszThisTargetSRS = CSLFetchNameValue(papszTO_In, "DST_SRS");
+    if (pszThisTargetSRS)
+    {
+        poDstSRS = cpl::make_unique<OGRSpatialReference>();
+        poDstSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+        if (poDstSRS->SetFromUserInput(pszThisTargetSRS) != OGRERR_NONE)
+        {
+            return CE_Failure;
+        }
+    }
+    else if (poRasterSRS)
+    {
+        poDstSRS.reset(poRasterSRS->Clone());
     }
 
     /* -------------------------------------------------------------------- */
     /*      Extract the cutline SRS.                                        */
     /* -------------------------------------------------------------------- */
-    OGRSpatialReferenceH hCutlineSRS = OGR_G_GetSpatialReference(hMultiPolygon);
+    const OGRSpatialReference *poCutlineSRS =
+        poMultiPolygon->getSpatialReference();
 
     /* -------------------------------------------------------------------- */
     /*      Detect if there's no transform at all involved, in which case   */
     /*      we can avoid densification.                                     */
     /* -------------------------------------------------------------------- */
     bool bMayNeedDensify = true;
-    if (hRasterSRS != nullptr && hCutlineSRS != nullptr &&
-        OSRIsSame(hRasterSRS, hCutlineSRS) && GDALGetGCPCount(hSrcDS) == 0 &&
-        GDALGetMetadata(hSrcDS, "RPC") == nullptr &&
-        GDALGetMetadata(hSrcDS, "GEOLOCATION") == nullptr &&
-        CSLFetchNameValue(papszTO_In, "GEOLOC_ARRAY") == nullptr &&
-        CSLFetchNameValue(papszTO_In, "SRC_GEOLOC_ARRAY") == nullptr)
+    if (poRasterSRS && poCutlineSRS && poRasterSRS->IsSame(poCutlineSRS) &&
+        poSrcDS->GetGCPCount() == 0 && !poSrcDS->GetMetadata("RPC") &&
+        !poSrcDS->GetMetadata("GEOLOCATION") &&
+        !CSLFetchNameValue(papszTO_In, "GEOLOC_ARRAY") &&
+        !CSLFetchNameValue(papszTO_In, "SRC_GEOLOC_ARRAY"))
     {
-        char **papszTOTmp = CSLDuplicate(papszTO_In);
-        papszTOTmp = CSLSetNameValue(papszTOTmp, "SRC_SRS", nullptr);
-        papszTOTmp = CSLSetNameValue(papszTOTmp, "DST_SRS", nullptr);
-        if (CSLCount(papszTOTmp) == 0)
+        CPLStringList aosTOTmp(papszTO_In);
+        aosTOTmp.SetNameValue("SRC_SRS", nullptr);
+        aosTOTmp.SetNameValue("DST_SRS", nullptr);
+        if (aosTOTmp.size() == 0)
         {
             bMayNeedDensify = false;
         }
-        CSLDestroy(papszTOTmp);
     }
 
     /* -------------------------------------------------------------------- */
     /*      Compare source raster SRS and cutline SRS                       */
     /* -------------------------------------------------------------------- */
-    if (hRasterSRS != nullptr && hCutlineSRS != nullptr)
+    if (poRasterSRS && poCutlineSRS)
     {
         /* OK, we will reproject */
     }
-    else if (hRasterSRS != nullptr && hCutlineSRS == nullptr)
+    else if (poRasterSRS && !poCutlineSRS)
     {
         CPLError(
             CE_Warning, CPLE_AppDefined,
@@ -4605,7 +4921,7 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
             "destination SRS.\n"
             "If not, cutline results may be incorrect.");
     }
-    else if (hRasterSRS == nullptr && hCutlineSRS != nullptr)
+    else if (!poRasterSRS && poCutlineSRS)
     {
         CPLError(CE_Warning, CPLE_AppDefined,
                  "the input vector layer has a SRS, but the source raster "
@@ -4613,40 +4929,38 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
                  "Cutline results may be incorrect.");
     }
 
-    if (hRasterSRS != nullptr)
-        OSRDestroySpatialReference(hRasterSRS);
+    auto poCTCutlineToSrc = CreateCTCutlineToSrc(
+        poRasterSRS.get(), poDstSRS.get(), poCutlineSRS, papszTO_In);
 
-    char **papszTO = CSLDuplicate(papszTO_In);
-    if (hCutlineSRS != nullptr)
+    CPLStringList aosTO(papszTO_In);
+
+    if (pszThisTargetSRS && !osProjection.empty())
     {
-        char *pszCutlineSRS_WKT = nullptr;
-
-        OSRExportToWkt(hCutlineSRS, &pszCutlineSRS_WKT);
-        papszTO = CSLSetNameValue(papszTO, "DST_SRS", pszCutlineSRS_WKT);
-        CPLFree(pszCutlineSRS_WKT);
+        // Avoid any reprojection when using the GenImgProjTransformer
+        aosTO.SetNameValue("DST_SRS", osProjection.c_str());
     }
+    aosTO.SetNameValue("SRC_COORDINATE_EPOCH", nullptr);
+    aosTO.SetNameValue("DST_COORDINATE_EPOCH", nullptr);
+    aosTO.SetNameValue("COORDINATE_OPERATION", nullptr);
 
     /* -------------------------------------------------------------------- */
     /*      It may be unwise to let the mask geometry be re-wrapped by      */
     /*      the CENTER_LONG machinery as this can easily screw up world     */
     /*      spanning masks and invert the mask topology.                    */
     /* -------------------------------------------------------------------- */
-    papszTO = CSLSetNameValue(papszTO, "INSERT_CENTER_LONG", "FALSE");
+    aosTO.SetNameValue("INSERT_CENTER_LONG", "FALSE");
 
     /* -------------------------------------------------------------------- */
     /*      Transform the geometry to pixel/line coordinates.               */
     /* -------------------------------------------------------------------- */
     /* The cutline transformer will *invert* the hSrcImageTransformer */
-    /* so it will convert from the cutline SRS to the source pixel/line */
+    /* so it will convert from the source SRS to the source pixel/line */
     /* coordinates */
-    CutlineTransformer oTransformer(
-        GDALCreateGenImgProjTransformer2(hSrcDS, nullptr, papszTO));
-
-    CSLDestroy(papszTO);
+    CutlineTransformer oTransformer(GDALCreateGenImgProjTransformer2(
+        GDALDataset::ToHandle(poSrcDS), nullptr, aosTO.List()));
 
     if (oTransformer.hSrcImageTransformer == nullptr)
     {
-        OGR_G_DestroyGeometry(hMultiPolygon);
         return CE_Failure;
     }
 
@@ -4656,22 +4970,38 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
     // maximum length of a segment is no longer than 1 pixel, and if not,
     // we densify the input geometry before doing a new reprojection
     const double dfMaxLengthInSpatUnits =
-        GetMaximumSegmentLength(OGRGeometry::FromHandle(hMultiPolygon));
-    OGRErr eErr = OGR_G_Transform(
-        hMultiPolygon,
-        reinterpret_cast<OGRCoordinateTransformationH>(&oTransformer));
+        GetMaximumSegmentLength(poMultiPolygon.get());
+    OGRErr eErr = OGRERR_NONE;
+    if (poCTCutlineToSrc)
+    {
+        poMultiPolygon.reset(OGRGeometryFactory::transformWithOptions(
+            poMultiPolygon.get(), poCTCutlineToSrc.get(), nullptr));
+        if (!poMultiPolygon)
+        {
+            eErr = OGRERR_FAILURE;
+            poMultiPolygon.reset(poCutline->clone());
+            poMultiPolygon->transform(poCTCutlineToSrc.get());
+        }
+    }
+    if (poMultiPolygon->transform(&oTransformer) != OGRERR_NONE)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "poMultiPolygon->transform(&oTransformer) failed at line %d",
+                 __LINE__);
+        eErr = OGRERR_FAILURE;
+    }
     const double dfInitialMaxLengthInPixels =
-        GetMaximumSegmentLength(OGRGeometry::FromHandle(hMultiPolygon));
+        GetMaximumSegmentLength(poMultiPolygon.get());
 
     CPLPushErrorHandler(CPLQuietErrorHandler);
     const bool bWasValidInitially =
-        ValidateCutline(OGRGeometry::FromHandle(hMultiPolygon), false);
+        ValidateCutline(poMultiPolygon.get(), false);
     CPLPopErrorHandler();
     if (!bWasValidInitially)
     {
         CPLDebug("WARP", "Cutline is not valid after initial reprojection");
         char *pszWKT = nullptr;
-        OGR_G_ExportToWkt(hMultiPolygon, &pszWKT);
+        poMultiPolygon->exportToWkt(&pszWKT);
         CPLDebug("GDALWARP", "WKT = \"%s\"", pszWKT ? pszWKT : "(null)");
         CPLFree(pszWKT);
     }
@@ -4718,26 +5048,35 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
         const int MAX_ITERATIONS = 10;
         for (int i = 0; i < MAX_ITERATIONS; i++)
         {
-            OGR_G_DestroyGeometry(hMultiPolygon);
-            hMultiPolygon = OGR_G_Clone(hCutline);
-            OGR_G_Segmentize(hMultiPolygon, dfSegmentSize);
+            poMultiPolygon.reset(poCutline->clone());
+            poMultiPolygon->segmentize(dfSegmentSize);
             if (i == MAX_ITERATIONS - 1)
             {
                 char *pszWKT = nullptr;
-                OGR_G_ExportToWkt(hMultiPolygon, &pszWKT);
+                poMultiPolygon->exportToWkt(&pszWKT);
                 CPLDebug("WARP",
                          "WKT of polygon after densification with segment size "
                          "= %f: %s",
                          dfSegmentSize, pszWKT);
                 CPLFree(pszWKT);
             }
-            eErr = OGR_G_Transform(
-                hMultiPolygon,
-                reinterpret_cast<OGRCoordinateTransformationH>(&oTransformer));
+            eErr = OGRERR_NONE;
+            if (poCTCutlineToSrc)
+            {
+                poMultiPolygon.reset(OGRGeometryFactory::transformWithOptions(
+                    poMultiPolygon.get(), poCTCutlineToSrc.get(), nullptr));
+                if (!poMultiPolygon)
+                {
+                    eErr = OGRERR_FAILURE;
+                    break;
+                }
+            }
+            if (poMultiPolygon->transform(&oTransformer) != OGRERR_NONE)
+                eErr = OGRERR_FAILURE;
             if (eErr == OGRERR_NONE)
             {
-                const double dfMaxLengthInPixels = GetMaximumSegmentLength(
-                    OGRGeometry::FromHandle(hMultiPolygon));
+                const double dfMaxLengthInPixels =
+                    GetMaximumSegmentLength(poMultiPolygon.get());
                 if (bWasValidInitially)
                 {
                     // In some cases, the densification itself results in a
@@ -4745,15 +5084,15 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
                     // RPC DEM transformation, so in those cases, try a less
                     // dense cutline
                     CPLPushErrorHandler(CPLQuietErrorHandler);
-                    const bool bIsValid = ValidateCutline(
-                        OGRGeometry::FromHandle(hMultiPolygon), false);
+                    const bool bIsValid =
+                        ValidateCutline(poMultiPolygon.get(), false);
                     CPLPopErrorHandler();
                     if (!bIsValid)
                     {
                         if (i == MAX_ITERATIONS - 1)
                         {
                             char *pszWKT = nullptr;
-                            OGR_G_ExportToWkt(hMultiPolygon, &pszWKT);
+                            poMultiPolygon->exportToWkt(&pszWKT);
                             CPLDebug("WARP",
                                      "After densification, cutline maximum "
                                      "segment size is now %.0f pixel, "
@@ -4791,13 +5130,11 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
         {
             CPLError(CE_Failure, CPLE_AppDefined,
                      "Cutline transformation failed");
-            OGR_G_DestroyGeometry(hMultiPolygon);
             return CE_Failure;
         }
     }
-    else if (!ValidateCutline(OGRGeometry::FromHandle(hMultiPolygon), true))
+    else if (!ValidateCutline(poMultiPolygon.get(), true))
     {
-        OGR_G_DestroyGeometry(hMultiPolygon);
         return CE_Failure;
     }
 
@@ -4816,10 +5153,10 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
         OGRLinearRing *poRing = new OGRLinearRing();
         poRing->addPoint(-dfCutlineBlendDist, -dfCutlineBlendDist);
         poRing->addPoint(-dfCutlineBlendDist,
-                         dfCutlineBlendDist + GDALGetRasterYSize(hSrcDS));
-        poRing->addPoint(dfCutlineBlendDist + GDALGetRasterXSize(hSrcDS),
-                         dfCutlineBlendDist + GDALGetRasterYSize(hSrcDS));
-        poRing->addPoint(dfCutlineBlendDist + GDALGetRasterXSize(hSrcDS),
+                         dfCutlineBlendDist + poSrcDS->GetRasterYSize());
+        poRing->addPoint(dfCutlineBlendDist + poSrcDS->GetRasterXSize(),
+                         dfCutlineBlendDist + poSrcDS->GetRasterYSize());
+        poRing->addPoint(dfCutlineBlendDist + poSrcDS->GetRasterXSize(),
                          -dfCutlineBlendDist);
         poRing->addPoint(-dfCutlineBlendDist, -dfCutlineBlendDist);
         OGRPolygon oSrcDSFootprint;
@@ -4827,12 +5164,11 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
         OGREnvelope sSrcDSEnvelope;
         oSrcDSFootprint.getEnvelope(&sSrcDSEnvelope);
         OGREnvelope sCutlineEnvelope;
-        OGRGeometry::FromHandle(hMultiPolygon)->getEnvelope(&sCutlineEnvelope);
+        poMultiPolygon->getEnvelope(&sCutlineEnvelope);
         if (sCutlineEnvelope.Contains(sSrcDSEnvelope) &&
-            OGRGeometry::FromHandle(hMultiPolygon)->Contains(&oSrcDSFootprint))
+            poMultiPolygon->Contains(&oSrcDSFootprint))
         {
             CPLDebug("WARP", "Source dataset fully contained within cutline.");
-            OGR_G_DestroyGeometry(hMultiPolygon);
             return CE_None;
         }
     }
@@ -4841,10 +5177,8 @@ static CPLErr TransformCutlineToSource(GDALDatasetH hSrcDS,
     /*      Convert aggregate geometry into WKT.                            */
     /* -------------------------------------------------------------------- */
     char *pszWKT = nullptr;
-
-    OGR_G_ExportToWkt(hMultiPolygon, &pszWKT);
+    poMultiPolygon->exportToWkt(&pszWKT);
     // fprintf(stderr, "WKT = \"%s\"\n", pszWKT ? pszWKT : "(null)");
-    OGR_G_DestroyGeometry(hMultiPolygon);
 
     *ppapszWarpOptions = CSLSetNameValue(*ppapszWarpOptions, "CUTLINE", pszWKT);
     CPLFree(pszWKT);
@@ -5274,6 +5608,7 @@ GDALWarpAppOptionsNew(char **papszArgv,
             {
                 return nullptr;
             }
+            psOptions->bResampleAlgSpecifiedByUser = true;
         }
 
         else if (EQUAL(papszArgv[i], "-cutline"))

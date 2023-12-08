@@ -27,7 +27,7 @@ level margin: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .\" new: \\n[rst2man-indent\\n[rst2man-indent-level]]
 .in \\n[rst2man-indent\\n[rst2man-indent-level]]u
 ..
-.TH "RGB2PCT" "1" "Sep 05, 2023" "" "GDAL"
+.TH "RGB2PCT" "1" "Nov 28, 2023" "" "GDAL"
 .SH NAME
 rgb2pct \- Convert a 24bit RGB image to 8bit paletted.
 .SH SYNOPSIS
@@ -36,7 +36,8 @@ rgb2pct \- Convert a 24bit RGB image to 8bit paletted.
 .sp
 .nf
 .ft C
-rgb2pct.py [\-n colors | \-pct palette_file] [\-of format] <source_file> <dest_file>
+rgb2pct.py [\-\-help] [\-\-help\-general]
+           [\-n colors | \-pct palette_file] [\-of format] <source_file> <dest_file>
 .ft P
 .fi
 .UNINDENT
@@ -48,6 +49,16 @@ using a median cut algorithm on a downsampled RGB histogram.   Then it
 converts the image into a pseudo\-colored image using the color table.
 This conversion utilizes Floyd\-Steinberg dithering (error diffusion) to
 maximize output image visual quality.
+.INDENT 0.0
+.TP
+.B \-\-help
+Show this help message and exit
+.UNINDENT
+.INDENT 0.0
+.TP
+.B \-\-help\-general
+Gives a brief usage message for the generic GDAL commandline options and exit.
+.UNINDENT
 .INDENT 0.0
 .TP
 .B \-n <color>
