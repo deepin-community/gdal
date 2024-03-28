@@ -1,3 +1,265 @@
+# GDAL/OGR 3.8.4 Release Notes
+
+GDAL 3.8.4 is a bugfix release.
+
+## Build
+
+* FindECW.cmake: make it work for Windows 32-bit builds (#9106)
+* Restore use of gmtime_r and localtime_r; extend to ctime_r; use Windows
+  variants too
+* FindSQLite3.cmake: improve detection of static libsqlite3.a (#9096)
+* bash_completion installation: Allow the project_binary_dir to contain a
+  whitespace
+
+## Docker build recipes
+
+* docker/ubuntu-full/Dockerfile: update to Arrow 15.0.0
+* docker/ubuntu-full/Dockerfile: pin libarrow-acero-dev version (#9183)
+* docker/ubuntu-full/Dockerfile: disable AVX2 when building TileDB
+
+## GDAL 3.8.4
+
+### Port
+
+* /vsisparse/: fix Stat() on files larger than 4 GB on 32-bit builds
+* CPLAtof()/CPLStrtod(): recognize again INF and -INF
+* /vsicurl/: fix potential multithreaded crash when downloading the same region
+  in parallel and that the download fails
+
+### Core
+
+* PAM: only unset GPF_DIRTY flag
+* GDALOverviewDataset: avoid setting SetEnableOverviews(false) during lifetime
+  of object. Just do it transiently
+
+### Utilities
+
+* gdalinfo: do not emit errors if corner coordinate reprojection fails
+* gdalwarp: do not enable blank line detection when -tap and -te are specified
+ (#9059)
+
+### Raster drivers
+
+BMP driver:
+ * fix reading images larger than 4GB (3.4.0 regression)
+
+EEDA/EEDAI driver:
+ * use 'crsWkt' element
+
+GRIB driver:
+ * degrib: use gmtime_r() or gmtime_s() when possible
+
+netCDF driver:
+ * use VSILocalTime()
+
+PCIDSK driver:
+ * PCIDSK SDK: use ctime_r() or ctime_s() when possible
+
+PDF driver:
+ * correctly initialize PAM when opening a subdataset (specific page for
+   example)
+
+VRT driver:
+ * VRTPansharpenedRasterBand::GetOverviewCount(): robustify against potential
+   failure of GDALCreateOverviewDataset()
+
+WMS driver:
+ * fix nullptr dereference on invalid document (ossfuzz #65772)
+
+## OGR 3.8.4
+
+### Core
+
+* ExecuteSQL(dialect=SQLite): support 'SELECT\n' for example (#9093)
+* OGRGeometryFactory::createGeometry(): do not assert on wkbUnknown input
+
+### Utilities
+
+* ogr2ogr: Arrow code path: take into account -limit parameter for
+  MAX_FEATURES_IN_BATCH
+
+### Vector drivers
+
+GeoRSS, GPX, JML, KML, LVBAG, SVG, XLSX drivers:
+ * harmonize on a 8192 byte large parsing buffer on all platforms
+
+Arrow/Parquet driver:
+ * add (minimum) support for libarrow 15.0
+ * MapArrowTypeToOGR(): make the code robust to potentially new entries in the
+   arrow::Type enumeration
+
+CAD driver:
+ * Internal libopencad: use localtime_r() or localtime_s() when possible
+
+CSV driver:
+ * do not quote numeric fields even if STRING_QUOTING=ALWAYS (3.8.1 regression)
+   (#55808)
+
+GMLAS driver:
+ * recognize GeometricPrimitivePropertyType
+
+LIBKML driver:
+ * fix crash on a gx:Track without when subelements (qgis/qgis#55963)
+
+MSSQLSpatial driver:
+ * Fix BCP performance problem (#9112)
+
+MySQL driver:
+ * fix/workaround server-side spatial filtering when SRS is geographic with
+   MySQL >= 8 (qgis/QGIS#55463)
+
+ODS driver:
+ * fix parsing of large cells on Windows (at least with mingw64) with recent
+   expat 2.6.0 release
+
+PDF driver:
+ * vector stream parser: correctly parse structures like "[3 3.5] 0 d"
+
+PDS driver:
+ * fix compilation with Emscripten version 3.1.7
+
+SQLite driver:
+ * OGR2SQLITE_Setup(): robustify against potential crashing scenario
+
+### Python bindings
+
+* remove run of 'python -m lib2to3' that is a no-op, given that lib2to3 is
+  removed in python 3.13 (#9173)
+
+# GDAL/OGR 3.8.3 Release Notes
+
+GDAL 3.8.3 is a bugfix release.
+
+## Build
+
+* infback9: fix various build issues with clang 17
+* fix build with sqlite 3.36.x (#9021)
+* fix build of optional utility gdal2ogr
+
+## GDAL 3.8.3
+
+### Port
+
+* AWS S3: add explicit error message when IMDS fails and we know we are on EC2
+
+### Utilities
+
+* gdalbuildvrt: in -separate mode, only use ComplexSource if needed
+
+### Raster drivers
+
+VRT driver:
+* VRTDerivedRasterBand::IRasterIO(): fix potential multiplication overflow
+
+## OGR 3.8.3
+
+### OGRSpatialReference
+
+* CoordinateTransformation::TransformBounds(): fix polar stereographic (
+  including pole) to Web Mercator (#8996)
+
+### Utilities
+
+* ogr2ogr: do not use ArrowArray interface if -clipsrc, -clipdst, -gcp or
+  -wrapdateline are specified (#9013)
+
+### Vector drivers
+
+* OGRArrowArrayHelper::SetBoolOn(): fix wrong bit shift computation.
+  Affects ogr2ogr from GPKG/FlatGeoBuf to something else) (#8998)
+
+GPKG driver:
+ * Fix error message that sometimes occurred with multi-threaded ArrowArray
+   interface, and add OGR_GPKG_NUM_THREADS config option. (#9018, 9030)
+
+GeoJSON driver:
+  * Internal libjson: resync random_seed.c with upstream, and use getrandom()
+    implementation when available (#9024)
+
+# GDAL/OGR 3.8.2 Release Notes
+
+GDAL 3.8.2 is a bugfix release.
+
+## GDAL 3.8.2
+
+### Port
+
+* /vsis3/: takes into account AWS_CONTAINER_CREDENTIALS_FULL_URI environment
+  variable (#8858)
+* cpl_safemaths.hpp: fix compilation with clang targeting Windows (#8898)
+* CPLGetPhysicalRAM(): fix getting right value when running inside Docker on a
+  cgroups v1 system (like Amazon Linux 2) (#8968)
+
+### Algorithms
+
+* Rasterization: avoid burning pixel that we only touch (with an empty
+  intersection) (#8918)
+
+### Utilities
+
+* gdal_footprint: return an error if the requested output layer doesn't exist
+* gdal_translate: avoid useless extra GDALOpen() call on a target GeoRaster
+* pct2rgb.py: emit explicit exception when source file has no color table (#8793)
+
+### Raster drivers
+
+HDF5 driver:
+ * classic 2D API: handle char,ushort,uint,int64,uint64 attributes when
+   reading them as double
+ * multidim: better warning when nodata value is out of range
+
+JPEGXL driver:
+ * add compatibility with latest libjxl git HEAD
+
+NGSGEOID driver:
+ * make dataset identification robust to NaN values (#8879)
+
+OGCAPI driver:
+ * make it robust to missing 'type' on 'self' link (#8912)
+
+STACTA driver:
+ * use GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR instead of
+   CPL_VSIL_CURL_ALLOWED_EXTENSIONS
+ * use STAC Raster extension to get number of bands, their data type, nodata
+   value, scale/offset, units, and avoid fetching a metatile
+ * add support for upcoming STAC 1.1 which merges eo:bands and raster:bands
+   into bands
+
+netCDF, HDF4, HDF5:
+ * SubdatasetInfo API: fix various issues (#8869, #8881)
+
+VRT driver:
+ * VRTComplexSource: fix excessive RAM usage with many sources (#8967, 3.8.0 regression)
+
+### OGR 3.8.2
+
+### Core
+
+* OGRGeometryFactory::transformWithOptions(): fix WRAPDATELINE=YES on
+  multipoint geometries (#8889)
+* OGRSpatialReference::importFromUrl(): changes to no longer use a
+  'Accept: application/x-ogcwkt' header
+* OSRPJContextHolder: call pthread_atfork() once for the process, and
+  re-enable it for MacOS
+* OGRWKBIntersectsPessimisticFixture: handle all geometry types
+
+### Utilities
+
+* ogrinfo: really honours -if (refs #8590)
+* ogr2ogr: implement -if
+
+### Vector drivers
+
+* PMTiles: Correct extension for temporary mbtiles file
+
+## Python bindings
+
+* gdal.Footprint(): add a minRingArea option
+* fix build/install when there's a gdal-config from a pre-installed version in
+  the PATH (#8882)
+* add missing reference increment on Py_None in error case of
+  Geometry.GetPoints() (#8945)
+
 # GDAL/OGR 3.8.1 Release Notes
 
 GDAL 3.8.1 is a bugfix release.
