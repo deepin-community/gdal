@@ -53,7 +53,7 @@ Build-Depends: cmake,
                libzstd-dev,
                netcdf-bin,
                patch,
-               pkg-config,
+               pkgconf,
                pkg-kde-tools,
                python3-all-dev,
                python3-numpy,
@@ -70,6 +70,7 @@ Rules-Requires-Root: no
 
 Package: libgdal34
 Architecture: any
+Multi-Arch: same
 Section: libs
 Depends: gdal-data (>= ${source:Version}),
          gdal-plugins (>= ${binary:Version}),
@@ -162,6 +163,7 @@ Description: Geospatial Data Abstraction Library - Development files
 
 Package: gdal-bin
 Architecture: any
+Multi-Arch: foreign
 Depends: python3-gdal (= ${binary:Version}),
          ${python3:Depends},
          ${shlibs:Depends},
@@ -216,6 +218,7 @@ Description: Geospatial Data Abstraction Library - Data files
 
 Package: gdal-plugins
 Architecture: any
+Multi-Arch: same
 Depends: ${misc:Depends}
 Description: Geospatial Data Abstraction Library - Plugins
  GDAL is a translator library for raster geospatial data formats.
