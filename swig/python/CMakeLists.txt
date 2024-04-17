@@ -97,19 +97,6 @@ set(GDAL_PYTHON_CSOURCES
         COMMAND ${CMAKE_COMMAND} ${WERROR_DEV_FLAG} "-DFILE=${_file}" -P ${CMAKE_CURRENT_SOURCE_DIR}/modify_cpp_files.cmake)
   endforeach()
 
-  if (NOT Python_EXECUTABLE)
-    message(FATAL_ERROR "Python_EXECUTABLE variable not set")
-  endif()
-  foreach(_file IN ITEMS ${GDAL_PYTHON_PYSOURCES})
-      file(TO_NATIVE_PATH "${_file}" _native_file)
-      add_custom_command(
-        OUTPUT ${_file}
-        APPEND
-        COMMAND
-          ${Python_EXECUTABLE} -m lib2to3 --fix=import --fix=next --fix=renames --fix=unicode --fix=ws_comma --fix=xrange
-          --write --write-unchanged-files --nobackups  ${_native_file})
-  endforeach()
-
 add_custom_target(python_generated_files
   DEPENDS ${GDAL_PYTHON_PYSOURCES} ${GDAL_PYTHON_CSOURCES}
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
@@ -270,9 +257,14 @@ if (Python_Interpreter_FOUND)
       set(GDAL_LIB_DEP_FOR_PY_SO "${GDAL_LIB_TARGET_NAME}")
   endif()
 
+  if(WIN32)
+       set(PATH_SEP ";")
+    else()
+       set(PATH_SEP ":")
+    endif()
   add_custom_command(
     OUTPUT ${PY_SO_LIST}
-    COMMAND ${CMAKE_COMMAND} ${WERROR_DEV_FLAG} -P "${BUILD_EXT_FILENAME}"
+    COMMAND ${CMAKE_COMMAND} -E env "\"PATH=${PROJECT_BINARY_DIR}/apps${PATH_SEP}$ENV{PATH}\"" ${CMAKE_COMMAND} ${WERROR_DEV_FLAG} -P "${BUILD_EXT_FILENAME}"
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     DEPENDS ${GDAL_LIB_DEP_FOR_PY_SO} ${GDAL_PYTHON_PYSOURCES} ${GDAL_PYTHON_CSOURCES} "${BUILD_EXT_FILENAME}"
             ${PROJECT_SOURCE_DIR}/gcore/gdal_priv.h)

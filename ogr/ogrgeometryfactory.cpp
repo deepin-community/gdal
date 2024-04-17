@@ -621,6 +621,9 @@ OGRGeometryFactory::createGeometry(OGRwkbGeometryType eGeometryType)
             poGeom = new (std::nothrow) OGRTriangulatedSurface();
             break;
 
+        case wkbUnknown:
+            break;
+
         default:
             CPLAssert(false);
             break;
@@ -2917,6 +2920,22 @@ static void AddSimpleGeomToMulti(OGRGeometryCollection *poMulti,
 #endif  // #ifdef HAVE_GEOS
 
 /************************************************************************/
+/*                       WrapPointDateLine()                            */
+/************************************************************************/
+
+static void WrapPointDateLine(OGRPoint *poPoint)
+{
+    if (poPoint->getX() > 180)
+    {
+        poPoint->setX(fmod(poPoint->getX() + 180, 360) - 180);
+    }
+    else if (poPoint->getX() < -180)
+    {
+        poPoint->setX(-(fmod(-poPoint->getX() + 180, 360) - 180));
+    }
+}
+
+/************************************************************************/
 /*                 CutGeometryOnDateLineAndAddToMulti()                 */
 /************************************************************************/
 
@@ -2927,6 +2946,14 @@ static void CutGeometryOnDateLineAndAddToMulti(OGRGeometryCollection *poMulti,
     const OGRwkbGeometryType eGeomType = wkbFlatten(poGeom->getGeometryType());
     switch (eGeomType)
     {
+        case wkbPoint:
+        {
+            auto poPoint = poGeom->toPoint()->clone();
+            WrapPointDateLine(poPoint);
+            poMulti->addGeometryDirectly(poPoint);
+            break;
+        }
+
         case wkbPolygon:
         case wkbLineString:
         {
@@ -3913,19 +3940,18 @@ OGRGeometry *OGRGeometryFactory::transformWithOptions(
         }
         // TODO and we should probably also test that the axis order + data axis
         // mapping is long-lat...
-
         const OGRwkbGeometryType eType =
             wkbFlatten(poDstGeom->getGeometryType());
         if (eType == wkbPoint)
         {
             OGRPoint *poDstPoint = poDstGeom->toPoint();
-            if (poDstPoint->getX() > 180)
+            WrapPointDateLine(poDstPoint);
+        }
+        else if (eType == wkbMultiPoint)
+        {
+            for (auto *poDstPoint : *(poDstGeom->toMultiPoint()))
             {
-                poDstPoint->setX(fmod(poDstPoint->getX() + 180, 360) - 180);
-            }
-            else if (poDstPoint->getX() < -180)
-            {
-                poDstPoint->setX(-(fmod(-poDstPoint->getX() + 180, 360) - 180));
+                WrapPointDateLine(poDstPoint);
             }
         }
         else
@@ -4530,6 +4556,10 @@ OGRGeometry *OGRGeometryFactory::forceTo(OGRGeometry *poGeom,
     if (poGeom == nullptr)
         return poGeom;
 
+    const OGRwkbGeometryType eTargetTypeFlat = wkbFlatten(eTargetType);
+    if (eTargetTypeFlat == wkbUnknown)
+        return poGeom;
+
     if (poGeom->IsEmpty())
     {
         OGRGeometry *poRet = createGeometry(eTargetType);
@@ -4542,10 +4572,6 @@ OGRGeometry *OGRGeometryFactory::forceTo(OGRGeometry *poGeom,
         delete poGeom;
         return poRet;
     }
-
-    const OGRwkbGeometryType eTargetTypeFlat = wkbFlatten(eTargetType);
-    if (eTargetTypeFlat == wkbUnknown)
-        return poGeom;
 
     OGRwkbGeometryType eType = poGeom->getGeometryType();
     OGRwkbGeometryType eTypeFlat = wkbFlatten(eType);
