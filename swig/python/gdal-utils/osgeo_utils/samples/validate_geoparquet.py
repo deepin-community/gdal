@@ -10,23 +10,7 @@
 ###############################################################################
 # Copyright (c) 2023, Even Rouault <even.rouault at spatialys.com>
 #
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included
-# in all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-# OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
+# SPDX-License-Identifier: MIT
 ###############################################################################
 
 import json
@@ -181,8 +165,7 @@ class GeoParquetValidator(object):
             if not self.local_schema:
                 return
 
-        if self.local_schema:
-            schema_j = json.loads(open(self.local_schema, "rb").read())
+            version = None
         else:
             version = geo_j["version"]
             if not isinstance(version, str):
@@ -190,7 +173,11 @@ class GeoParquetValidator(object):
                     "'geo[\"version\"]' is not a string. Value of 'geo' = '%s'" % geo
                 )
 
+        if self.local_schema:
+            schema_j = json.loads(open(self.local_schema, "rb").read())
+        else:
             schema_url = f"https://github.com/opengeospatial/geoparquet/releases/download/v{version}/schema.json"
+
             if schema_url not in geoparquet_schemas:
                 import urllib
 
@@ -313,7 +300,100 @@ class GeoParquetValidator(object):
                             f"{geometry_type} is declared several times in geometry_types[]"
                         )
 
+    def _check_data_with_high_level_ogr_api(self, lyr, columns):
+        """Use for GeoArrow validation"""
+
+        if gdal.VersionInfo() < "3090000":
+            raise Exception("GDAL 3.9 or later required for GeoArrow data validation")
+
+        lyr.SetIgnoredFields(
+            [
+                lyr.GetLayerDefn().GetFieldDefn(i).GetName()
+                for i in range(lyr.GetLayerDefn().GetFieldCount())
+            ]
+        )
+
+        list_of_set_geometry_types = []
+        orientations = []
+        encodings = []
+        assert len(columns) == lyr.GetLayerDefn().GetGeomFieldCount()
+        for i in range(lyr.GetLayerDefn().GetGeomFieldCount()):
+            column_def = columns[lyr.GetLayerDefn().GetGeomFieldDefn(i).GetName()]
+
+            encodings.append(column_def["encoding"])
+
+            if "geometry_types" in column_def:
+                geometry_types = column_def["geometry_types"]
+                set_geometry_types = set(geometry_types)
+            else:
+                set_geometry_types = set()
+            list_of_set_geometry_types.append(set_geometry_types)
+
+            if "orientation" in column_def:
+                orientation = column_def["orientation"]
+            else:
+                orientation = None
+            orientations.append(orientation)
+
+        map_ogr_geom_type_to_geoarrow_encoding = {
+            ogr.wkbPoint: "point",
+            ogr.wkbLineString: "linestring",
+            ogr.wkbPolygon: "polygon",
+            ogr.wkbMultiPoint: "multipoint",
+            ogr.wkbMultiLineString: "multilinestring",
+            ogr.wkbMultiPolygon: "multipolygon",
+        }
+
+        for row, f in enumerate(lyr):
+            for i in range(lyr.GetLayerDefn().GetGeomFieldCount()):
+                g = f.GetGeomFieldRef(i)
+                if g:
+                    ogr_geom_type = g.GetGeometryType()
+                    if ogr_geom_type not in map_ogr_geom_type_to_geoparquet:
+                        self._error(
+                            f"Geometry at row {row} is of unexpected type for GeoParquet: %s"
+                            % g.GetGeometryName()
+                        )
+                    elif list_of_set_geometry_types[i]:
+                        geoparquet_geom_type = map_ogr_geom_type_to_geoparquet[
+                            ogr_geom_type
+                        ]
+                        if geoparquet_geom_type not in list_of_set_geometry_types[i]:
+                            self._error(
+                                f"Geometry at row {row} is of type {geoparquet_geom_type}, but not listed in geometry_types[]"
+                            )
+
+                    ogr_flat_geom_type = ogr.GT_Flatten(ogr_geom_type)
+                    if ogr_flat_geom_type not in map_ogr_geom_type_to_geoarrow_encoding:
+                        self._error(
+                            f"Geometry at row {row} is of unexpected type for a GeoArrow encoding of GeoParquet: %s"
+                            % g.GetGeometryName()
+                        )
+                    elif (
+                        map_ogr_geom_type_to_geoarrow_encoding[ogr_flat_geom_type]
+                        != encodings[i]
+                    ):
+                        self._error(
+                            f"Geometry at row {row} is a %s but does not match the declared encoding of %s"
+                            % (ogr.GeometryTypeToName(ogr_geom_type), encodings[i])
+                        )
+
+                    if orientations[i] == "counterclockwise":
+                        self._check_counterclockwise(g, row)
+
     def _check_data(self, lyr, columns):
+
+        # For non-WKB encoding, just use the high level OGR API
+        use_high_level_ogr_api = False
+        for _, column_def in columns.items():
+            if column_def["encoding"] != "WKB":
+                use_high_level_ogr_api = True
+                break
+
+        if use_high_level_ogr_api:
+            self._check_data_with_high_level_ogr_api(lyr, columns)
+            return
+
         lyr.SetIgnoredFields(
             [
                 lyr.GetLayerDefn().GetFieldDefn(i).GetName()

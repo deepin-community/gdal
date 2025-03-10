@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2015, Matthieu Volat <matthieu.volat@ujf-grenoble.fr>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "gdal_frmts.h"
@@ -49,6 +33,7 @@ enum Scheme
     BIP = 1,
     BSQ = 2
 };
+
 static const char *const apszSchemeNames[] = {"BIL", "BIP", "BSQ", nullptr};
 
 /************************************************************************/
@@ -577,7 +562,7 @@ GDALDataset *ISCEDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<ISCEDataset>();
+    auto poDS = std::make_unique<ISCEDataset>();
     poDS->nRasterXSize = nWidth;
     poDS->nRasterYSize = nHeight;
     poDS->eAccess = poOpenInfo->eAccess;
@@ -631,7 +616,7 @@ GDALDataset *ISCEDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
                 // theoretical nLineOffset multiplied by nBands...
                 VSIFSeekL(poDS->fpImage, 0, SEEK_END);
                 const GUIntBig nWrongFileSize =
-                    nDTSize * nWidth *
+                    static_cast<GUIntBig>(nDTSize) * nWidth *
                     (static_cast<GUIntBig>(nHeight - 1) * nBands * nBands +
                      nBands);
                 if (VSIFTellL(poDS->fpImage) == nWrongFileSize)
@@ -684,7 +669,7 @@ GDALDataset *ISCEDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
 
     for (int b = 0; b < nBands; b++)
     {
-        auto poBand = cpl::make_unique<ISCERasterBand>(
+        auto poBand = std::make_unique<ISCERasterBand>(
             poDS.get(), b + 1, poDS->fpImage, nBandOffset * b, nPixelOffset,
             nLineOffset, eDataType, bNativeOrder);
         if (!poBand->IsValid())

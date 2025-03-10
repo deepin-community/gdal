@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Planet Labs
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_vsi_virtual.h"
@@ -141,7 +125,7 @@ VSIPMTilesOpen(const char *pszFilename, std::string &osSubfilename,
 
     std::string osFilename(pszFilename);
     if (!osFilename.empty() && osFilename.back() == '/')
-        osFilename.resize(osFilename.size() - 1);
+        osFilename.pop_back();
     pszFilename = osFilename.c_str();
 
     nZ = nX = nY = -1;
@@ -198,7 +182,7 @@ VSIPMTilesOpen(const char *pszFilename, std::string &osSubfilename,
     aosOptions.SetNameValue("DECOMPRESS_TILES", "NO");
     aosOptions.SetNameValue("ACCEPT_ANY_TILE_TYPE", "YES");
     oOpenInfo.papszOpenOptions = aosOptions.List();
-    auto poDS = cpl::make_unique<OGRPMTilesDataset>();
+    auto poDS = std::make_unique<OGRPMTilesDataset>();
     {
         CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
         if (!poDS->Open(&oOpenInfo))
@@ -259,8 +243,7 @@ VSIPMTilesFilesystemHandler::Open(const char *pszFilename,
     if (nComponents != 3)
         return nullptr;
 
-    CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
-    CPLErrorStateBackuper oBackuper;
+    CPLErrorStateBackuper oBackuper(CPLQuietErrorHandler);
 
     OGRPMTilesTileIterator oIter(poDS.get(), nZ, nX, nY, nX, nY);
     auto sTile = oIter.GetNextTile();
@@ -320,8 +303,7 @@ int VSIPMTilesFilesystemHandler::Stat(const char *pszFilename,
         return 0;
     }
 
-    CPLErrorHandlerPusher oErrorHandler(CPLQuietErrorHandler);
-    CPLErrorStateBackuper oBackuper;
+    CPLErrorStateBackuper oBackuper(CPLQuietErrorHandler);
 
     OGRPMTilesTileIterator oIter(poDS.get(), nZ, nX, nY, nX, nY);
     auto sTile = oIter.GetNextTile();

@@ -9,23 +9,7 @@
  * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2013, Kyle Shannon <kyle at pobox dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -250,7 +234,7 @@ GDALDataset *LCPDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<LCPDataset>();
+    auto poDS = std::make_unique<LCPDataset>();
     std::swap(poDS->fpImage, poOpenInfo->fpL);
 
     /* -------------------------------------------------------------------- */
@@ -1578,7 +1562,8 @@ GDALDataset *LCPDataset::CreateCopy(const char *pszFilename,
             GDALRasterBand *poBand = poSrcDS->GetRasterBand(iBand + 1);
             CPLErr eErr = poBand->RasterIO(
                 GF_Read, 0, iLine, nXSize, 1, panScanline + iBand, nXSize, 1,
-                GDT_Int16, nBands * 2, nBands * nXSize * 2, nullptr);
+                GDT_Int16, nBands * 2, static_cast<size_t>(nBands) * nXSize * 2,
+                nullptr);
             // Not sure what to do here.
             if (eErr != CE_None)
             {
@@ -1588,9 +1573,11 @@ GDALDataset *LCPDataset::CreateCopy(const char *pszFilename,
             }
         }
 #ifdef CPL_MSB
-        GDALSwapWords(panScanline, 2, nBands * nXSize, 2);
+        GDALSwapWordsEx(panScanline, 2, static_cast<size_t>(nBands) * nXSize,
+                        2);
 #endif
-        CPL_IGNORE_RET_VAL(VSIFWriteL(panScanline, 2, nBands * nXSize, fp));
+        CPL_IGNORE_RET_VAL(VSIFWriteL(
+            panScanline, 2, static_cast<size_t>(nBands) * nXSize, fp));
 
         if (!pfnProgress(iLine / static_cast<double>(nYSize), nullptr,
                          pProgressData))

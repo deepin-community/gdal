@@ -8,23 +8,7 @@
  * Copyright (c) 1998, 2002, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2007-2015, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "gtiffrasterband.h"
@@ -271,7 +255,6 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             return static_cast<CPLErr>(nErr);
     }
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
     bool bCanUseMultiThreadedRead = false;
     if (m_poGDS->m_nDisableMultiThreadedRead == 0 && eRWFlag == GF_Read &&
         m_poGDS->m_poThreadPool != nullptr && nXSize == nBufXSize &&
@@ -288,13 +271,36 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             bCanUseMultiThreadedRead = true;
         }
     }
-#endif
 
-    void *pBufferedData = nullptr;
+    // Cleanup data cached by below CacheMultiRange() call.
+    struct BufferedDataFreer
+    {
+        void *m_pBufferedData = nullptr;
+        TIFF *m_hTIFF = nullptr;
+
+        void Init(void *pBufferedData, TIFF *hTIFF)
+        {
+            m_pBufferedData = pBufferedData;
+            m_hTIFF = hTIFF;
+        }
+
+        ~BufferedDataFreer()
+        {
+            if (m_pBufferedData)
+            {
+                VSIFree(m_pBufferedData);
+                VSI_TIFFSetCachedRanges(TIFFClientdata(m_hTIFF), 0, nullptr,
+                                        nullptr, nullptr);
+            }
+        }
+    };
+
+    // bufferedDataFreer must be left in this scope !
+    BufferedDataFreer bufferedDataFreer;
+
     if (m_poGDS->eAccess == GA_ReadOnly && eRWFlag == GF_Read &&
         m_poGDS->HasOptimizedReadMultiRange())
     {
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
         if (bCanUseMultiThreadedRead &&
             VSI_TIFFGetVSILFile(TIFFClientdata(m_poGDS->m_hTIFF))->HasPRead())
         {
@@ -304,10 +310,7 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         else
         {
             bCanUseMultiThreadedRead = false;
-#endif
             GTiffRasterBand *poBandForCache = this;
-
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
             if (!m_poGDS->m_bStreamingIn && m_poGDS->m_bBlockOrderRowMajor &&
                 m_poGDS->m_bLeaderSizeAsUInt4 &&
                 m_poGDS->m_bMaskInterleavedWithImagery &&
@@ -316,12 +319,11 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                 poBandForCache = cpl::down_cast<GTiffRasterBand *>(
                     m_poGDS->m_poImageryDS->GetRasterBand(1));
             }
-#endif
-            pBufferedData = poBandForCache->CacheMultiRange(
-                nXOff, nYOff, nXSize, nYSize, nBufXSize, nBufYSize, psExtraArg);
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
+            bufferedDataFreer.Init(poBandForCache->CacheMultiRange(
+                                       nXOff, nYOff, nXSize, nYSize, nBufXSize,
+                                       nBufYSize, psExtraArg),
+                                   poBandForCache->m_poGDS->m_hTIFF);
         }
-#endif
     }
 
     if (eRWFlag == GF_Read && nXSize == nBufXSize && nYSize == nBufYSize)
@@ -333,17 +335,14 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         const int nXBlocks = nBlockX2 - nBlockX1 + 1;
         const int nYBlocks = nBlockY2 - nBlockY1 + 1;
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
         if (bCanUseMultiThreadedRead)
         {
             return m_poGDS->MultiThreadedRead(nXOff, nYOff, nXSize, nYSize,
                                               pData, eBufType, 1, &nBand,
                                               nPixelSpace, nLineSpace, 0);
         }
-        else
-#endif
-            if (m_poGDS->nBands != 1 &&
-                m_poGDS->m_nPlanarConfig == PLANARCONFIG_CONTIG)
+        else if (m_poGDS->nBands != 1 &&
+                 m_poGDS->m_nPlanarConfig == PLANARCONFIG_CONTIG)
         {
             const GIntBig nRequiredMem =
                 static_cast<GIntBig>(m_poGDS->nBands) * nXBlocks * nYBlocks *
@@ -466,13 +465,6 @@ CPLErr GTiffRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         --m_poGDS->m_nJPEGOverviewVisibilityCounter;
 
     m_poGDS->m_bLoadingOtherBands = false;
-
-    if (pBufferedData)
-    {
-        VSIFree(pBufferedData);
-        VSI_TIFFSetCachedRanges(TIFFClientdata(m_poGDS->m_hTIFF), 0, nullptr,
-                                nullptr, nullptr);
-    }
 
     return eErr;
 }

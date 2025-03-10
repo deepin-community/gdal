@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Even Rouault <even.rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #ifndef OGR_JSONFG_H_INCLUDED
@@ -51,8 +35,8 @@
 class OGRJSONFGMemLayer final : public OGRMemLayer
 {
   public:
-    OGRJSONFGMemLayer(const char *pszName, OGRSpatialReference *poSRS,
-                      OGRwkbGeometryType eGType);
+    OGRJSONFGMemLayer(GDALDataset *poDS, const char *pszName,
+                      OGRSpatialReference *poSRS, OGRwkbGeometryType eGType);
     ~OGRJSONFGMemLayer();
 
     const char *GetFIDColumn() override
@@ -69,7 +53,13 @@ class OGRJSONFGMemLayer final : public OGRMemLayer
 
     void AddFeature(std::unique_ptr<OGRFeature> poFeature);
 
+    GDALDataset *GetDataset() override
+    {
+        return m_poDS;
+    }
+
   private:
+    GDALDataset *m_poDS = nullptr;
     std::string osFIDColumn_{};
     bool bOriginalIdModified_ = false;
 
@@ -92,7 +82,8 @@ class OGRJSONFGStreamedLayer final
       public OGRGetNextFeatureThroughRaw<OGRJSONFGStreamedLayer>
 {
   public:
-    OGRJSONFGStreamedLayer(const char *pszName, OGRSpatialReference *poSRS,
+    OGRJSONFGStreamedLayer(GDALDataset *poDS, const char *pszName,
+                           OGRSpatialReference *poSRS,
                            OGRwkbGeometryType eGType);
     ~OGRJSONFGStreamedLayer();
 
@@ -143,7 +134,13 @@ class OGRJSONFGStreamedLayer final
 
     DEFINE_GET_NEXT_FEATURE_THROUGH_RAW(OGRJSONFGStreamedLayer)
 
+    GDALDataset *GetDataset() override
+    {
+        return m_poDS;
+    }
+
   private:
+    GDALDataset *m_poDS = nullptr;
     OGRFeatureDefn *poFeatureDefn_ = nullptr;
     std::string osFIDColumn_{};
 
@@ -192,6 +189,7 @@ class OGRJSONFGWriteLayer final : public OGRLayer
     {
         return poFeatureDefn_;
     }
+
     OGRSpatialReference *GetSpatialRef() override
     {
         return nullptr;
@@ -200,15 +198,19 @@ class OGRJSONFGWriteLayer final : public OGRLayer
     void ResetReading() override
     {
     }
+
     OGRFeature *GetNextFeature() override
     {
         return nullptr;
     }
+
     OGRErr ICreateFeature(OGRFeature *poFeature) override;
-    OGRErr CreateField(OGRFieldDefn *poField, int bApproxOK) override;
+    OGRErr CreateField(const OGRFieldDefn *poField, int bApproxOK) override;
     int TestCapability(const char *pszCap) override;
 
     OGRErr SyncToDisk() override;
+
+    GDALDataset *GetDataset() override;
 
   private:
     OGRJSONFGDataset *poDS_{};
@@ -245,6 +247,7 @@ class OGRJSONFGDataset final : public GDALDataset
     {
         return static_cast<int>(apoLayers_.size());
     }
+
     OGRLayer *GetLayer(int i) override;
 
     //! Return the output file handle. Used by OGRJSONFGWriteLayer
@@ -270,9 +273,9 @@ class OGRJSONFGDataset final : public GDALDataset
     void BeforeCreateFeature();
 
     OGRLayer *ICreateLayer(const char *pszName,
-                           const OGRSpatialReference *poSRS = nullptr,
-                           OGRwkbGeometryType eGType = wkbUnknown,
-                           char **papszOptions = nullptr) override;
+                           const OGRGeomFieldDefn *poGeomFieldDefn,
+                           CSLConstList papszOptions) override;
+
     int TestCapability(const char *pszCap) override;
 
     OGRErr SyncToDiskInternal();

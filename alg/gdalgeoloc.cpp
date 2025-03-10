@@ -10,23 +10,7 @@
  * Copyright (c) 2021, CLS
  * Copyright (c) 2022, Planet Labs
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -68,8 +52,6 @@ constexpr float INVALID_BMXY = -10.0f;
 #ifdef DEBUG_GEOLOC
 #warning "Remove me before committing"
 #endif
-
-CPL_CVSID("$Id$")
 
 CPL_C_START
 CPLXMLNode *GDALSerializeGeoLocTransformer(void *pTransformArg);
@@ -260,7 +242,7 @@ void GDALGeoLoc<Accessors>::LoadGeolocFinish(
                     poRing->addPoint(x1 > 0 ? x1 : x1 + 360, y1);
                     poRing->addPoint(x0 > 0 ? x0 : x0 + 360, y0);
                     poPoly->addRingDirectly(poRing);
-                    auto poFeature = cpl::make_unique<OGRFeature>(poLayerDefn);
+                    auto poFeature = std::make_unique<OGRFeature>(poLayerDefn);
                     poFeature->SetField(0, static_cast<int>(iX));
                     poFeature->SetField(1, static_cast<int>(iY));
                     poFeature->SetGeometryDirectly(poPoly);
@@ -283,7 +265,7 @@ void GDALGeoLoc<Accessors>::LoadGeolocFinish(
                 poRing->addPoint(x1, y1);
                 poRing->addPoint(x0, y0);
                 poPoly->addRingDirectly(poRing);
-                auto poFeature = cpl::make_unique<OGRFeature>(poLayerDefn);
+                auto poFeature = std::make_unique<OGRFeature>(poLayerDefn);
                 poFeature->SetField(0, static_cast<int>(iX));
                 poFeature->SetField(1, static_cast<int>(iY));
                 poFeature->SetGeometryDirectly(poPoly);
@@ -944,6 +926,7 @@ int GDALGeoLoc<Accessors>::Transform(void *pTransformArg, int bDstToSrc,
 
     return TRUE;
 }
+
 /*! @endcond */
 
 /************************************************************************/
@@ -1509,6 +1492,7 @@ bool GDALGeoLoc<Accessors>::GenerateBackMap(
         int iX = -1;
         float bmX = 0;
     };
+
     std::vector<LastValidStruct> lastValid(TILE_SIZE);
     const auto reinitLine = [&lastValid]()
     {
@@ -1591,9 +1575,9 @@ static void GDALGeoLocRescale(char **&papszMD, const char *pszItem,
 {
     const double dfVal =
         dfRatio * CPLAtofM(CSLFetchNameValueDef(
-                      papszMD, pszItem, CPLSPrintf("%.18g", dfDefaultVal)));
+                      papszMD, pszItem, CPLSPrintf("%.17g", dfDefaultVal)));
 
-    papszMD = CSLSetNameValue(papszMD, pszItem, CPLSPrintf("%.18g", dfVal));
+    papszMD = CSLSetNameValue(papszMD, pszItem, CPLSPrintf("%.17g", dfVal));
 }
 
 /************************************************************************/
@@ -1718,7 +1702,7 @@ CPLStringList GDALCreateGeolocationMetadata(GDALDatasetH hBaseDS,
     if (aosMD.FetchNameValue("PIXEL_STEP") == nullptr)
     {
         aosMD.SetNameValue(
-            "PIXEL_STEP", CPLSPrintf("%.18g", static_cast<double>(
+            "PIXEL_STEP", CPLSPrintf("%.17g", static_cast<double>(
                                                   GDALGetRasterXSize(hBaseDS)) /
                                                   nGeoLocXSize));
     }
@@ -1726,7 +1710,7 @@ CPLStringList GDALCreateGeolocationMetadata(GDALDatasetH hBaseDS,
     if (aosMD.FetchNameValue("LINE_STEP") == nullptr)
     {
         aosMD.SetNameValue(
-            "LINE_STEP", CPLSPrintf("%.18g", static_cast<double>(
+            "LINE_STEP", CPLSPrintf("%.17g", static_cast<double>(
                                                  GDALGetRasterYSize(hBaseDS)) /
                                                  nGeoLocYSize));
     }
@@ -2006,14 +1990,20 @@ void *GDALCreateGeoLocTransformerEx(GDALDatasetH hBaseDS,
         psTransform->bUseArray = !CPLTestBool(pszUseTempDatasets);
     else
     {
-        psTransform->bUseArray = nXSize < 16 * 1000 * 1000 / nYSize;
-        if (psTransform->bUseArray)
+        constexpr int MEGAPIXEL_LIMIT = 24;
+        psTransform->bUseArray =
+            nXSize < MEGAPIXEL_LIMIT * 1000 * 1000 / nYSize;
+        if (!psTransform->bUseArray)
         {
             CPLDebug("GEOLOC",
                      "Using temporary GTiff backing to store backmap, because "
-                     "geoloc arrays exceed 16 megapixels. You can set the "
+                     "geoloc arrays require %d megapixels, exceeding the %d "
+                     "megapixels limit. You can set the "
                      "GDAL_GEOLOC_USE_TEMP_DATASETS configuration option to "
-                     "NO to force RAM storage of backmap");
+                     "NO to force RAM storage of backmap",
+                     static_cast<int>(static_cast<int64_t>(nXSize) * nYSize /
+                                      (1000 * 1000)),
+                     MEGAPIXEL_LIMIT);
         }
     }
 

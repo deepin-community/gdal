@@ -12,24 +12,11 @@
  * Portions Copyright (c) Her majesty the Queen in right of Canada as
  * represented by the Minister of National Defence, 2006.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
+
+#ifndef NITF_DATASET_H_INCLUDED
+#define NITF_DATASET_H_INCLUDED
 
 #include "gdal_pam.h"
 #include "nitflib.h"
@@ -126,6 +113,7 @@ class NITFDataset final : public GDALPamDataset
     CPLString m_osRPCTXTFilename;
 
     int bExposeUnderlyingJPEGDatasetOverviews;
+
     int ExposeUnderlyingJPEGDatasetOverviews() const
     {
         return bExposeUnderlyingJPEGDatasetOverviews;
@@ -146,8 +134,9 @@ class NITFDataset final : public GDALPamDataset
                               char **papszOptions) override;
 
     virtual CPLErr IRasterIO(GDALRWFlag, int, int, int, int, void *, int, int,
-                             GDALDataType, int, int *, GSpacing nPixelSpace,
-                             GSpacing nLineSpace, GSpacing nBandSpace,
+                             GDALDataType, int, BANDMAP_TYPE,
+                             GSpacing nPixelSpace, GSpacing nLineSpace,
+                             GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg) override;
 
     const OGRSpatialReference *GetSpatialRef() const override;
@@ -172,7 +161,6 @@ class NITFDataset final : public GDALPamDataset
                                    const int *, GDALProgressFunc, void *,
                                    CSLConstList papszOptions) override;
 
-    static int Identify(GDALOpenInfo *);
     static NITFDataset *OpenInternal(GDALOpenInfo *,
                                      GDALDataset *poWritableJ2KDataset,
                                      bool bOpenForCreate, int nIMIndex);
@@ -370,3 +358,5 @@ class NITFWrapperRasterBand final : public NITFProxyPamRasterBand
     /* Specific method */
     void SetColorTableFromNITFBandInfo();
 };
+
+#endif /* NITF_DATASET_H_INCLUDED */

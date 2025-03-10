@@ -12,23 +12,7 @@
 #  Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
 #  Copyright (c) 2021, Idan Miara <idan@miara.com>
 #
-#  Permission is hereby granted, free of charge, to any person obtaining a
-#  copy of this software and associated documentation files (the "Software"),
-#  to deal in the Software without restriction, including without limitation
-#  the rights to use, copy, modify, merge, publish, distribute, sublicense,
-#  and/or sell copies of the Software, and to permit persons to whom the
-#  Software is furnished to do so, subject to the following conditions:
-#
-#  The above copyright notice and this permission notice shall be included
-#  in all copies or substantial portions of the Software.
-#
-#  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-#  OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-#  THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-#  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-#  DEALINGS IN THE SOFTWARE.
+# SPDX-License-Identifier: MIT
 # ******************************************************************************
 
 import sys
@@ -37,9 +21,10 @@ from typing import Optional, Union
 
 from osgeo import gdal, ogr
 from osgeo_utils.auxiliary.gdal_argparse import GDALArgumentParser, GDALScript
-from osgeo_utils.auxiliary.util import GetOutputDriverFor
+from osgeo_utils.auxiliary.util import GetOutputDriverFor, enable_gdal_exceptions
 
 
+@enable_gdal_exceptions
 def gdal_polygonize(
     src_filename: Optional[str] = None,
     band_number: Union[int, str] = 1,
@@ -146,6 +131,9 @@ def gdal_polygonize(
         if not quiet:
             print("Creating output %s of format %s." % (dst_filename, driver_name))
         dst_ds = drv.CreateDataSource(dst_filename)
+        if dst_ds is None:
+            print('Cannot create datasource "%s"' % dst_filename)
+            return 1
 
     # =============================================================================
     #       Find or create destination layer.

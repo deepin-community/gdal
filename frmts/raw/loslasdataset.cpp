@@ -8,23 +8,7 @@
  ******************************************************************************
  * Copyright (c) 2010, Frank Warmerdam
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_string.h"
@@ -93,6 +77,7 @@ class LOSLASDataset final : public RawDataset
     ~LOSLASDataset() override;
 
     CPLErr GetGeoTransform(double *padfTransform) override;
+
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return &m_oSRS;
@@ -204,7 +189,7 @@ GDALDataset *LOSLASDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<LOSLASDataset>();
+    auto poDS = std::make_unique<LOSLASDataset>();
     std::swap(poDS->fpImage, poOpenInfo->fpL);
 
     /* -------------------------------------------------------------------- */
@@ -280,7 +265,7 @@ GDALDataset *LOSLASDataset::Open(GDALOpenInfo *poOpenInfo)
     poDS->adfGeoTransform[2] = 0.0;
     poDS->adfGeoTransform[3] = min_lat + (poDS->nRasterYSize - 0.5) * delta_lat;
     poDS->adfGeoTransform[4] = 0.0;
-    poDS->adfGeoTransform[5] = -1 * delta_lat;
+    poDS->adfGeoTransform[5] = -1.0 * delta_lat;
 
     /* -------------------------------------------------------------------- */
     /*      Initialize any PAM information.                                 */

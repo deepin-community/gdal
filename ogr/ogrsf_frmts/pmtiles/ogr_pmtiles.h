@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Planet Labs
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #ifndef OGR_PMTILES_H_INCLUDED
@@ -68,16 +52,19 @@ class OGRPMTilesDataset final : public GDALDataset
     {
         return static_cast<int>(m_apoLayers.size());
     }
+
     OGRLayer *GetLayer(int) override;
 
     inline int GetMinZoomLevel() const
     {
         return m_nMinZoomLevel;
     }
+
     inline int GetMaxZoomLevel() const
     {
         return m_nMaxZoomLevel;
     }
+
     inline const pmtiles::headerv3 &GetHeader() const
     {
         return m_sHeader;
@@ -91,10 +78,12 @@ class OGRPMTilesDataset final : public GDALDataset
     {
         return m_osMetadata;
     }
+
     inline const std::string &GetMetadataFilename() const
     {
         return m_osMetadataFilename;
     }
+
     inline const std::string &GetClipOpenOption() const
     {
         return m_osClipOpenOption;
@@ -103,7 +92,8 @@ class OGRPMTilesDataset final : public GDALDataset
     /** Return a short-lived decompressed buffer for metadata or directory
      * entries or nullptr in case of error.
      */
-    const std::string *ReadInternal(uint64_t nOffset, uint64_t nSize);
+    const std::string *ReadInternal(uint64_t nOffset, uint64_t nSize,
+                                    const char *pszDataType);
 
     /** Return a short-lived decompressed buffer for tile data.
      *  or nullptr in case of error.
@@ -148,7 +138,8 @@ class OGRPMTilesDataset final : public GDALDataset
     /** Return a short-lived decompressed buffer, or nullptr in case of error
      */
     const std::string *Read(const CPLCompressor *psDecompressor,
-                            uint64_t nOffset, uint64_t nSize);
+                            uint64_t nOffset, uint64_t nSize,
+                            const char *pszDataType);
 
     CPL_DISALLOW_COPY_ASSIGN(OGRPMTilesDataset)
 };
@@ -202,7 +193,9 @@ class OGRPMTilesTileIterator
     int m_nCurY = -1;
 
     // for sanity checks. Must be increasing when walking through entries
-    uint64_t m_nLastTileId = 0;
+    static constexpr uint64_t INVALID_LAST_TILE_ID =
+        std::numeric_limits<uint64_t>::max();
+    uint64_t m_nLastTileId = INVALID_LAST_TILE_ID;
 
     // Computed values from zoom leven and min/max x/y
     uint64_t m_nMinTileId = std::numeric_limits<uint64_t>::max();
@@ -261,15 +254,18 @@ class OGRPMTilesVectorLayer final
     {
         return m_poFeatureDefn;
     }
+
     int TestCapability(const char *) override;
 
     OGRErr GetExtent(OGREnvelope *psExtent, int bForce) override;
+
     OGRErr GetExtent(int iGeomField, OGREnvelope *psExtent, int bForce) override
     {
         return OGRLayer::GetExtent(iGeomField, psExtent, bForce);
     }
 
     void SetSpatialFilter(OGRGeometry *) override;
+
     void SetSpatialFilter(int iGeomField, OGRGeometry *poGeom) override
     {
         OGRLayer::SetSpatialFilter(iGeomField, poGeom);
@@ -364,8 +360,9 @@ class OGRPMTilesWriterDataset final : public GDALDataset
 
     CPLErr Close() override;
 
-    OGRLayer *ICreateLayer(const char *, const OGRSpatialReference *,
-                           OGRwkbGeometryType, char **) override;
+    OGRLayer *ICreateLayer(const char *pszName,
+                           const OGRGeomFieldDefn *poGeomFieldDefn,
+                           CSLConstList papszOptions) override;
 
     int TestCapability(const char *) override;
 };

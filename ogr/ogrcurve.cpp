@@ -7,47 +7,13 @@
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogr_geometry.h"
 #include "ogr_p.h"
 
 //! @cond Doxygen_Suppress
-
-/************************************************************************/
-/*                                OGRCurve()                            */
-/************************************************************************/
-
-OGRCurve::OGRCurve() = default;
-
-/************************************************************************/
-/*                               ~OGRCurve()                            */
-/************************************************************************/
-
-OGRCurve::~OGRCurve() = default;
-
-/************************************************************************/
-/*                       OGRCurve( const OGRCurve& )                    */
-/************************************************************************/
-
-OGRCurve::OGRCurve(const OGRCurve &) = default;
 
 /************************************************************************/
 /*                       operator=( const OGRCurve& )                   */
@@ -61,6 +27,7 @@ OGRCurve &OGRCurve::operator=(const OGRCurve &other)
     }
     return *this;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -139,6 +106,38 @@ int OGRCurve::get_IsClosed() const
  *
  * @return the length of the curve, zero if the curve hasn't been
  * initialized.
+ *
+ * @see get_GeodesicLength() for an alternative method returning lengths
+ * computed on the ellipsoid, and in meters.
+ */
+
+/**
+ * \fn double OGRCurve::get_GeodesicLength(const OGRSpatialReference* poSRSOverride = nullptr) const;
+ *
+ * \brief Get the length of the curve, considered as a geodesic line on the
+ * underlying ellipsoid of the SRS attached to the geometry.
+ *
+ * The returned length will always be in meters.
+ *
+ * <a href="https://geographiclib.sourceforge.io/html/python/geodesics.html">Geodesics</a>
+ * follow the shortest route on the surface of the ellipsoid.
+ *
+ * If the geometry' SRS is not a geographic one, geometries are reprojected to
+ * the underlying geographic SRS of the geometry' SRS.
+ * OGRSpatialReference::GetDataAxisToSRSAxisMapping() is honored.
+ *
+ * Note that geometries with circular arcs will be linearized in their original
+ * coordinate space first, so the resulting geodesic length will be an
+ * approximation.
+ *
+ * @param poSRSOverride If not null, overrides OGRGeometry::getSpatialReference()
+ * @return the length of the geometry in meters, or a negative value in case
+ * of error.
+ *
+ * @see get_Length() for an alternative method returning areas computed in
+ * 2D Cartesian space.
+ *
+ * @since GDAL 3.10
  */
 
 /**
@@ -243,10 +242,45 @@ int OGRCurve::get_IsClosed() const
  *
  * This method is designed to be used by OGRCurvePolygon::get_Area().
  *
- * @return the area of the feature in square units of the spatial reference
+ * @return the area of the geometry in square units of the spatial reference
  * system in use.
  *
+ * @see get_GeodesicArea() for an alternative method returning areas
+ * computed on the ellipsoid, and in square meters.
+ *
  * @since GDAL 2.0
+ */
+
+/**
+ * \fn double OGRCurve::get_GeodesicArea(const OGRSpatialReference* poSRSOverride = nullptr) const;
+ *
+ * \brief Get the area of the (closed) curve, considered as a surface on the
+ * underlying ellipsoid of the SRS attached to the geometry.
+ *
+ * This method is designed to be used by OGRCurvePolygon::get_GeodesicArea().
+ *
+ * The returned area will always be in square meters, and assumes that
+ * polygon edges describe geodesic lines on the ellipsoid.
+ *
+ * <a href="https://geographiclib.sourceforge.io/html/python/geodesics.html">Geodesics</a>
+ * follow the shortest route on the surface of the ellipsoid.
+ *
+ * If the geometry' SRS is not a geographic one, geometries are reprojected to
+ * the underlying geographic SRS of the geometry' SRS.
+ * OGRSpatialReference::GetDataAxisToSRSAxisMapping() is honored.
+ *
+ * Note that geometries with circular arcs will be linearized in their original
+ * coordinate space first, so the resulting geodesic area will be an
+ * approximation.
+ *
+ * @param poSRSOverride If not null, overrides OGRGeometry::getSpatialReference()
+ * @return the area of the geometry in square meters, or a negative value in case
+ * of error.
+ *
+ * @see get_Area() for an alternative method returning areas computed in
+ * 2D Cartesian space.
+ *
+ * @since GDAL 3.9
  */
 
 /**
@@ -686,17 +720,6 @@ OGRCurve::ConstIterator OGRCurve::end() const
 }
 
 /************************************************************************/
-/*                            epsilonEqual()                            */
-/************************************************************************/
-
-constexpr double EPSILON = 1.0E-5;
-
-static inline bool epsilonEqual(double a, double b, double eps)
-{
-    return ::fabs(a - b) < eps;
-}
-
-/************************************************************************/
 /*                            isClockwise()                             */
 /************************************************************************/
 
@@ -771,6 +794,10 @@ int OGRCurve::isClockwise() const
         oPointBeforeSel = oPointN_m2;
     }
 
+    constexpr double EPSILON = 1.0E-5;
+    const auto epsilonEqual = [](double a, double b, double eps)
+    { return ::fabs(a - b) < eps; };
+
     if (epsilonEqual(oPointBeforeSel.getX(), oPointSel.getX(), EPSILON) &&
         epsilonEqual(oPointBeforeSel.getY(), oPointSel.getY(), EPSILON))
     {
@@ -822,7 +849,7 @@ int OGRCurve::isClockwise() const
     for (int i = 1; i < nPointCount - 1; i++)
     {
         ++oIter;
-        auto oPointNext = *oIter;
+        const auto &oPointNext = *oIter;
         dfSum += oPointCur.getX() * (oPointNext.getY() - oPointBefore.getY());
         oPointBefore = oPointCur;
         oPointCur = oPointNext;
@@ -832,3 +859,15 @@ int OGRCurve::isClockwise() const
 
     return dfSum < 0;
 }
+
+/**
+ * \fn void OGRCurve::reversePoints();
+ *
+ * \brief Reverse point order.
+ *
+ * This method updates the points in this curve in place
+ * reversing the point ordering (first for last, etc) and component ordering
+ * for a compound curve.
+ *
+ * @since 3.10
+ */

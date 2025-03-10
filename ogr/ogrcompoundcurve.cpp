@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2014, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -39,16 +23,6 @@
 #include "ogr_spatialref.h"
 
 /************************************************************************/
-/*                         OGRCompoundCurve()                           */
-/************************************************************************/
-
-/**
- * \brief Create an empty compound curve.
- */
-
-OGRCompoundCurve::OGRCompoundCurve() = default;
-
-/************************************************************************/
 /*             OGRCompoundCurve( const OGRCompoundCurve& )              */
 /************************************************************************/
 
@@ -62,12 +36,6 @@ OGRCompoundCurve::OGRCompoundCurve() = default;
  */
 
 OGRCompoundCurve::OGRCompoundCurve(const OGRCompoundCurve &) = default;
-
-/************************************************************************/
-/*                         ~OGRCompoundCurve()                          */
-/************************************************************************/
-
-OGRCompoundCurve::~OGRCompoundCurve() = default;
 
 /************************************************************************/
 /*                 operator=( const OGRCompoundCurve&)                  */
@@ -146,7 +114,8 @@ OGRErr OGRCompoundCurve::addCurveDirectlyFromWkb(OGRGeometry *poSelf,
                                                  OGRCurve *poCurve)
 {
     OGRCompoundCurve *poCC = poSelf->toCompoundCurve();
-    return poCC->addCurveDirectlyInternal(poCurve, 1e-14, FALSE);
+    return poCC->addCurveDirectlyInternal(poCurve, DEFAULT_TOLERANCE_EPSILON,
+                                          FALSE);
 }
 
 /************************************************************************/
@@ -177,14 +146,17 @@ OGRErr OGRCompoundCurve::importFromWkb(const unsigned char *pabyData,
 /************************************************************************/
 /*                            exportToWkb()                             */
 /************************************************************************/
-OGRErr OGRCompoundCurve::exportToWkb(OGRwkbByteOrder eByteOrder,
-                                     unsigned char *pabyData,
-                                     OGRwkbVariant eWkbVariant) const
+
+OGRErr OGRCompoundCurve::exportToWkb(unsigned char *pabyData,
+                                     const OGRwkbExportOptions *psOptions) const
 {
+    OGRwkbExportOptions sOptions(psOptions ? *psOptions
+                                           : OGRwkbExportOptions());
+
     // Does not make sense for new geometries, so patch it.
-    if (eWkbVariant == wkbVariantOldOgc)
-        eWkbVariant = wkbVariantIso;
-    return oCC.exportToWkb(this, eByteOrder, pabyData, eWkbVariant);
+    if (sOptions.eWkbVariant == wkbVariantOldOgc)
+        sOptions.eWkbVariant = wkbVariantIso;
+    return oCC.exportToWkb(this, pabyData, &sOptions);
 }
 
 /************************************************************************/
@@ -376,19 +348,19 @@ OGRBoolean OGRCompoundCurve::Equals(const OGRGeometry *poOther) const
 /*                       setCoordinateDimension()                       */
 /************************************************************************/
 
-void OGRCompoundCurve::setCoordinateDimension(int nNewDimension)
+bool OGRCompoundCurve::setCoordinateDimension(int nNewDimension)
 {
-    oCC.setCoordinateDimension(this, nNewDimension);
+    return oCC.setCoordinateDimension(this, nNewDimension);
 }
 
-void OGRCompoundCurve::set3D(OGRBoolean bIs3D)
+bool OGRCompoundCurve::set3D(OGRBoolean bIs3D)
 {
-    oCC.set3D(this, bIs3D);
+    return oCC.set3D(this, bIs3D);
 }
 
-void OGRCompoundCurve::setMeasured(OGRBoolean bIsMeasured)
+bool OGRCompoundCurve::setMeasured(OGRBoolean bIsMeasured)
 {
-    oCC.setMeasured(this, bIsMeasured);
+    return oCC.setMeasured(this, bIsMeasured);
 }
 
 /************************************************************************/
@@ -500,7 +472,7 @@ OGRCurve *OGRCompoundCurve::stealCurve(int iCurve)
  * @param poCurve geometry to add to the container.
  * @param dfToleranceEps relative tolerance when checking that the first point
  * of a segment matches then end point of the previous one. Default value:
- * 1e-14.
+ * OGRCompoundCurve::DEFAULT_TOLERANCE_EPSILON.
  *
  * @return OGRERR_NONE if successful, or OGRERR_FAILURE in case of error
  * (for example if curves are not contiguous)
@@ -534,7 +506,7 @@ OGRErr OGRCompoundCurve::addCurve(const OGRCurve *poCurve,
  * @param poCurve geometry to add to the container.
  * @param dfToleranceEps relative tolerance when checking that the first point
  * of a segment matches then end point of the previous one. Default value:
- * 1e-14.
+ * OGRCompoundCurve::DEFAULT_TOLERANCE_EPSILON.
  *
  * @return OGRERR_NONE if successful, or OGRERR_FAILURE in case of error
  * (for example if curves are not contiguous)
@@ -626,7 +598,7 @@ OGRErr OGRCompoundCurve::addCurveDirectlyInternal(OGRCurve *poCurve,
  * @param poCurve geometry to add to the container.
  * @param dfToleranceEps relative tolerance when checking that the first point
  * of a segment matches then end point of the previous one. Default value:
- * 1e-14.
+ * OGRCompoundCurve::DEFAULT_TOLERANCE_EPSILON.
  *
  * @return OGRERR_NONE if successful, or OGRERR_FAILURE in case of error
  * (for example if curves are not contiguous)
@@ -663,9 +635,9 @@ void OGRCompoundCurve::flattenTo2D()
 /*                              segmentize()                            */
 /************************************************************************/
 
-void OGRCompoundCurve::segmentize(double dfMaxLength)
+bool OGRCompoundCurve::segmentize(double dfMaxLength)
 {
-    oCC.segmentize(dfMaxLength);
+    return oCC.segmentize(dfMaxLength);
 }
 
 /************************************************************************/
@@ -735,6 +707,7 @@ class OGRCompoundCurvePointIterator final : public OGRPointIterator
         : poCC(poCCIn)
     {
     }
+
     ~OGRCompoundCurvePointIterator() override
     {
         delete poCurveIter;
@@ -882,6 +855,7 @@ OGRCurveCasterToLinearRing OGRCompoundCurve::GetCasterToLinearRing() const
 {
     return OGRCompoundCurve::CasterToLinearRing;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -922,6 +896,46 @@ double OGRCompoundCurve::get_Area() const
 }
 
 /************************************************************************/
+/*                        get_GeodesicArea()                            */
+/************************************************************************/
+
+double OGRCompoundCurve::get_GeodesicArea(
+    const OGRSpatialReference *poSRSOverride) const
+{
+    if (IsEmpty())
+        return 0;
+
+    if (!get_IsClosed())
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Non-closed geometry");
+        return -1;
+    }
+
+    if (!poSRSOverride)
+        poSRSOverride = getSpatialReference();
+
+    auto poLS = std::unique_ptr<OGRLineString>(CurveToLine());
+    return poLS->get_GeodesicArea(poSRSOverride);
+}
+
+/************************************************************************/
+/*                        get_GeodesicLength()                          */
+/************************************************************************/
+
+double OGRCompoundCurve::get_GeodesicLength(
+    const OGRSpatialReference *poSRSOverride) const
+{
+    if (IsEmpty())
+        return 0;
+
+    if (!poSRSOverride)
+        poSRSOverride = getSpatialReference();
+
+    auto poLS = std::unique_ptr<OGRLineString>(CurveToLine());
+    return poLS->get_GeodesicLength(poSRSOverride);
+}
+
+/************************************************************************/
 /*                       get_AreaOfCurveSegments()                      */
 /************************************************************************/
 
@@ -937,4 +951,40 @@ double OGRCompoundCurve::get_AreaOfCurveSegments() const
         dfArea += poPart->get_AreaOfCurveSegments();
     }
     return dfArea;
+}
+
+/************************************************************************/
+/*                           hasEmptyParts()                            */
+/************************************************************************/
+
+bool OGRCompoundCurve::hasEmptyParts() const
+{
+    return oCC.hasEmptyParts();
+}
+
+/************************************************************************/
+/*                          removeEmptyParts()                          */
+/************************************************************************/
+
+void OGRCompoundCurve::removeEmptyParts()
+{
+    oCC.removeEmptyParts();
+}
+
+/************************************************************************/
+/*                           reversePoints()                            */
+/************************************************************************/
+
+/**
+ * \brief Reverse point order.
+ *
+ * This method updates the points in this curve in place
+ * reversing the point ordering (first for last, etc) and component ordering.
+ *
+ * @since 3.10
+ */
+void OGRCompoundCurve::reversePoints()
+
+{
+    oCC.reversePoints();
 }

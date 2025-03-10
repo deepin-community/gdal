@@ -9,23 +9,7 @@
  * Copyright (c) 1998, Frank Warmerdam
  * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -454,6 +438,7 @@ CPLErr GDALRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                     nXOff <= nLBlockX * nBlockXSize &&
                     nYOff <= nLBlockY * nBlockYSize &&
                     (nXOff + nXSize >= nXRight ||
+                     // cppcheck-suppress knownConditionTrueFalse
                      (nXOff + nXSize == GetXSize() && nXRight > GetXSize())) &&
                     (nYOff + nYSize - nBlockYSize >= nLBlockY * nBlockYSize ||
                      (nYOff + nYSize == GetYSize() &&
@@ -1005,9 +990,10 @@ CPLErr GDALRasterBand::RasterIOResampled(
     GSpacing nPixelSpace, GSpacing nLineSpace, GDALRasterIOExtraArg *psExtraArg)
 {
     // Determine if we use warping resampling or overview resampling
-    bool bUseWarp = false;
-    if (GDALDataTypeIsComplex(eDataType))
-        bUseWarp = true;
+    const bool bUseWarp =
+        (GDALDataTypeIsComplex(eDataType) &&
+         psExtraArg->eResampleAlg != GRIORA_NearestNeighbour &&
+         psExtraArg->eResampleAlg != GRIORA_Mode);
 
     double dfXOff = nXOff;
     double dfYOff = nYOff;
@@ -1077,8 +1063,9 @@ CPLErr GDALRasterBand::RasterIOResampled(
     poMEMDS->SetBand(1, GDALRasterBand::FromHandle(hMEMBand));
 
     const char *pszNBITS = GetMetadataItem("NBITS", "IMAGE_STRUCTURE");
+    const int nNBITS = pszNBITS ? atoi(pszNBITS) : 0;
     if (pszNBITS)
-        reinterpret_cast<GDALRasterBand *>(hMEMBand)->SetMetadataItem(
+        GDALRasterBand::FromHandle(hMEMBand)->SetMetadataItem(
             "NBITS", pszNBITS, "IMAGE_STRUCTURE");
 
     CPLErr eErr = CE_None;
@@ -1417,22 +1404,38 @@ CPLErr GDALRasterBand::RasterIOResampled(
                     GDALDataType eDstBufferDataType = GDT_Unknown;
                     GDALRasterBand *poMEMBand =
                         GDALRasterBand::FromHandle(hMEMBand);
-                    eErr = pfnResampleFunc(
-                        dfXRatioDstToSrc, dfYRatioDstToSrc,
-                        dfXOff - nXOff, /* == 0 if bHasXOffVirtual */
-                        dfYOff - nYOff, /* == 0 if bHasYOffVirtual */
-                        eWrkDataType, pChunk,
-                        bNoDataMaskFullyOpaque ? nullptr : pabyChunkNoDataMask,
-                        nChunkXOffQueried - (bHasXOffVirtual ? 0 : nXOff),
-                        nChunkXSizeQueried,
-                        nChunkYOffQueried - (bHasYOffVirtual ? 0 : nYOff),
-                        nChunkYSizeQueried, nDstXOff + nDestXOffVirtual,
-                        nDstXOff + nDestXOffVirtual + nDstXCount,
-                        nDstYOff + nDestYOffVirtual,
-                        nDstYOff + nDestYOffVirtual + nDstYCount, poMEMBand,
-                        &pDstBuffer, &eDstBufferDataType, pszResampling,
-                        bHasNoData, dfNoDataValue, GetColorTable(), eDataType,
-                        bPropagateNoData);
+                    GDALOverviewResampleArgs args;
+                    args.eSrcDataType = eDataType;
+                    args.eOvrDataType = poMEMBand->GetRasterDataType();
+                    args.nOvrXSize = poMEMBand->GetXSize();
+                    args.nOvrYSize = poMEMBand->GetYSize();
+                    args.nOvrNBITS = nNBITS;
+                    args.dfXRatioDstToSrc = dfXRatioDstToSrc;
+                    args.dfYRatioDstToSrc = dfYRatioDstToSrc;
+                    args.dfSrcXDelta =
+                        dfXOff - nXOff; /* == 0 if bHasXOffVirtual */
+                    args.dfSrcYDelta =
+                        dfYOff - nYOff; /* == 0 if bHasYOffVirtual */
+                    args.eWrkDataType = eWrkDataType;
+                    args.pabyChunkNodataMask =
+                        bNoDataMaskFullyOpaque ? nullptr : pabyChunkNoDataMask;
+                    args.nChunkXOff =
+                        nChunkXOffQueried - (bHasXOffVirtual ? 0 : nXOff);
+                    args.nChunkXSize = nChunkXSizeQueried;
+                    args.nChunkYOff =
+                        nChunkYOffQueried - (bHasYOffVirtual ? 0 : nYOff);
+                    args.nChunkYSize = nChunkYSizeQueried;
+                    args.nDstXOff = nDstXOff + nDestXOffVirtual;
+                    args.nDstXOff2 = nDstXOff + nDestXOffVirtual + nDstXCount;
+                    args.nDstYOff = nDstYOff + nDestYOffVirtual;
+                    args.nDstYOff2 = nDstYOff + nDestYOffVirtual + nDstYCount;
+                    args.pszResampling = pszResampling;
+                    args.bHasNoData = bHasNoData;
+                    args.dfNoDataValue = dfNoDataValue;
+                    args.poColorTable = GetColorTable();
+                    args.bPropagateNoData = bPropagateNoData;
+                    eErr = pfnResampleFunc(args, pChunk, &pDstBuffer,
+                                           &eDstBufferDataType);
                     if (eErr == CE_None)
                     {
                         eErr = poMEMBand->RasterIO(
@@ -1475,13 +1478,11 @@ CPLErr GDALRasterBand::RasterIOResampled(
 /*                          RasterIOResampled()                         */
 /************************************************************************/
 
-CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
-                                      int nYOff, int nXSize, int nYSize,
-                                      void *pData, int nBufXSize, int nBufYSize,
-                                      GDALDataType eBufType, int nBandCount,
-                                      int *panBandMap, GSpacing nPixelSpace,
-                                      GSpacing nLineSpace, GSpacing nBandSpace,
-                                      GDALRasterIOExtraArg *psExtraArg)
+CPLErr GDALDataset::RasterIOResampled(
+    GDALRWFlag /* eRWFlag */, int nXOff, int nYOff, int nXSize, int nYSize,
+    void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType,
+    int nBandCount, const int *panBandMap, GSpacing nPixelSpace,
+    GSpacing nLineSpace, GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg)
 
 {
 #if 0
@@ -1536,6 +1537,7 @@ CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
                            nDestYOffVirtual + nBufYSize, 0, eBufType, nullptr);
     GDALRasterBand **papoDstBands = static_cast<GDALRasterBand **>(
         CPLMalloc(nBandCount * sizeof(GDALRasterBand *)));
+    int nNBITS = 0;
     for (int i = 0; i < nBandCount; i++)
     {
         char szBuffer[32] = {'\0'};
@@ -1566,8 +1568,11 @@ CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
         const char *pszNBITS =
             poSrcBand->GetMetadataItem("NBITS", "IMAGE_STRUCTURE");
         if (pszNBITS)
+        {
+            nNBITS = atoi(pszNBITS);
             poMEMDS->GetRasterBand(i + 1)->SetMetadataItem("NBITS", pszNBITS,
                                                            "IMAGE_STRUCTURE");
+        }
     }
 
     CPLErr eErr = CE_None;
@@ -1719,7 +1724,8 @@ CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
             nFullResYSizeQueried = nRasterYSize;
 
         void *pChunk = VSI_MALLOC3_VERBOSE(
-            GDALGetDataTypeSizeBytes(eWrkDataType) * nBandCount,
+            cpl::fits_on<int>(GDALGetDataTypeSizeBytes(eWrkDataType) *
+                              nBandCount),
             nFullResXSizeQueried, nFullResYSizeQueried);
         GByte *pabyChunkNoDataMask = nullptr;
 
@@ -1904,26 +1910,45 @@ CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
                         GDALDataType eDstBufferDataType = GDT_Unknown;
                         GDALRasterBand *poMEMBand =
                             poMEMDS->GetRasterBand(i + 1);
-                        eErr = pfnResampleFunc(
-                            dfXRatioDstToSrc, dfYRatioDstToSrc,
-                            dfXOff - nXOff, /* == 0 if bHasXOffVirtual */
-                            dfYOff - nYOff, /* == 0 if bHasYOffVirtual */
-                            eWrkDataType,
-                            reinterpret_cast<GByte *>(pChunk) +
-                                i * nChunkBandOffset,
-                            bNoDataMaskFullyOpaque ? nullptr
-                                                   : pabyChunkNoDataMask,
-                            nChunkXOffQueried - (bHasXOffVirtual ? 0 : nXOff),
-                            nChunkXSizeQueried,
-                            nChunkYOffQueried - (bHasYOffVirtual ? 0 : nYOff),
-                            nChunkYSizeQueried, nDstXOff + nDestXOffVirtual,
-                            nDstXOff + nDestXOffVirtual + nDstXCount,
-                            nDstYOff + nDestYOffVirtual,
-                            nDstYOff + nDestYOffVirtual + nDstYCount, poMEMBand,
-                            &pDstBuffer, &eDstBufferDataType, pszResampling,
-                            false /*bHasNoData*/, 0.0 /* dfNoDataValue */,
-                            nullptr /* color table*/, eDataType,
-                            bPropagateNoData);
+                        GDALOverviewResampleArgs args;
+                        args.eSrcDataType = eDataType;
+                        args.eOvrDataType = poMEMBand->GetRasterDataType();
+                        args.nOvrXSize = poMEMBand->GetXSize();
+                        args.nOvrYSize = poMEMBand->GetYSize();
+                        args.nOvrNBITS = nNBITS;
+                        args.dfXRatioDstToSrc = dfXRatioDstToSrc;
+                        args.dfYRatioDstToSrc = dfYRatioDstToSrc;
+                        args.dfSrcXDelta =
+                            dfXOff - nXOff; /* == 0 if bHasXOffVirtual */
+                        args.dfSrcYDelta =
+                            dfYOff - nYOff; /* == 0 if bHasYOffVirtual */
+                        args.eWrkDataType = eWrkDataType;
+                        args.pabyChunkNodataMask = bNoDataMaskFullyOpaque
+                                                       ? nullptr
+                                                       : pabyChunkNoDataMask;
+                        args.nChunkXOff =
+                            nChunkXOffQueried - (bHasXOffVirtual ? 0 : nXOff);
+                        args.nChunkXSize = nChunkXSizeQueried;
+                        args.nChunkYOff =
+                            nChunkYOffQueried - (bHasYOffVirtual ? 0 : nYOff);
+                        args.nChunkYSize = nChunkYSizeQueried;
+                        args.nDstXOff = nDstXOff + nDestXOffVirtual;
+                        args.nDstXOff2 =
+                            nDstXOff + nDestXOffVirtual + nDstXCount;
+                        args.nDstYOff = nDstYOff + nDestYOffVirtual;
+                        args.nDstYOff2 =
+                            nDstYOff + nDestYOffVirtual + nDstYCount;
+                        args.pszResampling = pszResampling;
+                        args.bHasNoData = false;
+                        args.dfNoDataValue = 0.0;
+                        args.poColorTable = nullptr;
+                        args.bPropagateNoData = bPropagateNoData;
+
+                        eErr =
+                            pfnResampleFunc(args,
+                                            reinterpret_cast<GByte *>(pChunk) +
+                                                i * nChunkBandOffset,
+                                            &pDstBuffer, &eDstBufferDataType);
                         if (eErr == CE_None)
                         {
                             eErr = poMEMBand->RasterIO(
@@ -1955,6 +1980,7 @@ CPLErr GDALDataset::RasterIOResampled(GDALRWFlag /* eRWFlag */, int nXOff,
 
     return eErr;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -3268,15 +3294,27 @@ void CPL_STDCALL GDALCopyWords(const void *CPL_RESTRICT pSrcData,
  *
  * This function is used to copy pixel word values from one memory buffer
  * to another, with support for conversion between data types, and differing
- * step factors.  The data type conversion is done using the normal GDAL
- * rules.  Values assigned to a lower range integer type are clipped.  For
+ * step factors. The data type conversion is done using the following
+ * rules:
+ * <ul>
+ * <li>Values assigned to a lower range integer type are clipped. For
  * instance assigning GDT_Int16 values to a GDT_Byte buffer will cause values
  * less the 0 to be set to 0, and values larger than 255 to be set to 255.
- * Assignment from floating point to integer uses default C type casting
- * semantics.   Assignment from non-complex to complex will result in the
- * imaginary part being set to zero on output.  Assignment from complex to
+ * </li>
+ * <li>
+ * Assignment from floating point to integer rounds to closest integer.
+ * +Infinity is mapped to the largest integer. -Infinity is mapped to the
+ * smallest integer. NaN is mapped to 0.
+ * </li>
+ * <li>
+ * Assignment from non-complex to complex will result in the imaginary part
+ * being set to zero on output.
+ * </li>
+ * <li> Assignment from complex to
  * non-complex will result in the complex portion being lost and the real
  * component being preserved (<i>not magnitude!</i>).
+ * </li>
+ * </ul>
  *
  * No assumptions are made about the source or destination words occurring
  * on word boundaries.  It is assumed that all values are in native machine
@@ -3577,29 +3615,39 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
                                   int nBufXSize, int nBufYSize,
                                   GDALRasterIOExtraArg *psExtraArg)
 {
-    double dfDesiredResolution = 0.0;
     /* -------------------------------------------------------------------- */
-    /*      Compute the desired resolution.  The resolution is              */
+    /*      Compute the desired downsampling factor.  It is                 */
     /*      based on the least reduced axis, and represents the number      */
     /*      of source pixels to one destination pixel.                      */
     /* -------------------------------------------------------------------- */
-    if ((nXSize / static_cast<double>(nBufXSize)) <
-            (nYSize / static_cast<double>(nBufYSize)) ||
-        nBufYSize == 1)
-        dfDesiredResolution = nXSize / static_cast<double>(nBufXSize);
-    else
-        dfDesiredResolution = nYSize / static_cast<double>(nBufYSize);
+    const double dfDesiredDownsamplingFactor =
+        ((nXSize / static_cast<double>(nBufXSize)) <
+             (nYSize / static_cast<double>(nBufYSize)) ||
+         nBufYSize == 1)
+            ? nXSize / static_cast<double>(nBufXSize)
+            : nYSize / static_cast<double>(nBufYSize);
 
     /* -------------------------------------------------------------------- */
-    /*      Find the overview level that largest resolution value (most     */
+    /*      Find the overview level that largest downsampling factor (most  */
     /*      downsampled) that is still less than (or only a little more)    */
     /*      downsampled than the request.                                   */
     /* -------------------------------------------------------------------- */
-    int nOverviewCount = poBand->GetOverviewCount();
+    const int nOverviewCount = poBand->GetOverviewCount();
     GDALRasterBand *poBestOverview = nullptr;
-    double dfBestResolution = 0;
+    double dfBestDownsamplingFactor = 0;
     int nBestOverviewLevel = -1;
 
+    const char *pszOversampligThreshold =
+        CPLGetConfigOption("GDAL_OVERVIEW_OVERSAMPLING_THRESHOLD", nullptr);
+
+    // Note: keep this logic for overview selection in sync between
+    // gdalwarp_lib.cpp and rasterio.cpp
+    // Cf https://github.com/OSGeo/gdal/pull/9040#issuecomment-1898524693
+    const double dfOversamplingThreshold =
+        pszOversampligThreshold ? CPLAtof(pszOversampligThreshold)
+        : psExtraArg && psExtraArg->eResampleAlg != GRIORA_NearestNeighbour
+            ? 1.0
+            : 1.2;
     for (int iOverview = 0; iOverview < nOverviewCount; iOverview++)
     {
         GDALRasterBand *poOverview = poBand->GetOverview(iOverview);
@@ -3610,22 +3658,22 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
             continue;
         }
 
-        double dfResolution = 0.0;
+        // Compute downsampling factor of this overview
+        const double dfDownsamplingFactor = std::min(
+            poBand->GetXSize() / static_cast<double>(poOverview->GetXSize()),
+            poBand->GetYSize() / static_cast<double>(poOverview->GetYSize()));
 
-        // What resolution is this?
-        if ((poBand->GetXSize() / static_cast<double>(poOverview->GetXSize())) <
-            (poBand->GetYSize() / static_cast<double>(poOverview->GetYSize())))
-            dfResolution = poBand->GetXSize() /
-                           static_cast<double>(poOverview->GetXSize());
-        else
-            dfResolution = poBand->GetYSize() /
-                           static_cast<double>(poOverview->GetYSize());
-
-        // Is it nearly the requested resolution and better (lower) than
-        // the current best resolution?
-        if (dfResolution >= dfDesiredResolution * 1.2 ||
-            dfResolution <= dfBestResolution)
+        // Is it nearly the requested factor and better (lower) than
+        // the current best factor?
+        // Use an epsilon because of numerical instability.
+        constexpr double EPSILON = 1e-1;
+        if (dfDownsamplingFactor >=
+                dfDesiredDownsamplingFactor * dfOversamplingThreshold +
+                    EPSILON ||
+            dfDownsamplingFactor <= dfBestDownsamplingFactor)
+        {
             continue;
+        }
 
         // Ignore AVERAGE_BIT2GRAYSCALE overviews for RasterIO purposes.
         const char *pszResampling = poOverview->GetMetadataItem("RESAMPLING");
@@ -3637,7 +3685,13 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
         // OK, this is our new best overview.
         poBestOverview = poOverview;
         nBestOverviewLevel = iOverview;
-        dfBestResolution = dfResolution;
+        dfBestDownsamplingFactor = dfDownsamplingFactor;
+
+        if (std::abs(dfDesiredDownsamplingFactor - dfDownsamplingFactor) <
+            EPSILON)
+        {
+            break;
+        }
     }
 
     /* -------------------------------------------------------------------- */
@@ -3651,17 +3705,19 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
     /*      Recompute the source window in terms of the selected            */
     /*      overview.                                                       */
     /* -------------------------------------------------------------------- */
-    const double dfXRes =
+    const double dfXFactor =
         poBand->GetXSize() / static_cast<double>(poBestOverview->GetXSize());
-    const double dfYRes =
+    const double dfYFactor =
         poBand->GetYSize() / static_cast<double>(poBestOverview->GetYSize());
+    CPLDebug("GDAL", "Selecting overview %d x %d", poBestOverview->GetXSize(),
+             poBestOverview->GetYSize());
 
     const int nOXOff = std::min(poBestOverview->GetXSize() - 1,
-                                static_cast<int>(nXOff / dfXRes + 0.5));
+                                static_cast<int>(nXOff / dfXFactor + 0.5));
     const int nOYOff = std::min(poBestOverview->GetYSize() - 1,
-                                static_cast<int>(nYOff / dfYRes + 0.5));
-    int nOXSize = std::max(1, static_cast<int>(nXSize / dfXRes + 0.5));
-    int nOYSize = std::max(1, static_cast<int>(nYSize / dfYRes + 0.5));
+                                static_cast<int>(nYOff / dfYFactor + 0.5));
+    int nOXSize = std::max(1, static_cast<int>(nXSize / dfXFactor + 0.5));
+    int nOYSize = std::max(1, static_cast<int>(nYSize / dfYFactor + 0.5));
     if (nOXOff + nOXSize > poBestOverview->GetXSize())
         nOXSize = poBestOverview->GetXSize() - nOXOff;
     if (nOYOff + nOYSize > poBestOverview->GetYSize())
@@ -3671,18 +3727,18 @@ int GDALBandGetBestOverviewLevel2(GDALRasterBand *poBand, int &nXOff,
     {
         if (psExtraArg->bFloatingPointWindowValidity)
         {
-            psExtraArg->dfXOff /= dfXRes;
-            psExtraArg->dfXSize /= dfXRes;
-            psExtraArg->dfYOff /= dfYRes;
-            psExtraArg->dfYSize /= dfYRes;
+            psExtraArg->dfXOff /= dfXFactor;
+            psExtraArg->dfXSize /= dfXFactor;
+            psExtraArg->dfYOff /= dfYFactor;
+            psExtraArg->dfYSize /= dfYFactor;
         }
         else if (psExtraArg->eResampleAlg != GRIORA_NearestNeighbour)
         {
             psExtraArg->bFloatingPointWindowValidity = true;
-            psExtraArg->dfXOff = nXOff / dfXRes;
-            psExtraArg->dfXSize = nXSize / dfXRes;
-            psExtraArg->dfYOff = nYOff / dfYRes;
-            psExtraArg->dfYSize = nYSize / dfYRes;
+            psExtraArg->dfXOff = nXOff / dfXFactor;
+            psExtraArg->dfXSize = nXSize / dfXFactor;
+            psExtraArg->dfYOff = nYOff / dfYFactor;
+            psExtraArg->dfYSize = nYSize / dfYFactor;
         }
     }
 
@@ -3776,8 +3832,9 @@ CPLErr GDALRasterBand::TryOverviewRasterIO(
 CPLErr GDALDataset::TryOverviewRasterIO(
     GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize,
     void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType,
-    int nBandCount, int *panBandMap, GSpacing nPixelSpace, GSpacing nLineSpace,
-    GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg, int *pbTried)
+    int nBandCount, const int *panBandMap, GSpacing nPixelSpace,
+    GSpacing nLineSpace, GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg,
+    int *pbTried)
 {
     int nXOffMod = nXOff;
     int nYOffMod = nYOff;
@@ -3817,7 +3874,8 @@ CPLErr GDALDataset::TryOverviewRasterIO(
 static int GDALDatasetGetBestOverviewLevel(GDALDataset *poDS, int &nXOff,
                                            int &nYOff, int &nXSize, int &nYSize,
                                            int nBufXSize, int nBufYSize,
-                                           int nBandCount, int *panBandMap,
+                                           int nBandCount,
+                                           const int *panBandMap,
                                            GDALRasterIOExtraArg *psExtraArg)
 {
     int nOverviewCount = 0;
@@ -3916,13 +3974,11 @@ static int GDALDatasetGetBestOverviewLevel(GDALDataset *poDS, int &nXOff,
 /*      basis. Overviews will be used when possible.                    */
 /************************************************************************/
 
-CPLErr GDALDataset::BlockBasedRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
-                                       int nXSize, int nYSize, void *pData,
-                                       int nBufXSize, int nBufYSize,
-                                       GDALDataType eBufType, int nBandCount,
-                                       int *panBandMap, GSpacing nPixelSpace,
-                                       GSpacing nLineSpace, GSpacing nBandSpace,
-                                       GDALRasterIOExtraArg *psExtraArg)
+CPLErr GDALDataset::BlockBasedRasterIO(
+    GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize,
+    void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType,
+    int nBandCount, const int *panBandMap, GSpacing nPixelSpace,
+    GSpacing nLineSpace, GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg)
 
 {
     CPLAssert(nullptr != pData);
@@ -4022,7 +4078,7 @@ CPLErr GDALDataset::BlockBasedRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                 {
                     GDALRasterBand *poBand = GetRasterBand(panBandMap[iBand]);
 
-                    eErr = poBand->GDALRasterBand::IRasterIO(
+                    eErr = poBand->IRasterIO(
                         eRWFlag, nChunkXOff, nChunkYOff, nChunkXSize,
                         nChunkYSize,
                         pabyChunkData +
@@ -4273,6 +4329,7 @@ CleanupAndReturn:
 
     return eErr;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -4797,6 +4854,7 @@ CPLErr CPL_STDCALL GDALDatasetCopyWholeRaster(GDALDatasetH hSrcDS,
                 int nStatus = GDAL_DATA_COVERAGE_STATUS_DATA;
                 if (bCheckHoles)
                 {
+                    nStatus = 0;
                     for (int iBand = 0; iBand < nBandCount; iBand++)
                     {
                         nStatus |= poSrcDS->GetRasterBand(iBand + 1)

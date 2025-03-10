@@ -8,23 +8,7 @@
  * Copyright (c) 2000, Atlantis Scientific Inc.
  * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ceos.h"
@@ -255,7 +239,9 @@ CPLErr SAR_CEOSRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
     int nPixelsRead = 0;
 
     GByte *pabyRecord =
-        (GByte *)CPLMalloc(ImageDesc->BytesPerPixel * nBlockXSize);
+        (GByte *)VSI_MALLOC2_VERBOSE(ImageDesc->BytesPerPixel, nBlockXSize);
+    if (!pabyRecord)
+        return CE_Failure;
 
     for (int iRecord = 0; iRecord < ImageDesc->RecordsPerLine; iRecord++)
     {
@@ -268,8 +254,10 @@ CPLErr SAR_CEOSRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
 
         CPL_IGNORE_RET_VAL(VSIFSeekL(poGDS->fpImage, offset, SEEK_SET));
         CPL_IGNORE_RET_VAL(VSIFReadL(
-            pabyRecord + nPixelsRead * ImageDesc->BytesPerPixel, 1,
-            nPixelsToRead * ImageDesc->BytesPerPixel, poGDS->fpImage));
+            pabyRecord +
+                static_cast<size_t>(nPixelsRead) * ImageDesc->BytesPerPixel,
+            1, static_cast<size_t>(nPixelsToRead) * ImageDesc->BytesPerPixel,
+            poGDS->fpImage));
 
         nPixelsRead += nPixelsToRead;
         offset += ImageDesc->BytesPerRecord;
@@ -279,7 +267,7 @@ CPLErr SAR_CEOSRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
     /*      Copy the desired band out based on the size of the type, and    */
     /*      the interleaving mode.                                          */
     /* -------------------------------------------------------------------- */
-    const int nBytesPerSample = GDALGetDataTypeSize(eDataType) / 8;
+    const int nBytesPerSample = GDALGetDataTypeSizeBytes(eDataType);
 
     if (ImageDesc->ChannelInterleaving == CEOS_IL_PIXEL)
     {
@@ -295,7 +283,8 @@ CPLErr SAR_CEOSRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
     }
     else if (ImageDesc->ChannelInterleaving == CEOS_IL_BAND)
     {
-        memcpy(pImage, pabyRecord, nBytesPerSample * nBlockXSize);
+        memcpy(pImage, pabyRecord,
+               static_cast<size_t>(nBytesPerSample) * nBlockXSize);
     }
 
 #ifdef CPL_LSB
@@ -1813,7 +1802,7 @@ GDALDataset *SAR_CEOSDataset::Open(GDALOpenInfo *poOpenInfo)
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
 
-    auto poDS = cpl::make_unique<SAR_CEOSDataset>();
+    auto poDS = std::make_unique<SAR_CEOSDataset>();
     std::swap(poDS->fpImage, poOpenInfo->fpL);
 
     CeosSARVolume_t *psVolume = &(poDS->sVolume);

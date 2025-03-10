@@ -366,7 +366,7 @@ class file_info(object):
 # =============================================================================
 def Usage(isError):
     f = sys.stderr if isError else sys.stdout
-    print("Usage: gdal_merge.py [--help] [--help-general]", file=f)
+    print("Usage: gdal_merge [--help] [--help-general]", file=f)
     print(
         "                     [-o <out_filename>] [-of <out_format>] [-co <NAME>=<VALUE>]...",
         file=f,
@@ -393,6 +393,11 @@ def Usage(isError):
 
 
 def gdal_merge(argv=None):
+    with gdal.ExceptionMgr():
+        return _gdal_merge(argv=argv)
+
+
+def _gdal_merge(argv=None):
     verbose = 0
     quiet = 0
     names = []
@@ -544,8 +549,10 @@ def gdal_merge(argv=None):
         band_type = file_infos[0].band_type
 
     # Try opening as an existing file.
-    with gdal.quiet_errors(), gdal.ExceptionMgr(useExceptions=False):
+    try:
         t_fh = gdal.Open(out_file, gdal.GA_Update)
+    except Exception:
+        t_fh = None
 
     # Create output file if it does not already exist.
     if t_fh is None:

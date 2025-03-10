@@ -8,23 +8,7 @@
  ******************************************************************************
  * Copyright (c) 2015, Even Rouault, <even.rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_minixml.h"
@@ -78,15 +62,23 @@ typedef struct
     GDALColorInterp eColorInterp;
 } SENTINEL2BandDescription;
 
+/* clang-format off */
 static const SENTINEL2BandDescription asBandDesc[] = {
-    {"B1", 60, 443, 20, GCI_Undefined},    {"B2", 10, 490, 65, GCI_BlueBand},
-    {"B3", 10, 560, 35, GCI_GreenBand},    {"B4", 10, 665, 30, GCI_RedBand},
-    {"B5", 20, 705, 15, GCI_Undefined},    {"B6", 20, 740, 15, GCI_Undefined},
-    {"B7", 20, 783, 20, GCI_Undefined},    {"B8", 10, 842, 115, GCI_Undefined},
-    {"B8A", 20, 865, 20, GCI_Undefined},   {"B9", 60, 945, 20, GCI_Undefined},
-    {"B10", 60, 1375, 30, GCI_Undefined},  {"B11", 20, 1610, 90, GCI_Undefined},
-    {"B12", 20, 2190, 180, GCI_Undefined},
+    {"B1", 60, 443, 20, GCI_CoastalBand},
+    {"B2", 10, 490, 65, GCI_BlueBand},
+    {"B3", 10, 560, 35, GCI_GreenBand},
+    {"B4", 10, 665, 30, GCI_RedBand},
+    {"B5", 20, 705, 15, GCI_RedEdgeBand},   // rededge071
+    {"B6", 20, 740, 15, GCI_RedEdgeBand},   // rededge075
+    {"B7", 20, 783, 20, GCI_RedEdgeBand},   // rededge078
+    {"B8", 10, 842, 115, GCI_NIRBand},      // nir
+    {"B8A", 20, 865, 20, GCI_NIRBand},      // nir08
+    {"B9", 60, 945, 20, GCI_NIRBand},       // nir09
+    {"B10", 60, 1375, 30, GCI_OtherIRBand}, // cirrus
+    {"B11", 20, 1610, 90, GCI_SWIRBand},    // swir16
+    {"B12", 20, 2190, 180, GCI_SWIRBand},   // swir11
 };
+/* clang-format on */
 
 #define NB_BANDS (sizeof(asBandDesc) / sizeof(asBandDesc[0]))
 
@@ -126,8 +118,10 @@ static const char *L2A_BandDescription_SNW =
     "for high confidence snow/ice";
 
 static const SENTINEL2_L2A_BandDescription asL2ABandDesc[] = {
+    {"AOT", L2A_BandDescription_AOT, 10, TL_IMG_DATA_Rxxm},
     {"AOT", L2A_BandDescription_AOT, 20, TL_IMG_DATA_Rxxm},
     {"AOT", L2A_BandDescription_AOT, 60, TL_IMG_DATA_Rxxm},
+    {"WVP", L2A_BandDescription_WVP, 10, TL_IMG_DATA_Rxxm},
     {"WVP", L2A_BandDescription_WVP, 20, TL_IMG_DATA_Rxxm},
     {"WVP", L2A_BandDescription_WVP, 60, TL_IMG_DATA_Rxxm},
     {"SCL", L2A_BandDescription_SCL, 20, TL_IMG_DATA_Rxxm},
@@ -452,6 +446,7 @@ class SENTINEL2_CPLXMLNodeHolder
     explicit SENTINEL2_CPLXMLNodeHolder(CPLXMLNode *psNode) : m_psNode(psNode)
     {
     }
+
     ~SENTINEL2_CPLXMLNodeHolder()
     {
         if (m_psNode)
@@ -1968,6 +1963,15 @@ static void SENTINEL2SetBandMetadata(GDALRasterBand *poBand,
         poBand->SetMetadataItem("WAVELENGTH",
                                 CPLSPrintf("%d", psBandDesc->nWaveLength));
         poBand->SetMetadataItem("WAVELENGTH_UNIT", "nm");
+
+        poBand->SetMetadataItem(
+            "CENTRAL_WAVELENGTH_UM",
+            CPLSPrintf("%.3f", double(psBandDesc->nWaveLength) / 1000),
+            "IMAGERY");
+        poBand->SetMetadataItem(
+            "FWHM_UM",
+            CPLSPrintf("%.3f", double(psBandDesc->nBandWidth) / 1000),
+            "IMAGERY");
     }
     else
     {
@@ -3603,7 +3607,14 @@ SENTINEL2Dataset *SENTINEL2Dataset::CreateL1CL2ADataset(
         static_cast<int>((dfMaxY - dfMinY) / nSubDSPrecision + 0.5);
     SENTINEL2Dataset *poDS = new SENTINEL2Dataset(nRasterXSize, nRasterYSize);
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
     poDS->aosNonJP2Files = aosNonJP2Files;
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
     OGRSpatialReference oSRS;
     char *pszProjection = nullptr;

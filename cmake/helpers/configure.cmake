@@ -226,13 +226,13 @@ else ()
         #endif
         #include <sys/types.h>
         #include <sys/stat.h>
-        int main() { struct _stat64 buf; _wstat64( \"\", &buf ); return 0; }
+        int main() { struct _stat64 buf; wchar_t path = 0; _wstat64( &path, &buf ); return 0; }
     "
-    NO_UNIX_STDIO_64)
+    WINDOWS_STAT64)
 
-  if (NO_UNIX_STDIO_64)
+  if (WINDOWS_STAT64)
     set(VSI_STAT64 _stat64)
-    set(VSI_STAT64_T __stat64)
+    set(VSI_STAT64_T _stat64)
   endif ()
 
   check_function_exists(fopen64 HAVE_FOPEN64)
@@ -257,7 +257,7 @@ else ()
   # available at build time.
   # This is also necessary for Mac Catalyst builds.
   # Cf https://lists.osgeo.org/pipermail/gdal-dev/2022-August/056174.html
-  if (${CMAKE_SYSTEM_NAME} MATCHES "iOS" OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+  if (${CMAKE_SYSTEM_NAME} MATCHES "iOS|visionOS|tvOS|watchOS|Darwin")
     set(VSI_FOPEN64 "fopen")
     set(VSI_FTRUNCATE64 "ftruncate")
     set(VSI_FTELL64 "ftell")
@@ -367,6 +367,19 @@ else ()
     set(DONT_DEPRECATE_SPRINTF 1)
     add_definitions(-DDONT_DEPRECATE_SPRINTF)
   endif ()
+
+  check_cxx_source_compiles(
+    "
+    #include <shared_mutex>
+    int main(int argc, const char * argv[]) {
+        std::shared_mutex smtx;
+        smtx.lock_shared();
+        smtx.unlock_shared();
+        return 0;
+    }
+    "
+    HAVE_SHARED_MUTEX
+  )
 
   check_include_file("linux/userfaultfd.h" HAVE_USERFAULTFD_H)
 endif ()

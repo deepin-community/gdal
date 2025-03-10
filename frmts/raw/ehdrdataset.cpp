@@ -8,23 +8,7 @@
  * Copyright (c) 1999, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -1094,11 +1078,13 @@ GDALDataset *EHdrDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
         }
         else if (EQUAL(papszTokens[0], "PIXELTYPE"))
         {
-            chPixelType = static_cast<char>(toupper(papszTokens[1][0]));
+            chPixelType = static_cast<char>(
+                toupper(static_cast<unsigned char>(papszTokens[1][0])));
         }
         else if (EQUAL(papszTokens[0], "byteorder"))
         {
-            chByteOrder = static_cast<char>(toupper(papszTokens[1][0]));
+            chByteOrder = static_cast<char>(
+                toupper(static_cast<unsigned char>(papszTokens[1][0])));
         }
 
         // http://www.worldclim.org/futdown.htm have the projection extensions
@@ -1186,7 +1172,7 @@ GDALDataset *EHdrDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
         chPixelType = 'S';
     }
 
-    auto poDS = cpl::make_unique<EHdrDataset>();
+    auto poDS = std::make_unique<EHdrDataset>();
 
     poDS->osHeaderExt = pszHeaderExt;
 
@@ -1299,7 +1285,7 @@ GDALDataset *EHdrDataset::Open(GDALOpenInfo *poOpenInfo, bool bFileSizeCheck)
     // Create band information objects.
     for (int i = 0; i < l_nBands; i++)
     {
-        auto poBand = cpl::make_unique<EHdrRasterBand>(
+        auto poBand = std::make_unique<EHdrRasterBand>(
             poDS.get(), i + 1, poDS->fpImage, nSkipBytes + nBandOffset * i,
             nPixelOffset, nLineOffset, eDataType,
             chByteOrder == 'I' || chByteOrder == 'L'

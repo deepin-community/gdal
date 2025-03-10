@@ -8,23 +8,7 @@
  * Copyright (c) 2000, Frank Warmerdam
  * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include <ctype.h>
@@ -55,6 +39,7 @@ class HKVRasterBand final : public RawRasterBand
     HKVRasterBand(HKVDataset *poDS, int nBand, VSILFILE *fpRaw,
                   unsigned int nImgOffset, int nPixelOffset, int nLineOffset,
                   GDALDataType eDataType, int bNativeOrder);
+
     ~HKVRasterBand() override
     {
     }
@@ -70,6 +55,7 @@ class HKVSpheroidList : public SpheroidList
 {
   public:
     HKVSpheroidList();
+
     ~HKVSpheroidList()
     {
     }
@@ -222,6 +208,7 @@ class HKVDataset final : public RawDataset
 
     void ProcessGeoref(const char *);
     void ProcessGeorefGCP(char **, const char *, double, double);
+
     void SetVersion(float version_number)
     {
         // Update stored info.
@@ -264,16 +251,19 @@ class HKVDataset final : public RawDataset
     {
         return nGCPCount;
     }
+
     const OGRSpatialReference *GetGCPSpatialRef() const override
     {
         return m_oGCPSRS.IsEmpty() ? nullptr : &m_oGCPSRS;
     }
+
     const GDAL_GCP *GetGCPs() override;
 
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return m_oSRS.IsEmpty() ? nullptr : &m_oSRS;
     }
+
     CPLErr GetGeoTransform(double *) override;
 
     CPLErr SetGeoTransform(double *) override;
@@ -1183,7 +1173,7 @@ void HKVDataset::ProcessGeoref(const char *pszFilename)
             }
             else
             {
-                m_oSRS = oUTM;
+                m_oSRS = std::move(oUTM);
             }
         }
 
@@ -1244,7 +1234,7 @@ void HKVDataset::ProcessGeoref(const char *pszFilename)
             m_oSRS = oLL;
         }
 
-        m_oGCPSRS = oLL;
+        m_oGCPSRS = std::move(oLL);
     }
 
     delete hkvEllipsoids;
@@ -1302,7 +1292,7 @@ GDALDataset *HKVDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<HKVDataset>();
+    auto poDS = std::make_unique<HKVDataset>();
 
     poDS->pszPath = CPLStrdup(poOpenInfo->pszFilename);
     poDS->papszAttrib = papszAttrib;
@@ -1469,7 +1459,7 @@ GDALDataset *HKVDataset::Open(GDALOpenInfo *poOpenInfo)
 
     for (int iRawBand = 0; iRawBand < nRawBands; iRawBand++)
     {
-        auto poBand = cpl::make_unique<HKVRasterBand>(
+        auto poBand = std::make_unique<HKVRasterBand>(
             poDS.get(), poDS->GetRasterCount() + 1, poDS->fpBlob, nOffset,
             nPixelOffset, nLineOffset, eType, bNative);
         if (!poBand->IsValid())

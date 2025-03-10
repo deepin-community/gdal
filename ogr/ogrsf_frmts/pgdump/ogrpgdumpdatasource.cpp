@@ -7,29 +7,14 @@
  ******************************************************************************
  * Copyright (c) 2010-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include <algorithm>
 #include <cstring>
 #include "ogr_pgdump.h"
 #include "cpl_conv.h"
+#include "cpl_md5.h"
 #include "cpl_string.h"
 
 /************************************************************************/
@@ -46,7 +31,7 @@ OGRPGDumpDataSource::OGRPGDumpDataSource(const char *pszNameIn,
     bool bUseCRLF = false;
     if (pszCRLFFormat == nullptr)
     {
-#ifdef WIN32
+#ifdef _WIN32
         bUseCRLF = true;
 #endif
     }
@@ -63,7 +48,7 @@ OGRPGDumpDataSource::OGRPGDumpDataSource(const char *pszNameIn,
         CPLError(CE_Warning, CPLE_AppDefined,
                  "LINEFORMAT=%s not understood, use one of CRLF or LF.",
                  pszCRLFFormat);
-#ifdef WIN32
+#ifdef _WIN32
         bUseCRLF = true;
 #endif
     }
@@ -127,26 +112,41 @@ void OGRPGDumpDataSource::LogCommit()
 /*                         OGRPGCommonLaunderName()                     */
 /************************************************************************/
 
-char *OGRPGCommonLaunderName(const char *pszSrcName, const char *pszDebugPrefix)
+char *OGRPGCommonLaunderName(const char *pszSrcName, const char *pszDebugPrefix,
+                             bool bUTF8ToASCII)
 
 {
-    char *pszSafeName = CPLStrdup(pszSrcName);
+    char *pszSafeName = bUTF8ToASCII ? CPLUTF8ForceToASCII(pszSrcName, '_')
+                                     : CPLStrdup(pszSrcName);
 
     int i = 0;  // needed after loop
     for (; i < OGR_PG_NAMEDATALEN - 1 && pszSafeName[i] != '\0'; i++)
     {
-        pszSafeName[i] = (char)tolower(pszSafeName[i]);
-        if (pszSafeName[i] == '\'' || pszSafeName[i] == '-' ||
-            pszSafeName[i] == '#')
+        if (static_cast<unsigned char>(pszSafeName[i]) <= 127)
         {
-            pszSafeName[i] = '_';
+            pszSafeName[i] =
+                (char)CPLTolower(static_cast<unsigned char>(pszSafeName[i]));
+            if (pszSafeName[i] == '\'' || pszSafeName[i] == '-' ||
+                pszSafeName[i] == '#')
+            {
+                pszSafeName[i] = '_';
+            }
         }
     }
+
+    if (i == OGR_PG_NAMEDATALEN - 1 && pszSafeName[i] != '\0')
+    {
+        constexpr int FIRST_8_CHARS_OF_MD5 = 8;
+        pszSafeName[i - FIRST_8_CHARS_OF_MD5 - 1] = '_';
+        memcpy(pszSafeName + i - FIRST_8_CHARS_OF_MD5, CPLMD5String(pszSrcName),
+               FIRST_8_CHARS_OF_MD5);
+    }
+
     pszSafeName[i] = '\0';
 
     if (strcmp(pszSrcName, pszSafeName) != 0)
     {
-        if (strlen(pszSafeName) < strlen(pszSrcName))
+        if (CPLStrlenUTF8(pszSafeName) < CPLStrlenUTF8(pszSrcName))
         {
             CPLError(CE_Warning, CPLE_AppDefined,
                      "%s identifier truncated to %s", pszSrcName, pszSafeName);
@@ -165,10 +165,10 @@ char *OGRPGCommonLaunderName(const char *pszSrcName, const char *pszDebugPrefix)
 /*                           ICreateLayer()                             */
 /************************************************************************/
 
-OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
-                                            const OGRSpatialReference *poSRS,
-                                            OGRwkbGeometryType eType,
-                                            char **papszOptions)
+OGRLayer *
+OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
+                                  const OGRGeomFieldDefn *poGeomFieldDefn,
+                                  CSLConstList papszOptions)
 
 {
     if (STARTS_WITH(pszLayerName, "pg"))
@@ -178,6 +178,10 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
                  "prefix");
     }
 
+    auto eType = poGeomFieldDefn ? poGeomFieldDefn->GetType() : wkbNone;
+    const auto poSRS =
+        poGeomFieldDefn ? poGeomFieldDefn->GetSpatialRef() : nullptr;
+
     const bool bCreateTable = CPLFetchBool(papszOptions, "CREATE_TABLE", true);
     const bool bCreateSchema =
         CPLFetchBool(papszOptions, "CREATE_SCHEMA", true);
@@ -185,9 +189,9 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
         CSLFetchNameValueDef(papszOptions, "DROP_TABLE", "IF_EXISTS");
     int nGeometryTypeFlags = 0;
 
-    if (OGR_GT_HasZ((OGRwkbGeometryType)eType))
+    if (OGR_GT_HasZ(eType))
         nGeometryTypeFlags |= OGRGeometry::OGR_G_3D;
-    if (OGR_GT_HasM((OGRwkbGeometryType)eType))
+    if (OGR_GT_HasM(eType))
         nGeometryTypeFlags |= OGRGeometry::OGR_G_MEASURED;
 
     int nForcedGeometryTypeFlags = -1;
@@ -245,7 +249,10 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     const char *pszDotPos = strstr(pszLayerName, ".");
     std::string osTable;
     std::string osSchema;
-    const bool bLaunder = CPLFetchBool(papszOptions, "LAUNDER", true);
+    const bool bUTF8ToASCII =
+        CPLFetchBool(papszOptions, "LAUNDER_ASCII", false);
+    const bool bLaunder =
+        bUTF8ToASCII || CPLFetchBool(papszOptions, "LAUNDER", true);
 
     if (pszDotPos != nullptr && bExtractSchemaFromLayerName)
     {
@@ -255,24 +262,26 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
 
         if (bLaunder)
         {
-            char *pszTmp =
-                OGRPGCommonLaunderName(pszDotPos + 1, "PGDump");  // skip "."
+            char *pszTmp = OGRPGCommonLaunderName(pszDotPos + 1, "PGDump",
+                                                  bUTF8ToASCII);  // skip "."
             osTable = pszTmp;
             CPLFree(pszTmp);
         }
         else
-            osTable = pszDotPos + 1;  // skip "."
+            osTable = OGRPGCommonGenerateShortEnoughIdentifier(pszDotPos +
+                                                               1);  // skip "."
     }
     else
     {
         if (bLaunder)
         {
-            char *pszTmp = OGRPGCommonLaunderName(pszLayerName, "PGDump");
+            char *pszTmp =
+                OGRPGCommonLaunderName(pszLayerName, "PGDump", bUTF8ToASCII);
             osTable = pszTmp;
             CPLFree(pszTmp);
         }
         else
-            osTable = pszLayerName;
+            osTable = OGRPGCommonGenerateShortEnoughIdentifier(pszLayerName);
     }
 
     const std::string osTableEscaped =
@@ -465,8 +474,8 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     {
         if (bLaunder)
         {
-            char *pszLaunderedFid =
-                OGRPGCommonLaunderName(pszFIDColumnNameIn, "PGDump");
+            char *pszLaunderedFid = OGRPGCommonLaunderName(
+                pszFIDColumnNameIn, "PGDump", bUTF8ToASCII);
             osFIDColumnName = pszLaunderedFid;
             CPLFree(pszLaunderedFid);
         }
@@ -484,8 +493,8 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     if (bCreateTable && !osFIDColumnName.empty())
     {
         std::string osConstraintName(osTable);
-        if (bLaunder && osConstraintName.size() + strlen("_pk") >
-                            static_cast<size_t>(OGR_PG_NAMEDATALEN - 1))
+        if (osConstraintName.size() + strlen("_pk") >
+            static_cast<size_t>(OGR_PG_NAMEDATALEN - 1))
         {
             osConstraintName.resize(OGR_PG_NAMEDATALEN - 1 - strlen("_pk"));
         }
@@ -578,21 +587,8 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     std::vector<std::string> aosSpatialIndexCreationCommands;
     if (bCreateTable && bCreateSpatialIndex && pszGFldName && eType != wkbNone)
     {
-        std::string osIndexName(osTable);
-        std::string osSuffix("_");
-        osSuffix += pszGFldName;
-        osSuffix += "_geom_idx";
-        if (bLaunder)
-        {
-            if (osSuffix.size() >= static_cast<size_t>(OGR_PG_NAMEDATALEN - 1))
-            {
-                osSuffix = "_0_geom_idx";
-            }
-            if (osIndexName.size() + osSuffix.size() >
-                static_cast<size_t>(OGR_PG_NAMEDATALEN - 1))
-                osIndexName.resize(OGR_PG_NAMEDATALEN - 1 - osSuffix.size());
-        }
-        osIndexName += osSuffix;
+        const std::string osIndexName(OGRPGCommonGenerateSpatialIndexName(
+            osTable.c_str(), pszGFldName, 0));
 
         /* --------------------------------------------------------------- */
         /*      Create the spatial index.                                  */
@@ -612,11 +608,12 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     const bool bWriteAsHex =
         !CPLFetchBool(papszOptions, "WRITE_EWKT_GEOM", false);
 
-    auto poLayer = cpl::make_unique<OGRPGDumpLayer>(
+    auto poLayer = std::make_unique<OGRPGDumpLayer>(
         this, osSchema.c_str(), osTable.c_str(),
         !osFIDColumnName.empty() ? osFIDColumnName.c_str() : nullptr,
         bWriteAsHex, bCreateTable);
     poLayer->SetLaunderFlag(bLaunder);
+    poLayer->SetUTF8ToASCIIFlag(bUTF8ToASCII);
     poLayer->SetPrecisionFlag(CPLFetchBool(papszOptions, "PRECISION", true));
 
     const char *pszOverrideColumnTypes =
@@ -652,7 +649,7 @@ OGRLayer *OGRPGDumpDataSource::ICreateLayer(const char *pszLayerName,
     if (eType != wkbNone)
     {
         OGRGeomFieldDefn oTmp(pszGFldName, eType);
-        auto poGeomField = cpl::make_unique<OGRPGDumpGeomFieldDefn>(&oTmp);
+        auto poGeomField = std::make_unique<OGRPGDumpGeomFieldDefn>(&oTmp);
         poGeomField->m_nSRSId = nSRSId;
         poGeomField->m_nGeometryTypeFlags = nGeometryTypeFlags;
         poLayer->GetLayerDefn()->AddGeomFieldDefn(std::move(poGeomField));

@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2020, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_json.h"
@@ -112,7 +96,7 @@ CPLErr STACTADataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                                 int nXSize, int nYSize, void *pData,
                                 int nBufXSize, int nBufYSize,
                                 GDALDataType eBufType, int nBandCount,
-                                int *panBandMap, GSpacing nPixelSpace,
+                                BANDMAP_TYPE panBandMap, GSpacing nPixelSpace,
                                 GSpacing nLineSpace, GSpacing nBandSpace,
                                 GDALRasterIOExtraArg *psExtraArg)
 {
@@ -240,8 +224,8 @@ CPLErr STACTARawRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
     INIT_RASTERIO_EXTRA_ARG(sExtraArgs);
     const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
     return IRasterIO(GF_Read, nXOff, nYOff, nXSize, nYSize, pImage, nBlockXSize,
-                     nBlockYSize, eDataType, nDTSize, nDTSize * nBlockXSize,
-                     &sExtraArgs);
+                     nBlockYSize, eDataType, nDTSize,
+                     static_cast<GSpacing>(nDTSize) * nBlockXSize, &sExtraArgs);
 }
 
 /************************************************************************/
@@ -304,13 +288,11 @@ CPLErr STACTARawRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
 /*                             IRasterIO()                              */
 /************************************************************************/
 
-CPLErr STACTARawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
-                                   int nXSize, int nYSize, void *pData,
-                                   int nBufXSize, int nBufYSize,
-                                   GDALDataType eBufType, int nBandCount,
-                                   int *panBandMap, GSpacing nPixelSpace,
-                                   GSpacing nLineSpace, GSpacing nBandSpace,
-                                   GDALRasterIOExtraArg *psExtraArg)
+CPLErr STACTARawDataset::IRasterIO(
+    GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize, int nYSize,
+    void *pData, int nBufXSize, int nBufYSize, GDALDataType eBufType,
+    int nBandCount, BANDMAP_TYPE panBandMap, GSpacing nPixelSpace,
+    GSpacing nLineSpace, GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg)
 {
     CPLDebugOnly("STACTA", "Dataset RasterIO: %d,%d,%d,%d->%d,%d", nXOff, nYOff,
                  nXSize, nYSize, nBufXSize, nBufYSize);
@@ -355,12 +337,16 @@ CPLErr STACTARawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             // approach.
             GDALRasterIOExtraArg sExtraArgs;
             INIT_RASTERIO_EXTRA_ARG(sExtraArgs);
-            std::vector<GByte> abyBuf(nXSizeMod * nYSizeMod * nBandCount *
-                                      nDTSize);
+            const size_t nXSizeModeMulYSizeModMulDTSize =
+                static_cast<size_t>(nXSizeMod) * nYSizeMod * nDTSize;
+            std::vector<GByte> abyBuf(nXSizeModeMulYSizeModMulDTSize *
+                                      nBandCount);
             if (IRasterIO(GF_Read, nXOffMod, nYOffMod, nXSizeMod, nYSizeMod,
                           &abyBuf[0], nXSizeMod, nYSizeMod, eBandDT, nBandCount,
-                          panBandMap, nDTSize, nDTSize * nXSizeMod,
-                          nDTSize * nXSizeMod * nYSizeMod,
+                          panBandMap, nDTSize,
+                          static_cast<GSpacing>(nDTSize) * nXSizeMod,
+                          static_cast<GSpacing>(nDTSize) * nXSizeMod *
+                              nYSizeMod,
                           &sExtraArgs) != CE_None)
             {
                 return CE_Failure;
@@ -372,8 +358,8 @@ CPLErr STACTARawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
             {
                 auto hBand = MEMCreateRasterBandEx(
                     poMEMDS.get(), i + 1,
-                    &abyBuf[0] + i * nDTSize * nXSizeMod * nYSizeMod, eBandDT,
-                    0, 0, false);
+                    &abyBuf[0] + i * nXSizeModeMulYSizeModMulDTSize, eBandDT, 0,
+                    0, false);
                 poMEMDS->AddMEMBand(hBand);
             }
 
@@ -487,8 +473,13 @@ CPLErr STACTARawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                             return CE_Failure;
                         }
                         VSIFCloseL(fp);
-                        const CPLString osMEMFilename("/vsimem/stacta/" +
-                                                      osURL);
+                        const CPLString osMEMFilename(
+                            VSIMemGenerateHiddenFilename(
+                                std::string("stacta_")
+                                    .append(CPLString(osURL)
+                                                .replaceAll("/", "_")
+                                                .replaceAll("\\", "_"))
+                                    .c_str()));
                         VSIFCloseL(VSIFileFromMemBuffer(osMEMFilename, pabyBuf,
                                                         nSize, TRUE));
                         poTileDS = std::unique_ptr<GDALDataset>(
@@ -648,9 +639,17 @@ int STACTADataset::Identify(GDALOpenInfo *poOpenInfo)
         return true;
     }
 
+    const bool bIsSingleDriver = poOpenInfo->IsSingleAllowedDriver("STACTA");
+    if (bIsSingleDriver && (STARTS_WITH(poOpenInfo->pszFilename, "http://") ||
+                            STARTS_WITH(poOpenInfo->pszFilename, "https://")))
+    {
+        return true;
+    }
+
     if (
 #ifndef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-        !EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "json") ||
+        (!bIsSingleDriver &&
+         !EQUAL(CPLGetExtension(poOpenInfo->pszFilename), "json")) ||
 #endif
         poOpenInfo->nHeaderBytes == 0)
     {
@@ -663,6 +662,14 @@ int STACTADataset::Identify(GDALOpenInfo *poOpenInfo)
         // before the loop.
         const char *pszHeader =
             reinterpret_cast<const char *>(poOpenInfo->pabyHeader);
+        while (*pszHeader != 0 &&
+               std::isspace(static_cast<unsigned char>(*pszHeader)))
+            ++pszHeader;
+        if (bIsSingleDriver)
+        {
+            return pszHeader[0] == '{';
+        }
+
         if (strstr(pszHeader, "\"stac_extensions\"") != nullptr &&
             (strstr(pszHeader, "\"tiled-assets\"") != nullptr ||
              strstr(pszHeader,
@@ -884,7 +891,7 @@ bool STACTADataset::Open(GDALOpenInfo *poOpenInfo)
             }
         }
     }
-    const auto tmsList = poTMS->tileMatrixList();
+    const auto &tmsList = poTMS->tileMatrixList();
     if (tmsList.empty())
         return false;
 
@@ -918,6 +925,7 @@ bool STACTADataset::Open(GDALOpenInfo *poOpenInfo)
         else
         {
             nExpectedBandCount = oRasterBands.Size();
+
             const struct
             {
                 const char *pszStacDataType;
@@ -939,6 +947,7 @@ bool STACTADataset::Open(GDALOpenInfo *poOpenInfo)
                 {"cfloat32", GDT_CFloat32},
                 {"cfloat64", GDT_CFloat64},
             };
+
             for (int i = 0; i < nExpectedBandCount; ++i)
             {
                 if (oRasterBands[i].GetType() != CPLJSONObject::Type::Object)
@@ -1098,7 +1107,7 @@ bool STACTADataset::Open(GDALOpenInfo *poOpenInfo)
         {
             continue;
         }
-        auto poRawDS = cpl::make_unique<STACTARawDataset>();
+        auto poRawDS = std::make_unique<STACTARawDataset>();
         if (!poRawDS->InitRaster(poProtoDS.get(), aeDT, abSetNoData, adfNoData,
                                  poTMS.get(), tmsList[i].mId, oTM, oMapLimits))
         {
@@ -1150,10 +1159,10 @@ bool STACTADataset::Open(GDALOpenInfo *poOpenInfo)
                 aosOptions.AddString("-of");
                 aosOptions.AddString("VRT");
                 aosOptions.AddString("-projwin");
-                aosOptions.AddString(CPLSPrintf("%.18g", dfMinX));
-                aosOptions.AddString(CPLSPrintf("%.18g", dfMaxY));
-                aosOptions.AddString(CPLSPrintf("%.18g", dfMaxX));
-                aosOptions.AddString(CPLSPrintf("%.18g", dfMinY));
+                aosOptions.AddString(CPLSPrintf("%.17g", dfMinX));
+                aosOptions.AddString(CPLSPrintf("%.17g", dfMaxY));
+                aosOptions.AddString(CPLSPrintf("%.17g", dfMaxX));
+                aosOptions.AddString(CPLSPrintf("%.17g", dfMinY));
                 auto psOptions =
                     GDALTranslateOptionsNew(aosOptions.List(), nullptr);
                 auto hDS =
@@ -1389,7 +1398,7 @@ GDALDataset *STACTADataset::OpenStatic(GDALOpenInfo *poOpenInfo)
 {
     if (!Identify(poOpenInfo))
         return nullptr;
-    auto poDS = cpl::make_unique<STACTADataset>();
+    auto poDS = std::make_unique<STACTADataset>();
     if (!poDS->Open(poOpenInfo))
         return nullptr;
     return poDS.release();

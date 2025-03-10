@@ -8,23 +8,7 @@
  ******************************************************************************
  * Copyright (c) 2005, Kevin Ruland
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************/
 
 #ifdef SWIGPYTHON
@@ -361,6 +345,10 @@ public:
 
   int IsProjected() {
     return OSRIsProjected(self);
+  }
+
+  int IsDerivedProjected() {
+    return OSRIsDerivedProjected(self);
   }
 
   int IsCompound() {
@@ -927,9 +915,21 @@ public:
     return OSRSetWellKnownGeogCS( self, name );
   }
 
-  OGRErr SetFromUserInput( const char *name ) {
-    return OSRSetFromUserInput( self, name );
+#ifdef SWIGCSHARP
+  OGRErr SetFromUserInput( const char *name) {
+    return OSRSetFromUserInputEx( self, name, NULL );
   }
+  OGRErr SetFromUserInput( const char *name, char** options ) {
+    return OSRSetFromUserInputEx( self, name, options );
+  }
+#else
+#ifndef SWIGJAVA
+  %feature( "kwargs" ) SetFromUserInput;
+#endif
+  OGRErr SetFromUserInput( const char *name, char** options = NULL ) {
+    return OSRSetFromUserInputEx( self, name, options );
+  }
+#endif
 
   OGRErr CopyGeogCSFrom( OSRSpatialReferenceShadow *rhs ) {
     return OSRCopyGeogCSFrom( self, rhs );
@@ -1060,6 +1060,13 @@ public:
     return OSRImportFromOzi( self, papszLines );
   }
 
+%apply Pointer NONNULL {const char* const *keyValues};
+%apply (char **options) { char ** keyValues };
+  OGRErr ImportFromCF1( char** keyValues, const char* units = NULL) {
+      return OSRImportFromCF1(self, keyValues, units);
+  }
+%clear (char **);
+
   OGRErr ExportToWkt( char **argout, char **options = NULL ) {
     return OSRExportToWktEx( self, argout, options );
   }
@@ -1110,6 +1117,26 @@ public:
   OGRErr ExportToMICoordSys( char **argout ) {
     return OSRExportToMICoordSys( self, argout );
   }
+
+#if defined(SWIGPYTHON) || defined(SWIGJAVA)
+%apply (char **dictAndCSLDestroy) { char ** };
+#else
+// We'd also need a dictAndCSLDestroy for other languages!
+%apply (char **) { char ** };
+#endif
+%apply (char **options) { char **options };
+  char** ExportToCF1( char **options = NULL ) {
+    char** ret = NULL;
+    OSRExportToCF1(self, NULL, &ret, NULL, options);
+    return ret;
+  }
+%clear char **;
+
+ retStringAndCPLFree* ExportToCF1Units( char **options = NULL ) {
+    char* units = NULL;
+    OSRExportToCF1(self, NULL, NULL, &units, options);
+    return units;
+ }
 
 %newobject CloneGeogCS;
   OSRSpatialReferenceShadow *CloneGeogCS() {
@@ -1206,7 +1233,6 @@ public:
 
 // NEEDED
 // Custom python __init__ which takes a tuple.
-// TransformPoints which takes list of 3-tuples
 
 %rename (CoordinateTransformation) OSRCoordinateTransformationShadow;
 class OSRCoordinateTransformationShadow {
@@ -1529,6 +1555,15 @@ const char* OSRCRSInfo_projection_method_get( OSRCRSInfo *crsInfo ) {
 %}
 
 #endif
+
+%apply (char **CSL) {(char **)};
+%inline %{
+char** GetAuthorityListFromDatabase()
+{
+    return OSRGetAuthorityListFromDatabase();
+}
+%}
+%clear (char **);
 
 #ifdef SWIGPYTHON
 %inline %{

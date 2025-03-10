@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "zarr.h"
@@ -144,7 +128,7 @@ bool ZarrV3CodecGZip::InitFromConfiguration(
 
 std::unique_ptr<ZarrV3Codec> ZarrV3CodecGZip::Clone() const
 {
-    auto psClone = cpl::make_unique<ZarrV3CodecGZip>();
+    auto psClone = std::make_unique<ZarrV3CodecGZip>();
     ZarrArrayMetadata oOutputArrayMetadata;
     psClone->InitFromConfiguration(m_oConfiguration, m_oInputArrayMetadata,
                                    oOutputArrayMetadata);
@@ -363,7 +347,7 @@ bool ZarrV3CodecBlosc::InitFromConfiguration(
 
 std::unique_ptr<ZarrV3Codec> ZarrV3CodecBlosc::Clone() const
 {
-    auto psClone = cpl::make_unique<ZarrV3CodecBlosc>();
+    auto psClone = std::make_unique<ZarrV3CodecBlosc>();
     ZarrArrayMetadata oOutputArrayMetadata;
     psClone->InitFromConfiguration(m_oConfiguration, m_oInputArrayMetadata,
                                    oOutputArrayMetadata);
@@ -511,7 +495,7 @@ bool ZarrV3CodecEndian::InitFromConfiguration(
 
 std::unique_ptr<ZarrV3Codec> ZarrV3CodecEndian::Clone() const
 {
-    auto psClone = cpl::make_unique<ZarrV3CodecEndian>();
+    auto psClone = std::make_unique<ZarrV3CodecEndian>();
     ZarrArrayMetadata oOutputArrayMetadata;
     psClone->InitFromConfiguration(m_oConfiguration, m_oInputArrayMetadata,
                                    oOutputArrayMetadata);
@@ -760,7 +744,7 @@ bool ZarrV3CodecTranspose::InitFromConfiguration(
 
 std::unique_ptr<ZarrV3Codec> ZarrV3CodecTranspose::Clone() const
 {
-    auto psClone = cpl::make_unique<ZarrV3CodecTranspose>();
+    auto psClone = std::make_unique<ZarrV3CodecTranspose>();
     ZarrArrayMetadata oOutputArrayMetadata;
     psClone->InitFromConfiguration(m_oConfiguration, m_oInputArrayMetadata,
                                    oOutputArrayMetadata);
@@ -922,7 +906,7 @@ bool ZarrV3CodecTranspose::Decode(const ZarrByteVectorQuickResize &abySrc,
 
 std::unique_ptr<ZarrV3CodecSequence> ZarrV3CodecSequence::Clone() const
 {
-    auto poClone = cpl::make_unique<ZarrV3CodecSequence>(m_oInputArrayMetadata);
+    auto poClone = std::make_unique<ZarrV3CodecSequence>(m_oInputArrayMetadata);
     for (const auto &poCodec : m_apoCodecs)
         poClone->m_apoCodecs.emplace_back(poCodec->Clone());
     poClone->m_oCodecArray = m_oCodecArray.Clone();
@@ -954,7 +938,7 @@ bool ZarrV3CodecSequence::InitFromJson(const CPLJSONObject &oCodecs)
         if (eLastType == ZarrV3Codec::IOType::ARRAY &&
             oInputArrayMetadata.oElt.nativeSize > 1)
         {
-            auto poEndianCodec = cpl::make_unique<ZarrV3CodecEndian>();
+            auto poEndianCodec = std::make_unique<ZarrV3CodecEndian>();
             ZarrArrayMetadata oOutputArrayMetadata;
             poEndianCodec->InitFromConfiguration(
                 ZarrV3CodecEndian::GetConfiguration(true), oInputArrayMetadata,
@@ -977,13 +961,13 @@ bool ZarrV3CodecSequence::InitFromJson(const CPLJSONObject &oCodecs)
         const auto osName = oCodec["name"].ToString();
         std::unique_ptr<ZarrV3Codec> poCodec;
         if (osName == "gzip")
-            poCodec = cpl::make_unique<ZarrV3CodecGZip>();
+            poCodec = std::make_unique<ZarrV3CodecGZip>();
         else if (osName == "blosc")
-            poCodec = cpl::make_unique<ZarrV3CodecBlosc>();
+            poCodec = std::make_unique<ZarrV3CodecBlosc>();
         else if (osName == "endian")
-            poCodec = cpl::make_unique<ZarrV3CodecEndian>();
+            poCodec = std::make_unique<ZarrV3CodecEndian>();
         else if (osName == "transpose")
-            poCodec = cpl::make_unique<ZarrV3CodecTranspose>();
+            poCodec = std::make_unique<ZarrV3CodecTranspose>();
         else
         {
             CPLError(CE_Failure, CPLE_NotSupported, "Unsupported codec: %s",
@@ -1015,7 +999,7 @@ bool ZarrV3CodecSequence::InitFromJson(const CPLJSONObject &oCodecs)
         {
             return false;
         }
-        oInputArrayMetadata = oOutputArrayMetadata;
+        oInputArrayMetadata = std::move(oOutputArrayMetadata);
         eLastType = poCodec->GetOutputType();
         osLastCodec = poCodec->GetName();
 

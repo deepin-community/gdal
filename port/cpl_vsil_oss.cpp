@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2017-2018, Even Rouault <even.rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -62,13 +46,14 @@ namespace cpl
 /*                         VSIOSSFSHandler                              */
 /************************************************************************/
 
-class VSIOSSFSHandler final : public IVSIS3LikeFSHandler
+class VSIOSSFSHandler final : public IVSIS3LikeFSHandlerWithMultipartUpload
 {
     CPL_DISALLOW_COPY_ASSIGN(VSIOSSFSHandler)
 
   protected:
     VSICurlHandle *CreateFileHandle(const char *pszFilename) override;
-    CPLString GetURLFromFilename(const CPLString &osFilename) override;
+    std::string
+    GetURLFromFilename(const std::string &osFilename) const override;
 
     const char *GetDebugKey() const override
     {
@@ -78,7 +63,7 @@ class VSIOSSFSHandler final : public IVSIS3LikeFSHandler
     IVSIS3LikeHandleHelper *CreateHandleHelper(const char *pszURI,
                                                bool bAllowNoObject) override;
 
-    CPLString GetFSPrefix() const override
+    std::string GetFSPrefix() const override
     {
         return "/vsioss/";
     }
@@ -103,6 +88,11 @@ class VSIOSSFSHandler final : public IVSIS3LikeFSHandler
     {
         return osFilename;
     }
+
+    bool SupportsMultipartAbort() const override
+    {
+        return true;
+    }
 };
 
 /************************************************************************/
@@ -117,7 +107,7 @@ class VSIOSSHandle final : public IVSIS3LikeHandle
 
   protected:
     struct curl_slist *
-    GetCurlHeaders(const CPLString &osVerb,
+    GetCurlHeaders(const std::string &osVerb,
                    const struct curl_slist *psExistingHeaders) override;
     bool CanRestartOnError(const char *, const char *, bool) override;
 
@@ -148,8 +138,8 @@ VSIOSSFSHandler::CreateWriteHandle(const char *pszFilename,
         CreateHandleHelper(pszFilename + GetFSPrefix().size(), false);
     if (poHandleHelper == nullptr)
         return nullptr;
-    auto poHandle = cpl::make_unique<VSIS3WriteHandle>(
-        this, pszFilename, poHandleHelper, false, papszOptions);
+    auto poHandle = std::make_unique<VSIMultipartWriteHandle>(
+        this, pszFilename, poHandleHelper, papszOptions);
     if (!poHandle->IsOK())
     {
         return nullptr;
@@ -174,8 +164,8 @@ void VSIOSSFSHandler::ClearCache()
 
 const char *VSIOSSFSHandler::GetOptions()
 {
-    static CPLString osOptions(
-        CPLString("<Options>") +
+    static std::string osOptions(
+        std::string("<Options>") +
         "  <Option name='OSS_SECRET_ACCESS_KEY' type='string' "
         "description='Secret access key. To use with OSS_ACCESS_KEY_ID'/>"
         "  <Option name='OSS_ACCESS_KEY_ID' type='string' "
@@ -197,7 +187,7 @@ const char *VSIOSSFSHandler::GetOptions()
 char *VSIOSSFSHandler::GetSignedURL(const char *pszFilename,
                                     CSLConstList papszOptions)
 {
-    if (!STARTS_WITH_CI(pszFilename, GetFSPrefix()))
+    if (!STARTS_WITH_CI(pszFilename, GetFSPrefix().c_str()))
         return nullptr;
 
     VSIOSSHandleHelper *poHandleHelper = VSIOSSHandleHelper::BuildFromURI(
@@ -208,10 +198,10 @@ char *VSIOSSFSHandler::GetSignedURL(const char *pszFilename,
         return nullptr;
     }
 
-    CPLString osRet(poHandleHelper->GetSignedURL(papszOptions));
+    std::string osRet(poHandleHelper->GetSignedURL(papszOptions));
 
     delete poHandleHelper;
-    return CPLStrdup(osRet);
+    return CPLStrdup(osRet.c_str());
 }
 
 /************************************************************************/
@@ -230,25 +220,26 @@ VSICurlHandle *VSIOSSFSHandler::CreateFileHandle(const char *pszFilename)
 }
 
 /************************************************************************/
-/*                          GetURLFromFilename()                         */
+/*                          GetURLFromFilename()                        */
 /************************************************************************/
 
-CPLString VSIOSSFSHandler::GetURLFromFilename(const CPLString &osFilename)
+std::string
+VSIOSSFSHandler::GetURLFromFilename(const std::string &osFilename) const
 {
-    CPLString osFilenameWithoutPrefix = osFilename.substr(GetFSPrefix().size());
+    const std::string osFilenameWithoutPrefix =
+        osFilename.substr(GetFSPrefix().size());
 
-    VSIOSSHandleHelper *poHandleHelper = VSIOSSHandleHelper::BuildFromURI(
-        osFilenameWithoutPrefix, GetFSPrefix().c_str(), true);
-    if (poHandleHelper == nullptr)
+    auto poHandleHelper =
+        std::unique_ptr<VSIOSSHandleHelper>(VSIOSSHandleHelper::BuildFromURI(
+            osFilenameWithoutPrefix.c_str(), GetFSPrefix().c_str(), true));
+    if (!poHandleHelper)
     {
-        return "";
+        return std::string();
     }
 
-    CPLString osBaseURL(poHandleHelper->GetURL());
+    std::string osBaseURL(poHandleHelper->GetURL());
     if (!osBaseURL.empty() && osBaseURL.back() == '/')
-        osBaseURL.resize(osBaseURL.size() - 1);
-    delete poHandleHelper;
-
+        osBaseURL.pop_back();
     return osBaseURL;
 }
 
@@ -269,7 +260,7 @@ IVSIS3LikeHandleHelper *VSIOSSFSHandler::CreateHandleHelper(const char *pszURI,
 
 VSIOSSHandle::VSIOSSHandle(VSIOSSFSHandler *poFSIn, const char *pszFilename,
                            VSIOSSHandleHelper *poHandleHelper)
-    : IVSIS3LikeHandle(poFSIn, pszFilename, poHandleHelper->GetURL()),
+    : IVSIS3LikeHandle(poFSIn, pszFilename, poHandleHelper->GetURL().c_str()),
       m_poHandleHelper(poHandleHelper)
 {
 }
@@ -288,7 +279,7 @@ VSIOSSHandle::~VSIOSSHandle()
 /************************************************************************/
 
 struct curl_slist *
-VSIOSSHandle::GetCurlHeaders(const CPLString &osVerb,
+VSIOSSHandle::GetCurlHeaders(const std::string &osVerb,
                              const struct curl_slist *psExistingHeaders)
 {
     return m_poHandleHelper->GetCurlHeaders(osVerb, psExistingHeaders);
@@ -303,7 +294,7 @@ bool VSIOSSHandle::CanRestartOnError(const char *pszErrorMsg,
 {
     if (m_poHandleHelper->CanRestartOnError(pszErrorMsg, pszHeaders, bSetError))
     {
-        SetURL(m_poHandleHelper->GetURL());
+        SetURL(m_poHandleHelper->GetURL().c_str());
         return true;
     }
     return false;

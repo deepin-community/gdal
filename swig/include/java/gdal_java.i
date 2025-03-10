@@ -43,6 +43,7 @@ import org.gdal.ogr.StyleTable;
 import org.gdal.ogr.Layer;
 import org.gdal.ogr.Feature;
 import org.gdal.ogr.FieldDomain;
+import org.gdal.ogr.GeomFieldDefn;
 %}
 
 %pragma(java) moduleimports=%{
@@ -61,6 +62,7 @@ import org.gdal.ogr.StyleTable;
 import org.gdal.ogr.Layer;
 import org.gdal.ogr.Feature;
 import org.gdal.ogr.FieldDomain;
+import org.gdal.ogr.GeomFieldDefn;
 %}
 
 %typemap(javaimports) GDALDimensionHS %{
@@ -549,6 +551,30 @@ import org.gdal.gdalconst.gdalconstConstants;
 
 %}
 
+%typemap(javabody_derived) GDALDatasetShadow %{
+  private long swigCPtr;
+
+  public Dataset(long cPtr, boolean cMemoryOwn) {
+    super(gdalJNI.Dataset_SWIGUpcast(cPtr), cMemoryOwn);
+    swigCPtr = cPtr;
+  }
+
+  public static long getCPtr(Dataset obj) {
+    return (obj == null) ? 0 : obj.swigCPtr;
+  }
+%}
+
+%extend GDALDatasetShadow {
+%proxycode %{
+  public int Close() {
+    int ret = gdalJNI.Dataset_CloseInternal(swigCPtr, this);
+    swigCPtr = 0;
+    swigCMemOwn = false;
+    return ret;
+  }
+%}
+}
+
 %typemap(javacode) GDALDatasetShadow %{
 
   // Preferred name to match C++ API
@@ -604,7 +630,7 @@ import org.gdal.gdalconst.gdalconstConstants;
             CPLError(CE_Failure, CPLE_AppDefined, "Integer overflow");
             return CE_Failure;
         }
-        if (nioBufferSize < nBlockXSize * nBlockYSize * nDataTypeSize)
+        if (nioBufferSize < (size_t)nBlockXSize * nBlockYSize * nDataTypeSize)
         {
             CPLError(CE_Failure, CPLE_AppDefined, "Buffer not big enough");
             return CE_Failure;
@@ -1297,7 +1323,8 @@ import org.gdal.gdalconst.gdalconstConstants;
 // Add a Java reference to prevent premature garbage collection and resulting use
 // of dangling C++ pointer. Intended for methods that return pointers or
 // references to a member variable.
-%typemap(javaout) GDALRasterBandShadow* GetRasterBand,
+%typemap(javaout) GDALDatasetShadow* GetThreadSafeDataset,
+                  GDALRasterBandShadow* GetRasterBand,
                   GDALRasterBandShadow* GetOverview,
                   GDALRasterBandShadow* GetMaskBand,
                   GDALColorTableShadow* GetColorTable,
@@ -1416,3 +1443,17 @@ import org.gdal.gdalconst.gdalconstConstants;
 %include callback.i
 
 %include typemaps_java.i
+
+
+// Also defined in python/gdal_python.i and csharp/gdal_csharp.i
+
+%rename (GetMemFileBuffer) wrapper_VSIGetMemFileBuffer;
+
+%apply (GByte* outBytes) {GByte*};
+%inline %{
+GByte* wrapper_VSIGetMemFileBuffer(const char *utf8_path, vsi_l_offset *length)
+{
+    return VSIGetMemFileBuffer(utf8_path, length, 0);
+}
+%}
+%clear GByte*;

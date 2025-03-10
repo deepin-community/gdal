@@ -9,23 +9,7 @@
  * Copyright (c) 2007-2012, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2014, Kyle Shannon <kyle at pobox dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 // We need cpl_port as first include to avoid VSIStatBufL being not
@@ -80,7 +64,7 @@ float DoubleToFloatClamp(double dfValue)
 // to be needed for other formats.
 double MapNoDataToFloat(double dfNoDataValue)
 {
-    if (CPLIsInf(dfNoDataValue) || CPLIsNan(dfNoDataValue))
+    if (std::isinf(dfNoDataValue) || std::isnan(dfNoDataValue))
         return dfNoDataValue;
 
     if (dfNoDataValue >= std::numeric_limits<float>::max())
@@ -606,11 +590,12 @@ int AAIGDataset::ParseHeader(const char *pszHeader, const char *pszDataType)
             if (pszDataType == nullptr &&
                 (strchr(pszNoData, '.') != nullptr ||
                  strchr(pszNoData, ',') != nullptr ||
+                 std::isnan(dfNoDataValue) ||
                  std::numeric_limits<int>::min() > dfNoDataValue ||
                  dfNoDataValue > std::numeric_limits<int>::max()))
             {
                 eDataType = GDT_Float32;
-                if (!CPLIsInf(dfNoDataValue) &&
+                if (!std::isinf(dfNoDataValue) &&
                     (fabs(dfNoDataValue) < std::numeric_limits<float>::min() ||
                      fabs(dfNoDataValue) > std::numeric_limits<float>::max()))
                 {
@@ -718,7 +703,7 @@ int GRASSASCIIDataset::ParseHeader(const char *pszHeader,
         dfNoDataValue = CPLAtofM(pszNoData);
         if (pszDataType == nullptr &&
             (strchr(pszNoData, '.') != nullptr ||
-             strchr(pszNoData, ',') != nullptr ||
+             strchr(pszNoData, ',') != nullptr || std::isnan(dfNoDataValue) ||
              std::numeric_limits<int>::min() > dfNoDataValue ||
              dfNoDataValue > std::numeric_limits<int>::max()))
         {
@@ -798,8 +783,7 @@ int ISGDataset::ParseHeader(const char *pszHeader, const char *)
         {
             CPLString osLeft(aosTokens[0]);
             osLeft.Trim();
-            CPLString osRight(aosTokens[1]);
-            osRight.Trim();
+            const CPLString osRight(CPLString(aosTokens[1]).Trim());
             if (osLeft == "lat min")
                 osLatMin = osRight;
             else if (osLeft == "lat max")
@@ -863,18 +847,37 @@ int ISGDataset::ParseHeader(const char *pszHeader, const char *)
                  "ISG: coord type = %s not supported", osCoordType.c_str());
         return FALSE;
     }
-    if (!osCoordUnits.empty() && osCoordUnits != "deg")
+
+    const auto parseDMS = [](CPLString &str)
     {
-        CPLError(CE_Failure, CPLE_NotSupported,
-                 "ISG: coord units = %s not supported", osCoordUnits.c_str());
-        return FALSE;
+        const std::string degreeSymbol{"\xc2\xb0"};
+        str.replaceAll(degreeSymbol, "D");
+        return CPLDMSToDec(str);
+    };
+
+    bool useDMS = false;
+    if (!osCoordUnits.empty())
+    {
+        if (osCoordUnits == "dms")
+        {
+            // CPLDMSToDec does not support the non ascii char for degree used in ISG.
+            // just replace it with "D" to make it compatible.
+            useDMS = true;
+        }
+        else if (osCoordUnits != "deg")
+        {
+            CPLError(CE_Failure, CPLE_NotSupported,
+                     "ISG: coord units = %s not supported",
+                     osCoordUnits.c_str());
+            return FALSE;
+        }
     }
-    double dfLatMin = CPLAtof(osLatMin);
-    double dfLatMax = CPLAtof(osLatMax);
-    double dfLonMin = CPLAtof(osLonMin);
-    double dfLonMax = CPLAtof(osLonMax);
-    double dfDeltaLon = CPLAtof(osDeltaLon);
-    double dfDeltaLat = CPLAtof(osDeltaLat);
+    double dfLatMin = useDMS ? parseDMS(osLatMin) : CPLAtof(osLatMin);
+    double dfLatMax = useDMS ? parseDMS(osLatMax) : CPLAtof(osLatMax);
+    double dfLonMin = useDMS ? parseDMS(osLonMin) : CPLAtof(osLonMin);
+    double dfLonMax = useDMS ? parseDMS(osLonMax) : CPLAtof(osLonMax);
+    double dfDeltaLon = useDMS ? parseDMS(osDeltaLon) : CPLAtof(osDeltaLon);
+    double dfDeltaLat = useDMS ? parseDMS(osDeltaLat) : CPLAtof(osDeltaLat);
     if (dfVersion >= 2.0)
     {
         dfLatMin -= dfDeltaLat / 2.0;
@@ -1135,11 +1138,16 @@ GDALDataset *AAIGDataset::CommonOpen(GDALOpenInfo *poOpenInfo,
                 poOpenInfo->pabyHeader[i - 1] == '\r' ||
                 poOpenInfo->pabyHeader[i - 2] == '\r')
             {
-                if ((!isalpha(poOpenInfo->pabyHeader[i]) ||
+                if ((!isalpha(static_cast<unsigned char>(
+                         poOpenInfo->pabyHeader[i])) ||
                      // null seems to be specific of D12 software
                      // See https://github.com/OSGeo/gdal/issues/5095
                      (i + 5 < poOpenInfo->nHeaderBytes &&
-                      memcmp(poOpenInfo->pabyHeader + i, "null ", 5) == 0)) &&
+                      memcmp(poOpenInfo->pabyHeader + i, "null ", 5) == 0) ||
+                     (i + 4 < poOpenInfo->nHeaderBytes &&
+                      EQUALN(reinterpret_cast<const char *>(
+                                 poOpenInfo->pabyHeader + i),
+                             "nan ", 4))) &&
                     poOpenInfo->pabyHeader[i] != '\n' &&
                     poOpenInfo->pabyHeader[i] != '\r')
                 {
@@ -1251,7 +1259,7 @@ GDALDataset *AAIGDataset::CommonOpen(GDALOpenInfo *poOpenInfo,
                 poDS->adfGeoTransform[5] /= 3600.0;
             }
 
-            poDS->m_oSRS = oSRS;
+            poDS->m_oSRS = std::move(oSRS);
         }
     }
 
@@ -1439,14 +1447,12 @@ GDALDataset *AAIGDataset::CreateCopy(const char *pszFilename,
 
     // Write scanlines to output file
     int *panScanline = bReadAsInt
-                           ? static_cast<int *>(CPLMalloc(
-                                 nXSize * GDALGetDataTypeSizeBytes(GDT_Int32)))
+                           ? static_cast<int *>(CPLMalloc(sizeof(int) * nXSize))
                            : nullptr;
 
     double *padfScanline =
         bReadAsInt ? nullptr
-                   : static_cast<double *>(CPLMalloc(
-                         nXSize * GDALGetDataTypeSizeBytes(GDT_Float64)));
+                   : static_cast<double *>(CPLMalloc(sizeof(double) * nXSize));
 
     CPLErr eErr = CE_None;
 
@@ -1501,8 +1507,8 @@ GDALDataset *AAIGDataset::CreateCopy(const char *pszFilename,
                     {
                         bHasOutputDecimalDot = true;
                     }
-                    else if (!CPLIsInf(padfScanline[iPixel]) &&
-                             !CPLIsNan(padfScanline[iPixel]))
+                    else if (!std::isinf(padfScanline[iPixel]) &&
+                             !std::isnan(padfScanline[iPixel]))
                     {
                         strcat(szHeader, ".0");
                         bHasOutputDecimalDot = true;

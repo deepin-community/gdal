@@ -8,23 +8,7 @@
  * Copyright (c) 1999, Frank Warmerdam
  * Copyright (c) 2007-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -120,7 +104,7 @@ RawRasterBand::Create(GDALDataset *poDSIn, int nBandIn, VSILFILE *fpRawLIn,
                       int nLineOffsetIn, GDALDataType eDataTypeIn,
                       ByteOrder eByteOrderIn, OwnFP bOwnsFPIn)
 {
-    auto poBand = cpl::make_unique<RawRasterBand>(
+    auto poBand = std::make_unique<RawRasterBand>(
         poDSIn, nBandIn, fpRawLIn, nImgOffsetIn, nPixelOffsetIn, nLineOffsetIn,
         eDataTypeIn, eByteOrderIn, bOwnsFPIn);
     if (!poBand->IsValid())
@@ -159,7 +143,7 @@ RawRasterBand::Create(VSILFILE *fpRawIn, vsi_l_offset nImgOffsetIn,
                       GDALDataType eDataTypeIn, ByteOrder eByteOrderIn,
                       int nXSizeIn, int nYSizeIn, OwnFP bOwnsFPIn)
 {
-    auto poBand = cpl::make_unique<RawRasterBand>(
+    auto poBand = std::make_unique<RawRasterBand>(
         fpRawIn, nImgOffsetIn, nPixelOffsetIn, nLineOffsetIn, eDataTypeIn,
         eByteOrderIn, nXSizeIn, nYSizeIn, bOwnsFPIn);
     if (!poBand->IsValid())
@@ -370,7 +354,8 @@ bool RawRasterBand::IsBIP() const
             eByteOrder == poFirstBand->eByteOrder &&
             nPixelOffset == poFirstBand->nPixelOffset &&
             nLineOffset == poFirstBand->nLineOffset &&
-            nImgOffset == poFirstBand->nImgOffset + (nBand - 1) * nDTSize)
+            nImgOffset == poFirstBand->nImgOffset +
+                              static_cast<vsi_l_offset>(nBand - 1) * nDTSize)
         {
             return true;
         }
@@ -630,7 +615,9 @@ CPLErr RawRasterBand::AccessLine(int iLine)
         if (poDS != nullptr && poDS->GetRasterCount() > 1 && IsBIP())
         {
             const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
-            DoByteSwap(pLineBuffer, nBlockXSize * poDS->GetRasterCount(),
+            DoByteSwap(pLineBuffer,
+                       static_cast<size_t>(nBlockXSize) *
+                           poDS->GetRasterCount(),
                        nDTSize, true);
         }
         else
@@ -864,7 +851,9 @@ bool RawRasterBand::FlushCurrentLine(bool bNeedUsableBufferAfter)
         if (poDS != nullptr && poDS->GetRasterCount() > 1 && IsBIP())
         {
             const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
-            DoByteSwap(pLineBuffer, nBlockXSize * poDS->GetRasterCount(),
+            DoByteSwap(pLineBuffer,
+                       static_cast<size_t>(nBlockXSize) *
+                           poDS->GetRasterCount(),
                        nDTSize, false);
         }
         else
@@ -903,7 +892,9 @@ bool RawRasterBand::FlushCurrentLine(bool bNeedUsableBufferAfter)
         if (poDS != nullptr && poDS->GetRasterCount() > 1 && IsBIP())
         {
             const int nDTSize = GDALGetDataTypeSizeBytes(eDataType);
-            DoByteSwap(pLineBuffer, nBlockXSize * poDS->GetRasterCount(),
+            DoByteSwap(pLineBuffer,
+                       static_cast<size_t>(nBlockXSize) *
+                           poDS->GetRasterCount(),
                        nDTSize, true);
         }
         else
@@ -1513,7 +1504,8 @@ CPLVirtualMem *RawRasterBand::GetVirtualMemAuto(GDALRWFlag eRWFlag,
 
     const vsi_l_offset nSize =
         static_cast<vsi_l_offset>(nRasterYSize - 1) * nLineOffset +
-        (nRasterXSize - 1) * nPixelOffset + GDALGetDataTypeSizeBytes(eDataType);
+        static_cast<vsi_l_offset>(nRasterXSize - 1) * nPixelOffset +
+        GDALGetDataTypeSizeBytes(eDataType);
 
     const char *pszImpl = CSLFetchNameValueDef(
         papszOptions, "USE_DEFAULT_IMPLEMENTATION", "AUTO");
@@ -1581,7 +1573,7 @@ RawDataset::~RawDataset()
 CPLErr RawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpace, GSpacing nLineSpace,
                              GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg)
@@ -1640,15 +1632,17 @@ CPLErr RawDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                         poFirstBand = poBand;
                         bCanDirectAccessToBIPDataset =
                             eDT == eBufType && nBandSpace == nDTSize &&
-                            poFirstBand->nPixelOffset == nBands * nDTSize;
+                            poFirstBand->nPixelOffset ==
+                                cpl::fits_on<int>(nBands * nDTSize);
                     }
                     else
                     {
                         bCanDirectAccessToBIPDataset =
                             eDT == poFirstBand->GetRasterDataType() &&
                             poBand->fpRawL == poFirstBand->fpRawL &&
-                            poBand->nImgOffset == poFirstBand->nImgOffset +
-                                                      iBandIndex * nDTSize &&
+                            poBand->nImgOffset ==
+                                poFirstBand->nImgOffset +
+                                    cpl::fits_on<int>(iBandIndex * nDTSize) &&
                             poBand->nPixelOffset == poFirstBand->nPixelOffset &&
                             poBand->nLineOffset == poFirstBand->nLineOffset &&
                             poBand->eByteOrder == poFirstBand->eByteOrder;

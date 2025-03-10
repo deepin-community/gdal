@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2017, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ******************************************************************************
  *
  */
@@ -37,6 +21,7 @@
 #include "memdataset.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "degrib/degrib/meta.h"
@@ -180,13 +165,14 @@ class GRIB2Section3Writer
     bool WriteMercator1SP();
     bool WriteMercator2SP(OGRSpatialReference *poSRS = nullptr);
     bool WriteTransverseMercator();
-    bool WritePolarSteregraphic();
+    bool WritePolarStereographic();
     bool WriteLCC1SP();
     bool WriteLCC2SPOrAEA(OGRSpatialReference *poSRS = nullptr);
     bool WriteLAEA();
 
   public:
     GRIB2Section3Writer(VSILFILE *fpIn, GDALDataset *poSrcDSIn);
+
     inline int SplitAndSwap() const
     {
         return nSplitAndSwapColumn;
@@ -546,10 +532,10 @@ bool GRIB2Section3Writer::WriteTransverseMercator()
 }
 
 /************************************************************************/
-/*                       WritePolarSteregraphic()                       */
+/*                       WritePolarStereographic()                       */
 /************************************************************************/
 
-bool GRIB2Section3Writer::WritePolarSteregraphic()
+bool GRIB2Section3Writer::WritePolarStereographic()
 {
     WriteUInt16(fp, GS3_POLAR);  // Grid template number
     WriteEllipsoidAndRasterSize();
@@ -802,7 +788,7 @@ bool GRIB2Section3Writer::Write()
     }
     else if (pszProjection && EQUAL(pszProjection, SRS_PT_POLAR_STEREOGRAPHIC))
     {
-        bRet = WritePolarSteregraphic();
+        bRet = WritePolarStereographic();
     }
     else if (pszProjection != nullptr &&
              EQUAL(pszProjection, SRS_PT_LAMBERT_CONFORMAL_CONIC_1SP))
@@ -969,7 +955,7 @@ float *GRIB2Section567Writer::GetFloatData()
                 bHasNoDataValuePoint = true;
             continue;
         }
-        if (!CPLIsFinite(pafData[i]))
+        if (!std::isfinite(pafData[i]))
         {
             CPLError(CE_Failure, CPLE_NotSupported,
                      "Non-finite values not supported for "
@@ -1412,7 +1398,8 @@ bool GRIB2Section567Writer::WriteIEEE(GDALProgressFunc pfnProgress,
     WriteByte(m_fp, GRIB2MISSING_u1);  // no bitmap
 
     // Section 7: Data Section
-    const size_t nBufferSize = m_nXSize * GDALGetDataTypeSizeBytes(eReqDT);
+    const size_t nBufferSize =
+        static_cast<size_t>(m_nXSize) * GDALGetDataTypeSizeBytes(eReqDT);
     // section size
     WriteUInt32(m_fp, static_cast<GUInt32>(5 + nBufferSize * m_nYSize));
     WriteByte(m_fp, 7);  // section number
@@ -1661,7 +1648,7 @@ bool GRIB2Section567Writer::WritePNG()
     GDALDataset *poMEMDS =
         WrapArrayAsMemDataset(m_nXSize, m_nYSize, eReducedDT, panData);
 
-    CPLString osTmpFile(CPLSPrintf("/vsimem/grib_driver_%p.png", m_poSrcDS));
+    const CPLString osTmpFile(VSIMemGenerateHiddenFilename("grib_driver.png"));
     GDALDataset *poPNGDS = poPNGDriver->CreateCopy(
         osTmpFile, poMEMDS, FALSE, aosPNGOptions.List(), nullptr, nullptr);
     if (poPNGDS == nullptr)
@@ -1847,7 +1834,7 @@ bool GRIB2Section567Writer::WriteJPEG2000(char **papszOptions)
     GDALDataset *poMEMDS =
         WrapArrayAsMemDataset(m_nXSize, m_nYSize, eReducedDT, panData);
 
-    CPLString osTmpFile(CPLSPrintf("/vsimem/grib_driver_%p.j2k", m_poSrcDS));
+    const CPLString osTmpFile(VSIMemGenerateHiddenFilename("grib_driver.j2k"));
     GDALDataset *poJ2KDS = poJ2KDriver->CreateCopy(
         osTmpFile, poMEMDS, FALSE, aosJ2KOptions.List(), nullptr, nullptr);
     if (poJ2KDS == nullptr)
@@ -2247,7 +2234,7 @@ static void WriteAssembledPDS(VSILFILE *fp, const gtemplate *mappds,
         else if (nEltSize == 4)
         {
             GIntBig nBigVal = CPLAtoGIntBig(papszTokens[i]);
-            anVals[anVals.size() - 1] = static_cast<int>(nBigVal);
+            anVals.back() = static_cast<int>(nBigVal);
             if (nBigVal < 0 || nBigVal > static_cast<GIntBig>(UINT_MAX))
             {
                 CPLError(CE_Warning, CPLE_AppDefined,

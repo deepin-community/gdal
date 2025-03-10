@@ -10,26 +10,14 @@
  * Copyright (c) 1998, Daniel Morissette
  * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_error.h"
+
+#ifndef _WIN32
+#include <unistd.h>  // isatty()
+#endif
 
 #include <cstdarg>
 #include <cstdio>
@@ -80,19 +68,22 @@ typedef struct
     CPLErrorHandlerNode *psHandlerStack;
     int nLastErrMsgMax;
     int nFailureIntoWarning;
+    bool bProgressMode;
+    bool bEmitNewlineBeforeNextDbgMsg;
     GUInt32 nErrorCounter;
     char szLastErrMsg[DEFAULT_LAST_ERR_MSG_SIZE];
     // Do not add anything here. szLastErrMsg must be the last field.
     // See CPLRealloc() below.
 } CPLErrorContext;
 
-constexpr CPLErrorContext sNoErrorContext = {0, CE_None, nullptr, 0, 0, 0, ""};
+constexpr CPLErrorContext sNoErrorContext = {0,     CE_None, nullptr, 0, 0,
+                                             false, false,   0,       ""};
 
 constexpr CPLErrorContext sWarningContext = {
-    0, CE_Warning, nullptr, 0, 0, 0, "A warning was emitted"};
+    0, CE_Warning, nullptr, 0, 0, false, false, 0, "A warning was emitted"};
 
 constexpr CPLErrorContext sFailureContext = {
-    0, CE_Warning, nullptr, 0, 0, 0, "A failure was emitted"};
+    0, CE_Warning, nullptr, 0, 0, false, false, 0, "A failure was emitted"};
 
 #define IS_PREFEFINED_ERROR_CTX(psCtxt)                                        \
     (psCtx == &sNoErrorContext || psCtx == &sWarningContext ||                 \
@@ -586,37 +577,14 @@ static int CPLGettimeofday(struct CPLTimeVal *tp, void * /* timezonep*/)
 #define CPLGettimeofday(t, u) gettimeofday(t, u)
 #endif
 
+#ifndef WITHOUT_CPLDEBUG
+
 /************************************************************************/
-/*                              CPLDebug()                              */
+/*                             CPLvDebug()                              */
 /************************************************************************/
 
-/**
- * Display a debugging message.
- *
- * The category argument is used in conjunction with the CPL_DEBUG
- * environment variable to establish if the message should be displayed.
- * If the CPL_DEBUG environment variable is not set, no debug messages
- * are emitted (use CPLError(CE_Warning, ...) to ensure messages are displayed).
- * If CPL_DEBUG is set, but is an empty string or the word "ON" then all
- * debug messages are shown.  Otherwise only messages whose category appears
- * somewhere within the CPL_DEBUG value are displayed (as determined by
- * strstr()).
- *
- * Categories are usually an identifier for the subsystem producing the
- * error.  For instance "GDAL" might be used for the GDAL core, and "TIFF"
- * for messages from the TIFF translator.
- *
- * @param pszCategory name of the debugging message category.
- * @param pszFormat printf() style format string for message to display.
- *        Remaining arguments are assumed to be for format.
- */
-
-#ifdef WITHOUT_CPLDEBUG
-// Do not include CPLDebug.  Only available in custom builds.
-#else
-void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
-              ...)
-
+static void CPLvDebug(const char *pszCategory,
+                      CPL_FORMAT_STRING(const char *pszFormat), va_list args)
 {
     CPLErrorContext *psCtx = CPLGetErrorContext();
     if (psCtx == nullptr || IS_PREFEFINED_ERROR_CTX(psCtx))
@@ -626,11 +594,18 @@ void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
     /* -------------------------------------------------------------------- */
     /*      Does this message pass our current criteria?                    */
     /* -------------------------------------------------------------------- */
-    if (pszDebug == nullptr)
-        return;
-
-    if (!EQUAL(pszDebug, "ON") && !EQUAL(pszDebug, ""))
+    if (pszDebug == nullptr || EQUAL(pszDebug, "NO") ||
+        EQUAL(pszDebug, "OFF") || EQUAL(pszDebug, "FALSE") ||
+        EQUAL(pszDebug, "0"))
     {
+        return;
+    }
+
+    if (!EQUAL(pszDebug, "ON") && !EQUAL(pszDebug, "YES") &&
+        !EQUAL(pszDebug, "TRUE") && !EQUAL(pszDebug, "1") &&
+        !EQUAL(pszDebug, ""))
+    {
+        // check if value of CPL_DEBUG contains the category
         const size_t nLen = strlen(pszCategory);
 
         size_t i = 0;
@@ -659,7 +634,7 @@ void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
 
     pszMessage[0] = '\0';
 #ifdef TIMESTAMP_DEBUG
-    if (CPLGetConfigOption("CPL_TIMESTAMP", nullptr) != nullptr)
+    if (CPLTestBool(CPLGetConfigOption("CPL_TIMESTAMP", "NO")))
     {
         static struct CPLTimeVal tvStart;
         static const auto unused = CPLGettimeofday(&tvStart, nullptr);
@@ -703,13 +678,8 @@ void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
     /* -------------------------------------------------------------------- */
     /*      Format the application provided portion of the debug message.   */
     /* -------------------------------------------------------------------- */
-    va_list args;
-    va_start(args, pszFormat);
-
     CPLvsnprintf(pszMessage + strlen(pszMessage),
                  ERROR_MAX - strlen(pszMessage), pszFormat, args);
-
-    va_end(args);
 
     /* -------------------------------------------------------------------- */
     /*      Obfuscate any password in error message                         */
@@ -732,6 +702,100 @@ void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
     ApplyErrorHandler(psCtx, CE_Debug, CPLE_None, pszMessage);
 
     VSIFree(pszMessage);
+}
+
+#endif  // !WITHOUT_CPLDEBUG
+
+/************************************************************************/
+/*                              CPLDebug()                              */
+/************************************************************************/
+
+/**
+ * Display a debugging message.
+ *
+ * The category argument is used in conjunction with the CPL_DEBUG
+ * environment variable to establish if the message should be displayed.
+ * If the CPL_DEBUG environment variable is not set, no debug messages
+ * are emitted (use CPLError(CE_Warning, ...) to ensure messages are displayed).
+ * If CPL_DEBUG is set, but is an empty string or the word "ON" then all
+ * debug messages are shown.  Otherwise only messages whose category appears
+ * somewhere within the CPL_DEBUG value are displayed (as determined by
+ * strstr()).
+ *
+ * Categories are usually an identifier for the subsystem producing the
+ * error.  For instance "GDAL" might be used for the GDAL core, and "TIFF"
+ * for messages from the TIFF translator.
+ *
+ * @param pszCategory name of the debugging message category.
+ * @param pszFormat printf() style format string for message to display.
+ *        Remaining arguments are assumed to be for format.
+ */
+
+#ifdef WITHOUT_CPLDEBUG
+// Do not include CPLDebug.  Only available in custom builds.
+#else
+
+void CPLDebug(const char *pszCategory, CPL_FORMAT_STRING(const char *pszFormat),
+              ...)
+
+{
+    va_list args;
+    va_start(args, pszFormat);
+    CPLvDebug(pszCategory, pszFormat, args);
+    va_end(args);
+}
+
+#endif  // WITHOUT_CPLDEBUG
+
+/************************************************************************/
+/*                         CPLDebugProgress()                           */
+/************************************************************************/
+
+/**
+ * Display a debugging message indicating a progression.
+ *
+ * This is the same as CPLDebug(), except that when displaying on the terminal,
+ * it will erase the previous debug progress message. This is for example
+ * appropriate to display increasing percentages for a task.
+ *
+ * The category argument is used in conjunction with the CPL_DEBUG
+ * environment variable to establish if the message should be displayed.
+ * If the CPL_DEBUG environment variable is not set, no debug messages
+ * are emitted (use CPLError(CE_Warning, ...) to ensure messages are displayed).
+ * If CPL_DEBUG is set, but is an empty string or the word "ON" then all
+ * debug messages are shown.  Otherwise only messages whose category appears
+ * somewhere within the CPL_DEBUG value are displayed (as determined by
+ * strstr()).
+ *
+ * Categories are usually an identifier for the subsystem producing the
+ * error.  For instance "GDAL" might be used for the GDAL core, and "TIFF"
+ * for messages from the TIFF translator.
+ *
+ * @param pszCategory name of the debugging message category.
+ * @param pszFormat printf() style format string for message to display.
+ *        Remaining arguments are assumed to be for format.
+ * @since 3.9
+ */
+
+#ifdef WITHOUT_CPLDEBUG
+// Do not include CPLDebugProgress. Only available in custom builds.
+#else
+void CPLDebugProgress(const char *pszCategory,
+                      CPL_FORMAT_STRING(const char *pszFormat), ...)
+
+{
+    CPLErrorContext *psCtx = CPLGetErrorContext();
+    if (psCtx == nullptr || IS_PREFEFINED_ERROR_CTX(psCtx))
+        return;
+
+    psCtx->bProgressMode = true;
+
+    va_list args;
+    va_start(args, pszFormat);
+    CPLvDebug(pszCategory, pszFormat, args);
+    va_end(args);
+
+    psCtx->bProgressMode = false;
 }
 #endif  // !WITHOUT_CPLDEBUG
 
@@ -772,17 +836,8 @@ void CPL_STDCALL CPLErrorReset()
  *                       CPLErrorSetState()
  **********************************************************************/
 
-/**
- * Restore an error state, without emitting an error.
- *
- * Can be useful if a routine might call CPLErrorReset() and one wants to
- * preserve the previous error state.
- *
- * @since GDAL 2.0
- */
-
-void CPL_DLL CPLErrorSetState(CPLErr eErrClass, CPLErrorNum err_no,
-                              const char *pszMsg)
+static void CPLErrorSetState(CPLErr eErrClass, CPLErrorNum err_no,
+                             const char *pszMsg, GUInt32 *pnErrorCounter)
 {
     CPLErrorContext *psCtx = CPLGetErrorContext();
     if (psCtx == nullptr)
@@ -818,6 +873,23 @@ void CPL_DLL CPLErrorSetState(CPLErr eErrClass, CPLErrorNum err_no,
     memcpy(pszLastErrMsg, pszMsg, size);
     pszLastErrMsg[size] = '\0';
     psCtx->eLastErrType = eErrClass;
+    if (pnErrorCounter)
+        psCtx->nErrorCounter = *pnErrorCounter;
+}
+
+/**
+ * Restore an error state, without emitting an error.
+ *
+ * Can be useful if a routine might call CPLErrorReset() and one wants to
+ * preserve the previous error state.
+ *
+ * @since GDAL 2.0
+ */
+
+void CPL_DLL CPLErrorSetState(CPLErr eErrClass, CPLErrorNum err_no,
+                              const char *pszMsg)
+{
+    CPLErrorSetState(eErrClass, err_no, pszMsg, nullptr);
 }
 
 /**********************************************************************
@@ -879,8 +951,8 @@ CPLErr CPL_STDCALL CPLGetLastErrorType()
  * been cleared by CPLErrorReset().  The returned pointer is to an internal
  * string that should not be altered or freed.
  *
- * @return the last error message, or NULL if there is no posted error
- * message.
+ * @return the last error message, or an empty string ("") if there is no
+ * posted error message.
  */
 
 const char *CPL_STDCALL CPLGetLastErrorMsg()
@@ -983,7 +1055,36 @@ void CPL_STDCALL CPLDefaultErrorHandler(CPLErr eErrClass, CPLErrorNum nError,
     }
 
     if (eErrClass == CE_Debug)
-        fprintf(fpLog, "%s\n", pszErrorMsg);
+    {
+#ifndef _WIN32
+        CPLErrorContext *psCtx = CPLGetErrorContext();
+        if (psCtx != nullptr && !IS_PREFEFINED_ERROR_CTX(psCtx) &&
+            fpLog == stderr && isatty(static_cast<int>(fileno(stderr))))
+        {
+            if (psCtx->bProgressMode)
+            {
+                // Erase the content of the current line
+                fprintf(stderr, "\r");
+                fprintf(stderr, "%s", pszErrorMsg);
+                fflush(stderr);
+                psCtx->bEmitNewlineBeforeNextDbgMsg = true;
+            }
+            else
+            {
+                if (psCtx->bEmitNewlineBeforeNextDbgMsg)
+                {
+                    psCtx->bEmitNewlineBeforeNextDbgMsg = false;
+                    fprintf(fpLog, "\n");
+                }
+                fprintf(fpLog, "%s\n", pszErrorMsg);
+            }
+        }
+        else
+#endif
+        {
+            fprintf(fpLog, "%s\n", pszErrorMsg);
+        }
+    }
     else if (eErrClass == CE_Warning)
         fprintf(fpLog, "Warning %d: %s\n", nError, pszErrorMsg);
     else
@@ -1166,9 +1267,9 @@ CPLSetErrorHandlerEx(CPLErrorHandler pfnErrorHandlerNew, void *pUserData)
  * Allow the library's user to specify an error handler function.
  * A valid error handler is a C function with the following prototype:
  *
- * <pre>
+ * \code{.cpp}
  *     void MyErrorHandler(CPLErr eErrClass, int err_no, const char *msg)
- * </pre>
+ * \endcode
  *
  * Pass NULL to come back to the default behavior.  The default behavior
  * (CPLDefaultErrorHandler()) is to write the message to stderr.
@@ -1460,4 +1561,29 @@ void CPLInstallErrorHandlerAccumulator(
 void CPLUninstallErrorHandlerAccumulator()
 {
     CPLPopErrorHandler();
+}
+
+/************************************************************************/
+/*               CPLErrorStateBackuper::CPLErrorStateBackuper()         */
+/************************************************************************/
+
+CPLErrorStateBackuper::CPLErrorStateBackuper(CPLErrorHandler hHandler)
+    : m_nLastErrorNum(CPLGetLastErrorNo()),
+      m_nLastErrorType(CPLGetLastErrorType()),
+      m_osLastErrorMsg(CPLGetLastErrorMsg()),
+      m_nLastErrorCounter(CPLGetErrorCounter()),
+      m_poErrorHandlerPusher(
+          hHandler ? std::make_unique<CPLErrorHandlerPusher>(hHandler)
+                   : nullptr)
+{
+}
+
+/************************************************************************/
+/*               CPLErrorStateBackuper::~CPLErrorStateBackuper()        */
+/************************************************************************/
+
+CPLErrorStateBackuper::~CPLErrorStateBackuper()
+{
+    CPLErrorSetState(m_nLastErrorType, m_nLastErrorNum,
+                     m_osLastErrorMsg.c_str(), &m_nLastErrorCounter);
 }

@@ -10,23 +10,7 @@
  * Copyright (c) 2017, Ari Jolma
  * Copyright (c) 2017, Finnish Environment Institute
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_string.h"
@@ -683,7 +667,6 @@ int WCSDataset201::ParseRange(CPLXMLNode *coverage,
     bool in_band_range = false;
 
     unsigned int field_index = 1;
-    std::string field_name;
     std::vector<std::string> nodata_array;
 
     for (CPLXMLNode *field = record->psChild; field != nullptr;
@@ -773,10 +756,6 @@ int WCSDataset201::ParseRange(CPLXMLNode *coverage,
                     *metadata, (key + "INTERVAL").c_str(), interval.c_str());
             }
 
-            if (field_name == "")
-            {
-                field_name = fname;
-            }
             nodata_array.push_back(nodata);
             fields += 1;
         }

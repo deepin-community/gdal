@@ -30,9 +30,12 @@ CUR_DIR=$PWD
 
 echo "Setting environment for a CMake build from ${CUR_DIR}..."
 
+GDAL_PYTHONPATH="$CUR_DIR/swig/python"
+
 if [[ ! ${PATH} =~ $CUR_DIR/apps ]]; then
     export PATH="$CUR_DIR/apps:$PATH"
     export PATH="$CUR_DIR/perftests:$PATH"
+    export PATH="$GDAL_PYTHONPATH/bin:$PATH"
     export PATH="$GDAL_ROOT/swig/python/gdal-utils/scripts:$PATH"
     echo "Setting PATH=$PATH"
 fi
@@ -54,12 +57,11 @@ if [[ ! ${GDAL_DRIVER_PATH:-} =~ $CUR_DIR/gdalplugins ]]; then
     echo "Setting GDAL_DRIVER_PATH=$GDAL_DRIVER_PATH"
 fi
 
-if [[ ! "${GDAL_DATA:-}" =~ $GDAL_ROOT/data ]]; then
-    export GDAL_DATA="$GDAL_ROOT/data"
+if [[ ! "${GDAL_DATA:-}" =~ $CUR_DIR/data ]]; then
+    export GDAL_DATA="$CUR_DIR/data"
     echo "Setting GDAL_DATA=$GDAL_DATA"
 fi
 
-GDAL_PYTHONPATH="$CUR_DIR/swig/python"
 if [[ ! "${PYTHONPATH:-}" =~ $GDAL_PYTHONPATH ]]; then
     export PYTHONPATH="$GDAL_PYTHONPATH:${PYTHONPATH:-}"
     echo "Setting PYTHONPATH=$PYTHONPATH"

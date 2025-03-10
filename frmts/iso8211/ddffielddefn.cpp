@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 1999, Frank Warmerdam
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -641,7 +625,7 @@ char *DDFFieldDefn::ExpandFormat(const char *pszSrc)
 
         // This is a repeated subclause.
         else if ((iSrc == 0 || pszSrc[iSrc - 1] == ',') &&
-                 isdigit(pszSrc[iSrc]))
+                 isdigit(static_cast<unsigned char>(pszSrc[iSrc])))
         {
             const int nRepeat = atoi(pszSrc + iSrc);
             // 100: arbitrary number. Higher values might cause performance
@@ -654,7 +638,7 @@ char *DDFFieldDefn::ExpandFormat(const char *pszSrc)
 
             // Skip over repeat count.
             const char *pszNext = pszSrc + iSrc;  // Used after for.
-            for (; isdigit(*pszNext); pszNext++)
+            for (; isdigit(static_cast<unsigned char>(*pszNext)); pszNext++)
                 iSrc++;
 
             char *pszContents = ExtractSubstring(pszNext);

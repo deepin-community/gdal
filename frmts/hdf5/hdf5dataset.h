@@ -9,23 +9,7 @@
  * Copyright (c) 2005, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #ifndef HDF5DATASET_H_INCLUDED_
@@ -105,7 +89,7 @@ hid_t GDAL_HDF5Open(const std::string &osFilename);
 class HDF5Dataset;
 class HDF5EOSParser;
 class BAGDataset;
-class S102Dataset;
+class S100BaseDataset;
 
 namespace GDAL
 {
@@ -119,7 +103,7 @@ class HDF5SharedResources
 {
     friend class ::HDF5Dataset;
     friend class ::BAGDataset;
-    friend class ::S102Dataset;
+    friend class ::S100BaseDataset;
 
     std::weak_ptr<HDF5SharedResources> m_poSelf{};
     bool m_bReadOnly = true;
@@ -151,6 +135,7 @@ class HDF5SharedResources
     {
         return m_hHDF5;
     }
+
     inline bool IsReadOnly() const
     {
         return m_bReadOnly;
@@ -239,8 +224,6 @@ class HDF5Dataset CPL_NON_FINAL : public GDALPamDataset
     char *CreatePath(HDF5GroupObjects *);
     static void DestroyH5Objects(HDF5GroupObjects *);
 
-    static const char *GetDataTypeName(hid_t);
-
     /**
      * Reads an array of double attributes from the HDF5 metadata.
      * It reads the attributes directly on its binary form directly,
@@ -273,8 +256,9 @@ class HDF5Dataset CPL_NON_FINAL : public GDALPamDataset
     static GDALDataset *OpenMultiDim(GDALOpenInfo *);
     static std::shared_ptr<GDALGroup> OpenGroup(
         const std::shared_ptr<GDAL::HDF5SharedResources> &poSharedResources);
-    static int Identify(GDALOpenInfo *);
 
+    static bool IsNativeCFloat16(hid_t hDataType);
+    static const char *GetDataTypeName(hid_t);
     static GDALDataType GetDataType(hid_t);
 };
 

@@ -8,23 +8,7 @@
  * Copyright (c) 2004, Pirmin Kalberer, Sourcepole AG
  * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ili2readerp.h"
@@ -72,8 +56,12 @@ int cmpStr(const string &s1, const string &s2)
 
     while (p1 != s1.end() && p2 != s2.end())
     {
-        if (toupper(*p1) != toupper(*p2))
-            return (toupper(*p1) < toupper(*p2)) ? -1 : 1;
+        if (CPLToupper(static_cast<unsigned char>(*p1)) !=
+            CPLToupper(static_cast<unsigned char>(*p2)))
+            return (CPLToupper(static_cast<unsigned char>(*p1)) <
+                    CPLToupper(static_cast<unsigned char>(*p2)))
+                       ? -1
+                       : 1;
         ++p1;
         ++p2;
     }
@@ -483,15 +471,16 @@ OGRGeometry *ILI2Reader::getGeometry(DOMElement *elem, int type)
     return gm;
 }
 
-int ILI2Reader::ReadModel(ImdReader *poImdReader, const char *modelFilename)
+int ILI2Reader::ReadModel(OGRILI2DataSource *poDS, ImdReader *poImdReader,
+                          const char *modelFilename)
 {
     poImdReader->ReadModel(modelFilename);
     for (FeatureDefnInfos::const_iterator it =
              poImdReader->featureDefnInfos.begin();
          it != poImdReader->featureDefnInfos.end(); ++it)
     {
-        OGRLayer *layer = new OGRILI2Layer(it->GetTableDefnRef(),
-                                           it->poGeomFieldInfos, nullptr);
+        OGRLayer *layer =
+            new OGRILI2Layer(it->GetTableDefnRef(), it->poGeomFieldInfos, poDS);
         m_listLayer.push_back(layer);
     }
     return 0;
@@ -689,6 +678,8 @@ int ILI2Reader::SetupParser()
     m_poSAXReader->setLexicalHandler(m_poILI2Handler);
     m_poSAXReader->setEntityResolver(m_poILI2Handler);
     m_poSAXReader->setDTDHandler(m_poILI2Handler);
+    m_poSAXReader->setFeature(XMLUni::fgXercesDisableDefaultEntityResolution,
+                              true);
 
     /* No Validation
     #if (OGR_ILI2_VALIDATION)

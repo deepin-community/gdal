@@ -8,29 +8,14 @@
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
  * Copyright (c) 2007-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogrshape.h"
 
 #include <cerrno>
-#include <climits>
+#include <limits>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -53,6 +38,7 @@
 #include "ogr_spatialref.h"
 #include "ogr_srs_api.h"
 #include "ogrlayerpool.h"
+#include "ograrrowarrayhelper.h"
 #include "ogrsf_frmts.h"
 #include "shapefil.h"
 #include "shp_vsi.h"
@@ -217,7 +203,7 @@ OGRShapeLayer::OGRShapeLayer(OGRShapeDataSource *poDSIn,
         {
             poSRSClone->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         }
-        auto poGeomFieldDefn = cpl::make_unique<OGRShapeGeomFieldDefn>(
+        auto poGeomFieldDefn = std::make_unique<OGRShapeGeomFieldDefn>(
             pszFullName, eType, bSRSSetIn, poSRSClone);
         if (!osPrjFilename.empty())
             poGeomFieldDefn->SetPrjFilename(osPrjFilename);
@@ -231,6 +217,8 @@ OGRShapeLayer::OGRShapeLayer(OGRShapeDataSource *poDSIn,
     bRewindOnWrite = CPLTestBool(CPLGetConfigOption(
         "SHAPE_REWIND_ON_WRITE",
         hSHP != nullptr && hSHP->nShapeType != SHPT_MULTIPATCH ? "NO" : "YES"));
+
+    poFeatureDefn->Seal(/* bSealFields = */ true);
 }
 
 /************************************************************************/
@@ -556,7 +544,7 @@ CPLString OGRShapeLayer::ConvertCodePage(const char *pszCodePage)
     if (pszCodePage == nullptr)
         return l_osEncoding;
 
-    CPLString osEncodingFromLDID;
+    std::string osEncodingFromLDID;
     if (hDBF->iLanguageDriver != 0)
     {
         SetMetadataItem("LDID_VALUE", CPLSPrintf("%d", hDBF->iLanguageDriver),
@@ -570,7 +558,7 @@ CPLString OGRShapeLayer::ConvertCodePage(const char *pszCodePage)
                         "SHAPEFILE");
     }
 
-    CPLString osEncodingFromCPG;
+    std::string osEncodingFromCPG;
     if (!STARTS_WITH_CI(pszCodePage, "LDID/"))
     {
         SetMetadataItem("CPG_VALUE", pszCodePage, "SHAPEFILE");
@@ -578,14 +566,14 @@ CPLString OGRShapeLayer::ConvertCodePage(const char *pszCodePage)
         osEncodingFromCPG = GetEncodingFromCPG(pszCodePage);
 
         if (!osEncodingFromCPG.empty())
-            SetMetadataItem("ENCODING_FROM_CPG", osEncodingFromCPG,
+            SetMetadataItem("ENCODING_FROM_CPG", osEncodingFromCPG.c_str(),
                             "SHAPEFILE");
 
-        l_osEncoding = osEncodingFromCPG;
+        l_osEncoding = std::move(osEncodingFromCPG);
     }
     else if (!osEncodingFromLDID.empty())
     {
-        l_osEncoding = osEncodingFromLDID;
+        l_osEncoding = std::move(osEncodingFromLDID);
     }
 
     return l_osEncoding;
@@ -785,6 +773,9 @@ void OGRShapeLayer::ResetReading()
 
     if (bHeaderDirty && bUpdateAccess)
         SyncToDisk();
+
+    if (hDBF)
+        VSIFClearErrL(VSI_SHP_GetVSIL(hDBF->fp));
 }
 
 /************************************************************************/
@@ -994,7 +985,8 @@ OGRFeature *OGRShapeLayer::GetNextFeature()
             {
                 if (DBFIsRecordDeleted(hDBF, iNextShapeId))
                     poFeature = nullptr;
-                else if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)))
+                else if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)) ||
+                         VSIFErrorL(VSI_SHP_GetVSIL(hDBF->fp)))
                     return nullptr;  //* I/O error.
                 else
                     poFeature = FetchShape(iNextShapeId);
@@ -1344,7 +1336,7 @@ OGRErr OGRShapeLayer::ICreateFeature(OGRFeature *poFeature)
 
         if (nShapeType != -1)
         {
-            poFeatureDefn->SetGeomType(eRequestedGeomType);
+            whileUnsealing(poFeatureDefn)->SetGeomType(eRequestedGeomType);
             ResetGeomType(nShapeType);
         }
     }
@@ -1423,7 +1415,8 @@ int OGRShapeLayer::GetFeatureCountWithSpatialFilterOnly()
                 if (DBFIsRecordDeleted(hDBF, iShape))
                     continue;
 
-                if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)))
+                if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)) ||
+                    VSIFErrorL(VSI_SHP_GetVSIL(hDBF->fp)))
                     break;
             }
         }
@@ -1691,8 +1684,8 @@ OGRErr OGRShapeLayer::GetExtent(OGREnvelope *psExtent, int bForce)
     psExtent->MaxX = adMax[0];
     psExtent->MaxY = adMax[1];
 
-    if (CPLIsNan(adMin[0]) || CPLIsNan(adMin[1]) || CPLIsNan(adMax[0]) ||
-        CPLIsNan(adMax[1]))
+    if (std::isnan(adMin[0]) || std::isnan(adMin[1]) || std::isnan(adMax[0]) ||
+        std::isnan(adMax[1]))
     {
         CPLDebug("SHAPE", "Invalid extent in shape header");
 
@@ -1704,6 +1697,60 @@ OGRErr OGRShapeLayer::GetExtent(OGREnvelope *psExtent, int bForce)
         m_poFilterGeom = nullptr;
 
         const OGRErr eErr = OGRLayer::GetExtent(psExtent, bForce);
+
+        m_poAttrQuery = poAttrQuery;
+        m_poFilterGeom = poFilterGeom;
+        return eErr;
+    }
+
+    return OGRERR_NONE;
+}
+
+OGRErr OGRShapeLayer::GetExtent3D(int, OGREnvelope3D *psExtent3D, int bForce)
+{
+    if (m_poFilterGeom || m_poAttrQuery)
+        return OGRLayer::GetExtent3D(0, psExtent3D, bForce);
+
+    if (!TouchLayer())
+        return OGRERR_FAILURE;
+
+    if (hSHP == nullptr)
+        return OGRERR_FAILURE;
+
+    double adMin[4] = {0.0, 0.0, 0.0, 0.0};
+    double adMax[4] = {0.0, 0.0, 0.0, 0.0};
+
+    SHPGetInfo(hSHP, nullptr, nullptr, adMin, adMax);
+
+    psExtent3D->MinX = adMin[0];
+    psExtent3D->MinY = adMin[1];
+    psExtent3D->MaxX = adMax[0];
+    psExtent3D->MaxY = adMax[1];
+
+    if (OGR_GT_HasZ(poFeatureDefn->GetGeomType()))
+    {
+        psExtent3D->MinZ = adMin[2];
+        psExtent3D->MaxZ = adMax[2];
+    }
+    else
+    {
+        psExtent3D->MinZ = std::numeric_limits<double>::infinity();
+        psExtent3D->MaxZ = -std::numeric_limits<double>::infinity();
+    }
+
+    if (std::isnan(adMin[0]) || std::isnan(adMin[1]) || std::isnan(adMax[0]) ||
+        std::isnan(adMax[1]))
+    {
+        CPLDebug("SHAPE", "Invalid extent in shape header");
+
+        // Disable filters to avoid infinite recursion in GetNextFeature()
+        // that calls ScanIndices() that call GetExtent.
+        OGRFeatureQuery *poAttrQuery = m_poAttrQuery;
+        m_poAttrQuery = nullptr;
+        OGRGeometry *poFilterGeom = m_poFilterGeom;
+        m_poFilterGeom = nullptr;
+
+        const OGRErr eErr = OGRLayer::GetExtent3D(0, psExtent3D, bForce);
 
         m_poAttrQuery = poAttrQuery;
         m_poFilterGeom = poFilterGeom;
@@ -1750,6 +1797,9 @@ int OGRShapeLayer::TestCapability(const char *pszCap)
 
     if (EQUAL(pszCap, OLCFastGetExtent))
         return TRUE;
+
+    if (EQUAL(pszCap, OLCFastGetExtent3D))
+        return m_poFilterGeom == nullptr && m_poAttrQuery == nullptr;
 
     if (EQUAL(pszCap, OLCFastSetNextByIndex))
         return m_poFilterGeom == nullptr && m_poAttrQuery == nullptr;
@@ -1814,7 +1864,8 @@ int OGRShapeLayer::TestCapability(const char *pszCap)
 /*                            CreateField()                             */
 /************************************************************************/
 
-OGRErr OGRShapeLayer::CreateField(OGRFieldDefn *poFieldDefn, int bApproxOK)
+OGRErr OGRShapeLayer::CreateField(const OGRFieldDefn *poFieldDefn,
+                                  int bApproxOK)
 
 {
     if (!StartUpdate("CreateField"))
@@ -1981,10 +2032,18 @@ OGRErr OGRShapeLayer::CreateField(OGRFieldDefn *poFieldDefn, int bApproxOK)
     switch (oModFieldDefn.GetType())
     {
         case OFTInteger:
-            chType = 'N';
-            nWidth = oModFieldDefn.GetWidth();
-            if (nWidth == 0)
-                nWidth = 9;
+            if (oModFieldDefn.GetSubType() == OFSTBoolean)
+            {
+                chType = 'L';
+                nWidth = 1;
+            }
+            else
+            {
+                chType = 'N';
+                nWidth = oModFieldDefn.GetWidth();
+                if (nWidth == 0)
+                    nWidth = 9;
+            }
             break;
 
         case OFTInteger64:
@@ -2059,7 +2118,7 @@ OGRErr OGRShapeLayer::CreateField(OGRFieldDefn *poFieldDefn, int bApproxOK)
     {
         m_oSetUCFieldName.insert(osNewFieldNameUC);
 
-        poFeatureDefn->AddFieldDefn(&oModFieldDefn);
+        whileUnsealing(poFeatureDefn)->AddFieldDefn(&oModFieldDefn);
 
         if (bDBFJustCreated)
         {
@@ -2100,7 +2159,7 @@ OGRErr OGRShapeLayer::DeleteField(int iField)
     {
         TruncateDBF();
 
-        return poFeatureDefn->DeleteFieldDefn(iField);
+        return whileUnsealing(poFeatureDefn)->DeleteFieldDefn(iField);
     }
 
     return OGRERR_FAILURE;
@@ -2124,7 +2183,7 @@ OGRErr OGRShapeLayer::ReorderFields(int *panMap)
 
     if (DBFReorderFields(hDBF, panMap))
     {
-        return poFeatureDefn->ReorderFieldDefns(panMap);
+        return whileUnsealing(poFeatureDefn)->ReorderFieldDefns(panMap);
     }
 
     return OGRERR_FAILURE;
@@ -2150,6 +2209,8 @@ OGRErr OGRShapeLayer::AlterFieldDefn(int iField, OGRFieldDefn *poNewFieldDefn,
 
     OGRFieldDefn *poFieldDefn = poFeatureDefn->GetFieldDefn(iField);
     OGRFieldType eType = poFieldDefn->GetType();
+
+    auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
 
     // On reading we support up to 11 characters
     char szFieldName[XBASE_FLDNAME_LEN_READ + 1] = {};
@@ -2253,6 +2314,7 @@ OGRErr OGRShapeLayer::AlterGeomFieldDefn(
 
     auto poFieldDefn = cpl::down_cast<OGRShapeGeomFieldDefn *>(
         poFeatureDefn->GetGeomFieldDefn(iGeomField));
+    auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
 
     if (nFlagsIn & ALTER_GEOM_FIELD_DEFN_NAME_FLAG)
     {
@@ -2731,51 +2793,32 @@ OGRErr OGRShapeLayer::Repack()
     /* -------------------------------------------------------------------- */
     /*      Build a list of records to be dropped.                          */
     /* -------------------------------------------------------------------- */
-    int *panRecordsToDelete = static_cast<int *>(CPLMalloc(sizeof(int) * 128));
-    int nDeleteCount = 0;
-    int nDeleteCountAlloc = 128;
+    std::vector<int> anRecordsToDelete;
     OGRErr eErr = OGRERR_NONE;
 
     CPLDebug("Shape", "REPACK: Checking if features have been deleted");
 
     if (hDBF != nullptr)
     {
-        for (int iShape = 0; iShape < nTotalShapeCount; iShape++)
+        try
         {
-            if (DBFIsRecordDeleted(hDBF, iShape))
+            for (int iShape = 0; iShape < nTotalShapeCount; iShape++)
             {
-                if (nDeleteCount == nDeleteCountAlloc)
+                if (DBFIsRecordDeleted(hDBF, iShape))
                 {
-                    const int nDeleteCountAllocNew =
-                        nDeleteCountAlloc + nDeleteCountAlloc / 3 + 32;
-                    if (nDeleteCountAlloc >= (INT_MAX - 32) / 4 * 3 ||
-                        nDeleteCountAllocNew >
-                            INT_MAX / static_cast<int>(sizeof(int)))
-                    {
-                        CPLError(CE_Failure, CPLE_AppDefined,
-                                 "Too many features to delete : %d",
-                                 nDeleteCount);
-                        CPLFree(panRecordsToDelete);
-                        return OGRERR_FAILURE;
-                    }
-                    nDeleteCountAlloc = nDeleteCountAllocNew;
-                    int *panRecordsToDeleteNew = static_cast<int *>(
-                        VSI_REALLOC_VERBOSE(panRecordsToDelete,
-                                            nDeleteCountAlloc * sizeof(int)));
-                    if (panRecordsToDeleteNew == nullptr)
-                    {
-                        CPLFree(panRecordsToDelete);
-                        return OGRERR_FAILURE;
-                    }
-                    panRecordsToDelete = panRecordsToDeleteNew;
+                    anRecordsToDelete.push_back(iShape);
                 }
-                panRecordsToDelete[nDeleteCount++] = iShape;
+                if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)) ||
+                    VSIFErrorL(VSI_SHP_GetVSIL(hDBF->fp)))
+                {
+                    return OGRERR_FAILURE;  // I/O error.
+                }
             }
-            if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)))
-            {
-                CPLFree(panRecordsToDelete);
-                return OGRERR_FAILURE;  // I/O error.
-            }
+        }
+        catch (const std::bad_alloc &)
+        {
+            CPLError(CE_Failure, CPLE_OutOfMemory, "Out of memory in Repack()");
+            return OGRERR_FAILURE;
         }
     }
 
@@ -2783,13 +2826,11 @@ OGRErr OGRShapeLayer::Repack()
     /*      If there are no records marked for deletion, we take no         */
     /*      action.                                                         */
     /* -------------------------------------------------------------------- */
-    if (nDeleteCount == 0 && !bSHPNeedsRepack)
+    if (anRecordsToDelete.empty() && !bSHPNeedsRepack)
     {
         CPLDebug("Shape", "REPACK: nothing to do");
-        CPLFree(panRecordsToDelete);
         return OGRERR_NONE;
     }
-    panRecordsToDelete[nDeleteCount] = -1;
 
     /* -------------------------------------------------------------------- */
     /*      Find existing filenames with exact case (see #3293).            */
@@ -2809,7 +2850,7 @@ OGRErr OGRShapeLayer::Repack()
             CPLGetBasename(papszCandidates[i]);
         const CPLString osCandidateExtension =
             CPLGetExtension(papszCandidates[i]);
-#ifdef WIN32
+#ifdef _WIN32
         // On Windows, as filenames are case insensitive, a shapefile layer can
         // be made of foo.shp and FOO.DBF, so use case insensitive comparison.
         if (EQUAL(osCandidateBasename, osBasename))
@@ -2842,7 +2883,6 @@ OGRErr OGRShapeLayer::Repack()
                  "Cannot find the filename of the DBF file, but we managed to "
                  "open it before !");
         // Should not happen, really.
-        CPLFree(panRecordsToDelete);
         return OGRERR_FAILURE;
     }
 
@@ -2852,7 +2892,6 @@ OGRErr OGRShapeLayer::Repack()
                  "Cannot find the filename of the SHP file, but we managed to "
                  "open it before !");
         // Should not happen, really.
-        CPLFree(panRecordsToDelete);
         return OGRERR_FAILURE;
     }
 
@@ -2862,7 +2901,6 @@ OGRErr OGRShapeLayer::Repack()
                  "Cannot find the filename of the SHX file, but we managed to "
                  "open it before !");
         // Should not happen, really.
-        CPLFree(panRecordsToDelete);
         return OGRERR_FAILURE;
     }
 
@@ -2878,9 +2916,10 @@ OGRErr OGRShapeLayer::Repack()
     /* -------------------------------------------------------------------- */
     bool bMustReopenDBF = false;
     CPLString oTempFileDBF;
-    const int nNewRecords = nTotalShapeCount - nDeleteCount;
+    const int nNewRecords =
+        nTotalShapeCount - static_cast<int>(anRecordsToDelete.size());
 
-    if (hDBF != nullptr && nDeleteCount > 0)
+    if (hDBF != nullptr && !anRecordsToDelete.empty())
     {
         CPLDebug("Shape", "REPACK: repacking .dbf");
         bMustReopenDBF = true;
@@ -2891,8 +2930,6 @@ OGRErr OGRShapeLayer::Repack()
         DBFHandle hNewDBF = DBFCloneEmpty(hDBF, oTempFileDBF);
         if (hNewDBF == nullptr)
         {
-            CPLFree(panRecordsToDelete);
-
             CPLError(CE_Failure, CPLE_OpenFailed,
                      "Failed to create temp file %s.", oTempFileDBF.c_str());
             return OGRERR_FAILURE;
@@ -2913,12 +2950,13 @@ OGRErr OGRShapeLayer::Repack()
         /* --------------------------------------------------------------------
          */
         int iDestShape = 0;
-        int iNextDeletedShape = 0;
+        size_t iNextDeletedShape = 0;
 
         for (int iShape = 0; iShape < nTotalShapeCount && eErr == OGRERR_NONE;
              iShape++)
         {
-            if (panRecordsToDelete[iNextDeletedShape] == iShape)
+            if (iNextDeletedShape < anRecordsToDelete.size() &&
+                anRecordsToDelete[iNextDeletedShape] == iShape)
             {
                 iNextDeletedShape++;
             }
@@ -2939,7 +2977,6 @@ OGRErr OGRShapeLayer::Repack()
 
         if (eErr != OGRERR_NONE)
         {
-            CPLFree(panRecordsToDelete);
             VSIUnlink(oTempFileDBF);
             return eErr;
         }
@@ -2962,7 +2999,7 @@ OGRErr OGRShapeLayer::Repack()
     // many issues with files being locked, at the expense of more I/O
     const bool bPackInPlace =
         CPLTestBool(CPLGetConfigOption("OGR_SHAPE_PACK_IN_PLACE",
-#ifdef WIN32
+#ifdef _WIN32
                                        "YES"
 #else
                                        "NO"
@@ -2981,7 +3018,6 @@ OGRErr OGRShapeLayer::Repack()
         SHPHandle hNewSHP = SHPCreate(oTempFileSHP, hSHP->nShapeType);
         if (hNewSHP == nullptr)
         {
-            CPLFree(panRecordsToDelete);
             if (!oTempFileDBF.empty())
                 VSIUnlink(oTempFileDBF);
             return OGRERR_FAILURE;
@@ -2992,12 +3028,13 @@ OGRErr OGRShapeLayer::Repack()
         /*      Copy over all records that are not deleted. */
         /* --------------------------------------------------------------------
          */
-        int iNextDeletedShape = 0;
+        size_t iNextDeletedShape = 0;
 
         for (int iShape = 0; iShape < nTotalShapeCount && eErr == OGRERR_NONE;
              iShape++)
         {
-            if (panRecordsToDelete[iNextDeletedShape] == iShape)
+            if (iNextDeletedShape < anRecordsToDelete.size() &&
+                anRecordsToDelete[iNextDeletedShape] == iShape)
             {
                 iNextDeletedShape++;
             }
@@ -3047,7 +3084,6 @@ OGRErr OGRShapeLayer::Repack()
 
         if (eErr != OGRERR_NONE)
         {
-            CPLFree(panRecordsToDelete);
             VSIUnlink(oTempFileSHP);
             VSIUnlink(oTempFileSHX);
             if (!oTempFileDBF.empty())
@@ -3057,9 +3093,6 @@ OGRErr OGRShapeLayer::Repack()
             return eErr;
         }
     }
-
-    CPLFree(panRecordsToDelete);
-    panRecordsToDelete = nullptr;
 
     // We could also use pack in place for Unix but this involves extra I/O
     // w.r.t to the delete and rename approach
@@ -3394,7 +3427,7 @@ OGRErr OGRShapeLayer::ResizeDBF()
             }
             else
             {
-                poFieldDefn->SetWidth(panBestWidth[j]);
+                whileUnsealing(poFieldDefn)->SetWidth(panBestWidth[j]);
             }
         }
     }
@@ -3774,7 +3807,7 @@ OGRErr OGRShapeLayer::Rename(const char *pszNewName)
         return OGRERR_FAILURE;
 
     SetDescription(pszNewName);
-    poFeatureDefn->SetName(pszNewName);
+    whileUnsealing(poFeatureDefn)->SetName(pszNewName);
 
     return OGRERR_NONE;
 }
@@ -3786,4 +3819,95 @@ OGRErr OGRShapeLayer::Rename(const char *pszNewName)
 GDALDataset *OGRShapeLayer::GetDataset()
 {
     return poDS;
+}
+
+/************************************************************************/
+/*                        GetNextArrowArray()                           */
+/************************************************************************/
+
+// Specialized implementation restricted to situations where only retrieving
+// of FID values is asked (without filters)
+// In other cases, fall back to generic implementation.
+int OGRShapeLayer::GetNextArrowArray(struct ArrowArrayStream *stream,
+                                     struct ArrowArray *out_array)
+{
+    m_bLastGetNextArrowArrayUsedOptimizedCodePath = false;
+    if (!TouchLayer())
+    {
+        memset(out_array, 0, sizeof(*out_array));
+        return EIO;
+    }
+
+    if (!hDBF || m_poAttrQuery != nullptr || m_poFilterGeom != nullptr)
+    {
+        return OGRLayer::GetNextArrowArray(stream, out_array);
+    }
+
+    // If any field is not ignored, use generic implementation
+    const int nFieldCount = poFeatureDefn->GetFieldCount();
+    for (int i = 0; i < nFieldCount; ++i)
+    {
+        if (!poFeatureDefn->GetFieldDefn(i)->IsIgnored())
+            return OGRLayer::GetNextArrowArray(stream, out_array);
+    }
+    if (GetGeomType() != wkbNone &&
+        !poFeatureDefn->GetGeomFieldDefn(0)->IsIgnored())
+        return OGRLayer::GetNextArrowArray(stream, out_array);
+
+    OGRArrowArrayHelper sHelper(poDS, poFeatureDefn,
+                                m_aosArrowArrayStreamOptions, out_array);
+    if (out_array->release == nullptr)
+    {
+        return ENOMEM;
+    }
+
+    if (!sHelper.m_bIncludeFID)
+        return OGRLayer::GetNextArrowArray(stream, out_array);
+
+    m_bLastGetNextArrowArrayUsedOptimizedCodePath = true;
+    int nCount = 0;
+    while (iNextShapeId < nTotalShapeCount)
+    {
+        const bool bIsDeleted =
+            CPL_TO_BOOL(DBFIsRecordDeleted(hDBF, iNextShapeId));
+        if (bIsDeleted)
+        {
+            ++iNextShapeId;
+            continue;
+        }
+        if (VSIFEofL(VSI_SHP_GetVSIL(hDBF->fp)) ||
+            VSIFErrorL(VSI_SHP_GetVSIL(hDBF->fp)))
+        {
+            out_array->release(out_array);
+            memset(out_array, 0, sizeof(*out_array));
+            return EIO;
+        }
+        sHelper.m_panFIDValues[nCount] = iNextShapeId;
+        ++iNextShapeId;
+        ++nCount;
+        if (nCount == sHelper.m_nMaxBatchSize)
+            break;
+    }
+    sHelper.Shrink(nCount);
+    if (nCount == 0)
+    {
+        out_array->release(out_array);
+        memset(out_array, 0, sizeof(*out_array));
+    }
+    return 0;
+}
+
+/************************************************************************/
+/*                        GetMetadataItem()                             */
+/************************************************************************/
+
+const char *OGRShapeLayer::GetMetadataItem(const char *pszName,
+                                           const char *pszDomain)
+{
+    if (pszName && pszDomain && EQUAL(pszDomain, "__DEBUG__") &&
+        EQUAL(pszName, "LAST_GET_NEXT_ARROW_ARRAY_USED_OPTIMIZED_CODE_PATH"))
+    {
+        return m_bLastGetNextArrowArrayUsedOptimizedCodePath ? "YES" : "NO";
+    }
+    return OGRLayer::GetMetadataItem(pszName, pszDomain);
 }

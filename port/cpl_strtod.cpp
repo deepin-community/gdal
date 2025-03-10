@@ -8,23 +8,7 @@
  * Copyright (c) 2006, Andrey Kiselev
  * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -165,7 +149,8 @@ double CPLAtofM(const char *nptr)
  */
 static char *CPLReplacePointByLocalePoint(const char *pszNumber, char point)
 {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && __ANDROID_API__ < 20
+    // localeconv() only available since API 20
     static char byPoint = 0;
     if (byPoint == 0)
     {
@@ -380,7 +365,7 @@ double CPLStrtodDelim(const char *nptr, char **endptr, char point)
         }
         else
         {
-            errno = answer.ptr == nptr ? EINVAL : ERANGE;
+            errno = answer.ptr == nptr ? 0 : ERANGE;
         }
     }
     if (endptr)
@@ -435,6 +420,44 @@ double CPLStrtodDelim(const char *nptr, char **endptr, char point)
  */
 double CPLStrtod(const char *nptr, char **endptr)
 {
+    return CPLStrtodDelim(nptr, endptr, '.');
+}
+
+/************************************************************************/
+/*                            CPLStrtodM()                              */
+/************************************************************************/
+
+/**
+ * Converts ASCII string to floating point number.
+ *
+ * This function converts the initial portion of the string pointed to
+ * by nptr to double floating point representation. This function does the
+ * same as standard strtod(3), but does not take locale in account.
+ *
+ * That function accepts '.' (decimal point) or ',' (comma) as decimal
+ * delimiter.
+ *
+ * @param nptr Pointer to string to convert.
+ * @param endptr If is not NULL, a pointer to the character after the last
+ * character used in the conversion is stored in the location referenced
+ * by endptr.
+ *
+ * @return Converted value, if any.
+ * @since GDAL 3.9
+ */
+double CPLStrtodM(const char *nptr, char **endptr)
+
+{
+    const int nMaxSearch = 50;
+
+    for (int i = 0; i < nMaxSearch; i++)
+    {
+        if (nptr[i] == ',')
+            return CPLStrtodDelim(nptr, endptr, ',');
+        if (nptr[i] == '.' || nptr[i] == '\0')
+            return CPLStrtodDelim(nptr, endptr, '.');
+    }
+
     return CPLStrtodDelim(nptr, endptr, '.');
 }
 

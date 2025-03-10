@@ -1,6 +1,5 @@
 # Man pages are automatically generated with sphinx.
 no-manual-page *
-spare-manual-page *
 
 # False positive
 groff-message * warning: cannot select font *

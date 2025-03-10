@@ -9,23 +9,7 @@
  * Copyright (c) 2007, Adam Nowacki
  * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "gdal_frmts.h"
@@ -43,6 +27,7 @@
 #include "minidriver_mrf.h"
 #include "minidriver_ogcapimaps.h"
 #include "minidriver_ogcapicoverage.h"
+#include "wmsdrivercore.h"
 
 #include "cpl_json.h"
 
@@ -65,20 +50,22 @@ static CPLXMLNode *GDALWMSDatasetGetConfigFromURL(GDALOpenInfo *poOpenInfo)
 {
     const char *pszBaseURL = poOpenInfo->pszFilename;
     if (STARTS_WITH_CI(pszBaseURL, "WMS:"))
-        pszBaseURL += 4;
+        pszBaseURL += strlen("WMS:");
 
-    CPLString osLayer = CPLURLGetValue(pszBaseURL, "LAYERS");
+    const CPLString osLayer = CPLURLGetValue(pszBaseURL, "LAYERS");
     CPLString osVersion = CPLURLGetValue(pszBaseURL, "VERSION");
-    CPLString osSRS = CPLURLGetValue(pszBaseURL, "SRS");
-    CPLString osCRS = CPLURLGetValue(pszBaseURL, "CRS");
+    const CPLString osSRS = CPLURLGetValue(pszBaseURL, "SRS");
+    const CPLString osCRS = CPLURLGetValue(pszBaseURL, "CRS");
     CPLString osBBOX = CPLURLGetValue(pszBaseURL, "BBOX");
     CPLString osFormat = CPLURLGetValue(pszBaseURL, "FORMAT");
-    CPLString osTransparent = CPLURLGetValue(pszBaseURL, "TRANSPARENT");
+    const CPLString osTransparent = CPLURLGetValue(pszBaseURL, "TRANSPARENT");
 
     /* GDAL specific extensions to alter the default settings */
-    CPLString osOverviewCount = CPLURLGetValue(pszBaseURL, "OVERVIEWCOUNT");
-    CPLString osTileSize = CPLURLGetValue(pszBaseURL, "TILESIZE");
-    CPLString osMinResolution = CPLURLGetValue(pszBaseURL, "MINRESOLUTION");
+    const CPLString osOverviewCount =
+        CPLURLGetValue(pszBaseURL, "OVERVIEWCOUNT");
+    const CPLString osTileSize = CPLURLGetValue(pszBaseURL, "TILESIZE");
+    const CPLString osMinResolution =
+        CPLURLGetValue(pszBaseURL, "MINRESOLUTION");
     CPLString osBBOXOrder = CPLURLGetValue(pszBaseURL, "BBOXORDER");
 
     CPLString osBaseURL = pszBaseURL;
@@ -115,7 +102,7 @@ static CPLXMLNode *GDALWMSDatasetGetConfigFromURL(GDALOpenInfo *poOpenInfo)
     osBaseURL = CPLURLAddKVP(osBaseURL, "BBOXORDER", nullptr);
 
     if (!osBaseURL.empty() && osBaseURL.back() == '&')
-        osBaseURL.resize(osBaseURL.size() - 1);
+        osBaseURL.pop_back();
 
     if (osVersion.empty())
         osVersion = "1.1.1";
@@ -716,81 +703,6 @@ static CPLXMLNode *GDALWMSDatasetGetConfigFromArcGISJSON(const char *pszURL,
 }
 
 /************************************************************************/
-/*                             Identify()                               */
-/************************************************************************/
-
-int GDALWMSDataset::Identify(GDALOpenInfo *poOpenInfo)
-{
-    const char *pszFilename = poOpenInfo->pszFilename;
-    const char *pabyHeader = (const char *)poOpenInfo->pabyHeader;
-    if (poOpenInfo->nHeaderBytes == 0 &&
-        STARTS_WITH_CI(pszFilename, "<GDAL_WMS>"))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes >= 10 &&
-             STARTS_WITH_CI(pabyHeader, "<GDAL_WMS>"))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes == 0 &&
-             (STARTS_WITH_CI(pszFilename, "WMS:") ||
-              CPLString(pszFilename).ifind("SERVICE=WMS") != std::string::npos))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes != 0 &&
-             (strstr(pabyHeader, "<WMT_MS_Capabilities") != nullptr ||
-              strstr(pabyHeader, "<WMS_Capabilities") != nullptr ||
-              strstr(pabyHeader, "<!DOCTYPE WMT_MS_Capabilities") != nullptr))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes != 0 &&
-             strstr(pabyHeader, "<WMS_Tile_Service") != nullptr)
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes != 0 &&
-             strstr(pabyHeader, "<TileMap version=\"1.0.0\"") != nullptr)
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes != 0 &&
-             strstr(pabyHeader, "<Services") != nullptr &&
-             strstr(pabyHeader, "<TileMapService version=\"1.0") != nullptr)
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes != 0 &&
-             strstr(pabyHeader, "<TileMapService version=\"1.0.0\"") != nullptr)
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes == 0 &&
-             STARTS_WITH_CI(pszFilename, "http") &&
-             (strstr(pszFilename, "/MapServer?f=json") != nullptr ||
-              strstr(pszFilename, "/MapServer/?f=json") != nullptr ||
-              strstr(pszFilename, "/ImageServer?f=json") != nullptr ||
-              strstr(pszFilename, "/ImageServer/?f=json") != nullptr))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes == 0 &&
-             STARTS_WITH_CI(pszFilename, "AGS:"))
-    {
-        return TRUE;
-    }
-    else if (poOpenInfo->nHeaderBytes == 0 &&
-             STARTS_WITH_CI(pszFilename, "IIP:"))
-    {
-        return TRUE;
-    }
-    else
-        return FALSE;
-}
-
-/************************************************************************/
 /*                                 Open()                               */
 /************************************************************************/
 
@@ -802,7 +714,7 @@ GDALDataset *GDALWMSDataset::Open(GDALOpenInfo *poOpenInfo)
     const char *pszFilename = poOpenInfo->pszFilename;
     const char *pabyHeader = (const char *)poOpenInfo->pabyHeader;
 
-    if (!Identify(poOpenInfo))
+    if (!WMSDriverIdentify(poOpenInfo))
         return nullptr;
 
     if (poOpenInfo->nHeaderBytes == 0 &&
@@ -843,7 +755,11 @@ GDALDataset *GDALWMSDataset::Open(GDALOpenInfo *poOpenInfo)
 
     else if (poOpenInfo->nHeaderBytes == 0 &&
              (STARTS_WITH_CI(pszFilename, "WMS:") ||
-              CPLString(pszFilename).ifind("SERVICE=WMS") != std::string::npos))
+              CPLString(pszFilename).ifind("SERVICE=WMS") !=
+                  std::string::npos ||
+              (poOpenInfo->IsSingleAllowedDriver("WMS") &&
+               (STARTS_WITH(poOpenInfo->pszFilename, "http://") ||
+                STARTS_WITH(poOpenInfo->pszFilename, "https://")))))
     {
         CPLString osLayers = CPLURLGetValue(pszFilename, "LAYERS");
         CPLString osRequest = CPLURLGetValue(pszFilename, "REQUEST");
@@ -1133,65 +1049,6 @@ void WMSDeregister(CPL_UNUSED GDALDriver *d)
     WMSRegisterMiniDriverFactory(new WMSMiniDriverFactory_##name());
 
 /************************************************************************/
-/*                    OGRWMSDriverGetSubdatasetInfo()                   */
-/************************************************************************/
-
-struct WMSDriverSubdatasetInfo : public GDALSubdatasetInfo
-{
-  public:
-    explicit WMSDriverSubdatasetInfo(const std::string &fileName)
-        : GDALSubdatasetInfo(fileName)
-    {
-    }
-
-    // GDALSubdatasetInfo interface
-  private:
-    void parseFileName() override
-    {
-        if (!STARTS_WITH_CI(m_fileName.c_str(), "WMS:"))
-        {
-            return;
-        }
-
-        const CPLString osLayers = CPLURLGetValue(m_fileName.c_str(), "LAYERS");
-
-        if (!osLayers.empty())
-        {
-            m_subdatasetComponent = "LAYERS=" + osLayers;
-            m_driverPrefixComponent = "WMS";
-
-            m_pathComponent = m_fileName;
-            m_pathComponent.erase(m_pathComponent.find(m_subdatasetComponent),
-                                  m_subdatasetComponent.length());
-            m_pathComponent.erase(0, 4);
-            const std::size_t nDoubleAndPos = m_pathComponent.find("&&");
-            if (nDoubleAndPos != std::string::npos)
-            {
-                m_pathComponent.erase(nDoubleAndPos, 1);
-            }
-            // Reconstruct URL with LAYERS at the end or ModifyPathComponent will fail
-            m_fileName = m_driverPrefixComponent + ":" + m_pathComponent + "&" +
-                         m_subdatasetComponent;
-        }
-    }
-};
-
-static GDALSubdatasetInfo *WMSDriverGetSubdatasetInfo(const char *pszFileName)
-{
-    if (STARTS_WITH(pszFileName, "WMS:"))
-    {
-        std::unique_ptr<GDALSubdatasetInfo> info =
-            cpl::make_unique<WMSDriverSubdatasetInfo>(pszFileName);
-        if (!info->GetSubdatasetComponent().empty() &&
-            !info->GetPathComponent().empty())
-        {
-            return info.release();
-        }
-    }
-    return nullptr;
-}
-
-/************************************************************************/
 /*                          GDALRegister_WMS()                          */
 /************************************************************************/
 
@@ -1204,7 +1061,7 @@ static GDALSubdatasetInfo *WMSDriverGetSubdatasetInfo(const char *pszFileName)
 void GDALRegister_WMS()
 
 {
-    if (GDALGetDriverByName("WMS") != nullptr)
+    if (GDALGetDriverByName(DRIVER_NAME) != nullptr)
         return;
 
     // Register all minidrivers here
@@ -1221,19 +1078,11 @@ void GDALRegister_WMS()
     RegisterMinidriver(OGCAPICoverage);
 
     GDALDriver *poDriver = new GDALDriver();
-
-    poDriver->SetDescription("WMS");
-    poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
-    poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "OGC Web Map Service");
-    poDriver->SetMetadataItem(GDAL_DMD_HELPTOPIC, "drivers/raster/wms.html");
-    poDriver->SetMetadataItem(GDAL_DCAP_VIRTUALIO, "YES");
-    poDriver->SetMetadataItem(GDAL_DMD_SUBDATASETS, "YES");
+    WMSDriverSetCommonMetadata(poDriver);
 
     poDriver->pfnOpen = GDALWMSDataset::Open;
-    poDriver->pfnIdentify = GDALWMSDataset::Identify;
     poDriver->pfnUnloadDriver = WMSDeregister;
     poDriver->pfnCreateCopy = GDALWMSDataset::CreateCopy;
-    poDriver->pfnGetSubdatasetInfoFunc = WMSDriverGetSubdatasetInfo;
 
     GetGDALDriverManager()->RegisterDriver(poDriver);
 }

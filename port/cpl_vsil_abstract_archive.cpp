@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2010-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -432,7 +416,7 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
             {
                 const char lastC = osFileInArchive.back();
                 if (IsEitherSlash(lastC))
-                    osFileInArchive.resize(osFileInArchive.size() - 1);
+                    osFileInArchive.pop_back();
             }
 
             return archiveFilename;
@@ -473,7 +457,12 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
 
     const std::vector<CPLString> oExtensions = GetExtensions();
     int nAttempts = 0;
-    while (pszFilename[i])
+    // If we are called with pszFilename being one of the TLS buffers returned
+    // by cpl_path.cpp functions, then a call to Stat() in the loop (and its
+    // cascaded calls to other cpl_path.cpp functions) might lead to altering
+    // the buffer to be altered, hence take a copy
+    const std::string osFilenameCopy(pszFilename);
+    while (i < static_cast<int>(osFilenameCopy.size()))
     {
         int nToSkip = 0;
 
@@ -481,7 +470,7 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
              iter != oExtensions.end(); ++iter)
         {
             const CPLString &osExtension = *iter;
-            if (EQUALN(pszFilename + i, osExtension.c_str(),
+            if (EQUALN(osFilenameCopy.c_str() + i, osExtension.c_str(),
                        osExtension.size()))
             {
                 nToSkip = static_cast<int>(osExtension.size());
@@ -491,7 +480,8 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
 
 #ifdef DEBUG
         // For AFL, so that .cur_input is detected as the archive filename.
-        if (EQUALN(pszFilename + i, ".cur_input", strlen(".cur_input")))
+        if (EQUALN(osFilenameCopy.c_str() + i, ".cur_input",
+                   strlen(".cur_input")))
         {
             nToSkip = static_cast<int>(strlen(".cur_input"));
         }
@@ -507,7 +497,7 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
                 break;
             }
             VSIStatBufL statBuf;
-            char *archiveFilename = CPLStrdup(pszFilename);
+            char *archiveFilename = CPLStrdup(osFilenameCopy.c_str());
             bool bArchiveFileExists = false;
 
             if (IsEitherSlash(archiveFilename[i + nToSkip]))
@@ -548,10 +538,11 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
 
             if (bArchiveFileExists)
             {
-                if (IsEitherSlash(pszFilename[i + nToSkip]))
+                if (IsEitherSlash(osFilenameCopy[i + nToSkip]) &&
+                    i + nToSkip + 1 < static_cast<int>(osFilenameCopy.size()))
                 {
-                    osFileInArchive =
-                        CompactFilename(pszFilename + i + nToSkip + 1);
+                    osFileInArchive = CompactFilename(osFilenameCopy.c_str() +
+                                                      i + nToSkip + 1);
                 }
                 else
                 {
@@ -563,8 +554,13 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
                 {
                     const char lastC = osFileInArchive.back();
                     if (IsEitherSlash(lastC))
-                        osFileInArchive.resize(osFileInArchive.size() - 1);
+                        osFileInArchive.pop_back();
                 }
+
+                // Messy! Restore the TLS buffer if it has been altered
+                if (osFilenameCopy != pszFilename)
+                    strcpy(const_cast<char *>(pszFilename),
+                           osFilenameCopy.c_str());
 
                 return archiveFilename;
             }
@@ -572,6 +568,11 @@ char *VSIArchiveFilesystemHandler::SplitFilename(const char *pszFilename,
         }
         i++;
     }
+
+    // Messy! Restore the TLS buffer if it has been altered
+    if (osFilenameCopy != pszFilename)
+        strcpy(const_cast<char *>(pszFilename), osFilenameCopy.c_str());
+
     return nullptr;
 }
 
