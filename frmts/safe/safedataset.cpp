@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2015, Delfim Rego <delfimrego@gmail.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "safedataset.h"
@@ -81,8 +65,8 @@ CPLErr SAFERasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     {
         nRequestYSize = nRasterYSize - nBlockYOff * nBlockYSize;
         memset(pImage, 0,
-               (GDALGetDataTypeSize(eDataType) / 8) * nBlockXSize *
-                   nBlockYSize);
+               static_cast<size_t>(GDALGetDataTypeSizeBytes(eDataType)) *
+                   nBlockXSize * nBlockYSize);
     }
     else
     {
@@ -98,8 +82,8 @@ CPLErr SAFERasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
     {
         nRequestXSize = nRasterXSize - nBlockXOff * nBlockXSize;
         memset(pImage, 0,
-               (GDALGetDataTypeSize(eDataType) / 8) * nBlockXSize *
-                   nBlockYSize);
+               static_cast<size_t>(GDALGetDataTypeSizeBytes(eDataType)) *
+                   nBlockXSize * nBlockYSize);
     }
     else
     {
@@ -241,9 +225,8 @@ CPLErr SAFESLCRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
         }
         else if (m_eBandType == INTENSITY)
         {
-            GInt16 *pnImageTmp = static_cast<GInt16 *>(
-                VSI_MALLOC_VERBOSE(2 * nBlockXSize * nBlockYSize *
-                                   GDALGetDataTypeSizeBytes(GDT_Int16)));
+            GInt16 *pnImageTmp = static_cast<GInt16 *>(VSI_MALLOC3_VERBOSE(
+                2 * sizeof(int16_t), nBlockXSize, nBlockYSize));
             if (!pnImageTmp)
             {
                 return CE_Failure;
@@ -487,8 +470,7 @@ CPLErr SAFECalibratedRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
     {
         CPLErr eErr = CE_None;
         GInt16 *pnImageTmp = static_cast<GInt16 *>(
-            VSI_MALLOC_VERBOSE(2 * nBlockXSize * nBlockYSize *
-                               GDALGetDataTypeSizeBytes(GDT_Int16)));
+            VSI_MALLOC3_VERBOSE(2 * sizeof(int16_t), nBlockXSize, nBlockYSize));
         if (!pnImageTmp)
             return CE_Failure;
 
@@ -557,8 +539,8 @@ CPLErr SAFECalibratedRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
     else if (m_eInputDataType == GDT_UInt16)
     {
         CPLErr eErr = CE_None;
-        GUInt16 *pnImageTmp = static_cast<GUInt16 *>(VSI_MALLOC_VERBOSE(
-            nBlockXSize * nBlockYSize * GDALGetDataTypeSizeBytes(GDT_UInt16)));
+        GUInt16 *pnImageTmp = static_cast<GUInt16 *>(VSI_MALLOC3_VERBOSE(
+            nBlockXSize, nBlockYSize, GDALGetDataTypeSizeBytes(GDT_UInt16)));
         if (!pnImageTmp)
             return CE_Failure;
         eErr = poBandDataset->RasterIO(GF_Read, nBlockXOff * nBlockXSize,
@@ -638,7 +620,6 @@ SAFEDataset::~SAFEDataset()
 {
     SAFEDataset::FlushCache(true);
 
-    CPLDestroyXMLNode(psManifest);
     if (nGCPCount > 0)
     {
         GDALDeinitGCPs(nGCPCount, pasGCPList);
@@ -675,13 +656,14 @@ int SAFEDataset::CloseDependentDatasets()
 /*                      GetMetaDataObject()                             */
 /************************************************************************/
 
-CPLXMLNode *SAFEDataset::GetMetaDataObject(CPLXMLNode *psMetaDataObjects,
-                                           const char *metadataObjectId)
+const CPLXMLNode *
+SAFEDataset::GetMetaDataObject(const CPLXMLNode *psMetaDataObjects,
+                               const char *metadataObjectId)
 {
     /* -------------------------------------------------------------------- */
     /*      Look for DataObject Element by ID.                              */
     /* -------------------------------------------------------------------- */
-    for (CPLXMLNode *psMDO = psMetaDataObjects->psChild; psMDO != nullptr;
+    for (const CPLXMLNode *psMDO = psMetaDataObjects->psChild; psMDO != nullptr;
          psMDO = psMDO->psNext)
     {
         if (psMDO->eType != CXT_Element ||
@@ -708,13 +690,13 @@ CPLXMLNode *SAFEDataset::GetMetaDataObject(CPLXMLNode *psMetaDataObjects,
 /*                      GetDataObject()                                 */
 /************************************************************************/
 
-CPLXMLNode *SAFEDataset::GetDataObject(CPLXMLNode *psDataObjects,
-                                       const char *dataObjectId)
+const CPLXMLNode *SAFEDataset::GetDataObject(const CPLXMLNode *psDataObjects,
+                                             const char *dataObjectId)
 {
     /* -------------------------------------------------------------------- */
     /*      Look for DataObject Element by ID.                              */
     /* -------------------------------------------------------------------- */
-    for (CPLXMLNode *psDO = psDataObjects->psChild; psDO != nullptr;
+    for (const CPLXMLNode *psDO = psDataObjects->psChild; psDO != nullptr;
          psDO = psDO->psNext)
     {
         if (psDO->eType != CXT_Element ||
@@ -737,14 +719,15 @@ CPLXMLNode *SAFEDataset::GetDataObject(CPLXMLNode *psDataObjects,
     return nullptr;
 }
 
-CPLXMLNode *SAFEDataset::GetDataObject(CPLXMLNode *psMetaDataObjects,
-                                       CPLXMLNode *psDataObjects,
-                                       const char *metadataObjectId)
+const CPLXMLNode *
+SAFEDataset::GetDataObject(const CPLXMLNode *psMetaDataObjects,
+                           const CPLXMLNode *psDataObjects,
+                           const char *metadataObjectId)
 {
     /* -------------------------------------------------------------------- */
     /*      Look for MetadataObject Element by ID.                          */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psMDO =
+    const CPLXMLNode *psMDO =
         SAFEDataset::GetMetaDataObject(psMetaDataObjects, metadataObjectId);
 
     if (psMDO != nullptr)
@@ -851,6 +834,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     SAFECalibratedRasterBand::CalibrationType eCalibrationType =
         SAFECalibratedRasterBand::SIGMA_NOUGHT;
     bool bCalibrated = false;
+
     // 0 for amplitude, 1 for complex (2 band : I , Q) and 2 for INTENSITY
     typedef enum
     {
@@ -859,6 +843,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
         COMPLEX,
         INTENSITY
     } RequestDataType;
+
     RequestDataType eRequestType = UNKNOWN;
     // Calibration Information selection
     CPLString osSubdatasetName;
@@ -1005,7 +990,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /*      Ingest the manifest.safe file.                                  */
     /* -------------------------------------------------------------------- */
 
-    CPLXMLNode *psManifest = CPLParseXMLFile(osMDFilename);
+    auto psManifest = CPLXMLTreeCloser(CPLParseXMLFile(osMDFilename));
     if (psManifest == nullptr)
         return nullptr;
 
@@ -1016,7 +1001,6 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     if (poOpenInfo->eAccess == GA_Update)
     {
-        CPLDestroyXMLNode(psManifest);
         CPLError(CE_Failure, CPLE_NotSupported,
                  "The SAFE driver does not support update access to existing"
                  " datasets.\n");
@@ -1026,11 +1010,10 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Get contentUnit parent element.                                 */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psContentUnits = CPLGetXMLNode(
-        psManifest, "=xfdu:XFDU.informationPackageMap.xfdu:contentUnit");
+    const CPLXMLNode *psContentUnits = CPLGetXMLNode(
+        psManifest.get(), "=xfdu:XFDU.informationPackageMap.xfdu:contentUnit");
     if (psContentUnits == nullptr)
     {
-        CPLDestroyXMLNode(psManifest);
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Failed to find <xfdu:XFDU><informationPackageMap>"
                  "<xfdu:contentUnit> in manifest file.");
@@ -1040,11 +1023,10 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Get Metadata Objects element.                                   */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psMetaDataObjects =
-        CPLGetXMLNode(psManifest, "=xfdu:XFDU.metadataSection");
+    const CPLXMLNode *psMetaDataObjects =
+        CPLGetXMLNode(psManifest.get(), "=xfdu:XFDU.metadataSection");
     if (psMetaDataObjects == nullptr)
     {
-        CPLDestroyXMLNode(psManifest);
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Failed to find <xfdu:XFDU><metadataSection>"
                  "in manifest file.");
@@ -1054,11 +1036,10 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Get Data Objects element.                                       */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psDataObjects =
-        CPLGetXMLNode(psManifest, "=xfdu:XFDU.dataObjectSection");
+    const CPLXMLNode *psDataObjects =
+        CPLGetXMLNode(psManifest.get(), "=xfdu:XFDU.dataObjectSection");
     if (psDataObjects == nullptr)
     {
-        CPLDestroyXMLNode(psManifest);
         CPLError(CE_Failure, CPLE_OpenFailed,
                  "Failed to find <xfdu:XFDU><dataObjectSection> in document.");
         return nullptr;
@@ -1067,9 +1048,9 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create the dataset.                                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<SAFEDataset>();
+    auto poDS = std::make_unique<SAFEDataset>();
 
-    poDS->psManifest = psManifest;
+    poDS->psManifest = std::move(psManifest);
 
     /* -------------------------------------------------------------------- */
     /*      Look for "Measurement Data Unit" contentUnit elements.          */
@@ -1103,7 +1084,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
             if (*pszDataObjectID == '\0' || *pszDmdID == '\0')
                 continue;
 
-            CPLXMLNode *psDataObject =
+            const CPLXMLNode *psDataObject =
                 SAFEDataset::GetDataObject(psDataObjects, pszDataObjectID);
 
             const char *pszRepId = CPLGetXMLValue(psDataObject, "repID", "");
@@ -1127,7 +1108,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
                     continue;
 
                 // Map the metadata ID to the object element
-                CPLXMLNode *psDO = SAFEDataset::GetDataObject(
+                const CPLXMLNode *psDO = SAFEDataset::GetDataObject(
                     psMetaDataObjects, psDataObjects, pszId);
                 if (psDO == nullptr)
                     continue;
@@ -1315,8 +1296,11 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
             /*      Try and open the file. */
             /* --------------------------------------------------------------------
              */
+            CPLTurnFailureIntoWarning(true);
             auto poBandFile = std::unique_ptr<GDALDataset>(
-                GDALDataset::Open(osFullFilename.c_str()));
+                GDALDataset::Open(osFullFilename.c_str(),
+                                  GDAL_OF_RASTER | GDAL_OF_VERBOSE_ERROR));
+            CPLTurnFailureIntoWarning(false);
             if (poBandFile == nullptr)
             {
                 // NOP
@@ -1379,7 +1363,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
                     }
 
                     oLL.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
-                    poDS->m_oGCPSRS = oLL;
+                    poDS->m_oGCPSRS = std::move(oLL);
                 }
 
                 /* --------------------------------------------------------------------
@@ -1481,7 +1465,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
                 else if (bCalibrated &&
                          (eRequestType == UNKNOWN || eRequestType == COMPLEX))
                 {
-                    auto poBand = cpl::make_unique<SAFECalibratedRasterBand>(
+                    auto poBand = std::make_unique<SAFECalibratedRasterBand>(
                         poDS.get(), eDataType, osSwath, osPolarization,
                         std::move(poBandFile), osCalibrationFilePath,
                         eCalibrationType);
@@ -1744,7 +1728,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Platform information                                            */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psPlatformAttrs =
+    const CPLXMLNode *psPlatformAttrs =
         SAFEDataset::GetMetaDataObject(psMetaDataObjects, "platform");
 
     if (psPlatformAttrs != nullptr)
@@ -1781,7 +1765,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Acquisition Period information                                  */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psAcquisitionAttrs =
+    const CPLXMLNode *psAcquisitionAttrs =
         SAFEDataset::GetMetaDataObject(psMetaDataObjects, "acquisitionPeriod");
 
     if (psAcquisitionAttrs != nullptr)
@@ -1802,7 +1786,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Processing information                                          */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psProcessingAttrs =
+    const CPLXMLNode *psProcessingAttrs =
         SAFEDataset::GetMetaDataObject(psMetaDataObjects, "processing");
 
     if (psProcessingAttrs != nullptr)
@@ -1816,7 +1800,7 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Measurement Orbit Reference information                         */
     /* -------------------------------------------------------------------- */
-    CPLXMLNode *psOrbitAttrs = SAFEDataset::GetMetaDataObject(
+    const CPLXMLNode *psOrbitAttrs = SAFEDataset::GetMetaDataObject(
         psMetaDataObjects, "measurementOrbitReference");
 
     if (psOrbitAttrs != nullptr)
@@ -1832,6 +1816,46 @@ GDALDataset *SAFEDataset::Open(GDALOpenInfo *poOpenInfo)
                                  ".safe:extension.s1:orbitProperties.s1:pass",
                                  "UNK");
         poDS->SetMetadataItem("ORBIT_DIRECTION", pszItem);
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*      Footprint                                                       */
+    /* -------------------------------------------------------------------- */
+    const CPLXMLNode *psFrameSet = SAFEDataset::GetMetaDataObject(
+        psMetaDataObjects, "measurementFrameSet");
+
+    if (psFrameSet)
+    {
+        const auto psFootPrint = CPLGetXMLNode(psFrameSet, "metadataWrap."
+                                                           "xmlData."
+                                                           "safe:frameSet."
+                                                           "safe:frame."
+                                                           "safe:footPrint");
+        if (psFootPrint)
+        {
+            const char *pszSRSName =
+                CPLGetXMLValue(psFootPrint, "srsName", nullptr);
+            const char *pszCoordinates =
+                CPLGetXMLValue(psFootPrint, "gml:coordinates", nullptr);
+            if (pszSRSName &&
+                EQUAL(pszSRSName,
+                      "http://www.opengis.net/gml/srs/epsg.xml#4326") &&
+                pszCoordinates)
+            {
+                const CPLStringList aosValues(
+                    CSLTokenizeString2(pszCoordinates, " ,", 0));
+                if (aosValues.size() == 8)
+                {
+                    poDS->SetMetadataItem(
+                        "FOOTPRINT",
+                        CPLSPrintf("POLYGON((%s %s,%s %s,%s %s,%s %s, %s %s))",
+                                   aosValues[1], aosValues[0], aosValues[3],
+                                   aosValues[2], aosValues[5], aosValues[4],
+                                   aosValues[7], aosValues[6], aosValues[1],
+                                   aosValues[0]));
+                }
+            }
+        }
     }
 
     /* -------------------------------------------------------------------- */

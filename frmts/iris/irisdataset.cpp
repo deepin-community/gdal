@@ -10,23 +10,7 @@
  * Copyright (c) 2012, Roger Veciana <rveciana@gmail.com>
  * Copyright (c) 2012-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -258,7 +242,7 @@ CPLErr IRISRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
             return CE_Failure;
 
         pszRecord = static_cast<unsigned char *>(
-            VSI_MALLOC_VERBOSE(nBlockXSize * nDataLength));
+            VSI_MALLOC_VERBOSE(static_cast<size_t>(nBlockXSize) * nDataLength));
 
         if (pszRecord == nullptr)
         {
@@ -281,7 +265,8 @@ CPLErr IRISRasterBand::IReadBlock(int /* nBlockXOff */, int nBlockYOff,
               SEEK_SET);
 
     if (static_cast<int>(
-            VSIFReadL(pszRecord, nBlockXSize * nDataLength, 1, poGDS->fp)) != 1)
+            VSIFReadL(pszRecord, static_cast<size_t>(nBlockXSize) * nDataLength,
+                      1, poGDS->fp)) != 1)
         return CE_Failure;
 
     // If datatype is dbZ or dBT:

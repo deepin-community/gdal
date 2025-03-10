@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -41,8 +25,9 @@
 
 OGRMemDataSource::OGRMemDataSource(const char *pszFilename,
                                    char ** /* papszOptions */)
-    : papoLayers(nullptr), nLayers(0), pszName(CPLStrdup(pszFilename))
+    : papoLayers(nullptr), nLayers(0)
 {
+    SetDescription(pszFilename);
 }
 
 /************************************************************************/
@@ -52,8 +37,6 @@ OGRMemDataSource::OGRMemDataSource(const char *pszFilename,
 OGRMemDataSource::~OGRMemDataSource()
 
 {
-    CPLFree(pszName);
-
     for (int i = 0; i < nLayers; i++)
         delete papoLayers[i];
 
@@ -64,12 +47,17 @@ OGRMemDataSource::~OGRMemDataSource()
 /*                           ICreateLayer()                             */
 /************************************************************************/
 
-OGRLayer *OGRMemDataSource::ICreateLayer(const char *pszLayerName,
-                                         const OGRSpatialReference *poSRSIn,
-                                         OGRwkbGeometryType eType,
-                                         char **papszOptions)
+OGRLayer *
+OGRMemDataSource::ICreateLayer(const char *pszLayerName,
+                               const OGRGeomFieldDefn *poGeomFieldDefn,
+                               CSLConstList papszOptions)
 {
     // Create the layer object.
+
+    const auto eType = poGeomFieldDefn ? poGeomFieldDefn->GetType() : wkbNone;
+    const auto poSRSIn =
+        poGeomFieldDefn ? poGeomFieldDefn->GetSpatialRef() : nullptr;
+
     OGRSpatialReference *poSRS = nullptr;
     if (poSRSIn)
     {
@@ -175,7 +163,7 @@ bool OGRMemDataSource::AddFieldDomain(std::unique_ptr<OGRFieldDomain> &&domain,
         failureReason = "A domain of identical name already exists";
         return false;
     }
-    const auto domainName = domain->GetName();
+    const std::string domainName(domain->GetName());
     m_oMapFieldDomains[domainName] = std::move(domain);
     return true;
 }
@@ -205,6 +193,7 @@ bool OGRMemDataSource::DeleteFieldDomain(const std::string &name,
                 poLayer->GetLayerDefn()->GetFieldDefn(j);
             if (poFieldDefn->GetDomainName() == name)
             {
+                auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
                 poFieldDefn->SetDomainName(std::string());
             }
         }
@@ -220,7 +209,7 @@ bool OGRMemDataSource::DeleteFieldDomain(const std::string &name,
 bool OGRMemDataSource::UpdateFieldDomain(
     std::unique_ptr<OGRFieldDomain> &&domain, std::string &failureReason)
 {
-    const auto domainName = domain->GetName();
+    const std::string domainName(domain->GetName());
     const auto iter = m_oMapFieldDomains.find(domainName);
     if (iter == m_oMapFieldDomains.end())
     {

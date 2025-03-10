@@ -6,30 +6,14 @@
  *
  *  This file is part of LibKEA.
  *
- *  Permission is hereby granted, free of charge, to any person
- *  obtaining a copy of this software and associated documentation
- *  files (the "Software"), to deal in the Software without restriction,
- *  including without limitation the rights to use, copy, modify,
- *  merge, publish, distribute, sublicense, and/or sell copies of the
- *  Software, and to permit persons to whom the Software is furnished
- *  to do so, subject to the following conditions:
- *
- *  The above copyright notice and this permission notice shall be
- *  included in all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- *  OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- *  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
- *  ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
- *  CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- *  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *
  */
 
 #include "keadataset.h"
 #include "keaband.h"
 #include "keacopy.h"
+#include "keadrivercore.h"
 #include "../frmts/hdf5/hdf5vfl.h"
 #include "cpl_vsi_virtual.h"
 
@@ -131,7 +115,7 @@ kealib::KEADataType GDAL_to_KEA_Type(GDALDataType egdalType)
 // static function - pointer set in driver
 GDALDataset *KEADataset::Open(GDALOpenInfo *poOpenInfo)
 {
-    if (Identify(poOpenInfo))
+    if (KEADriverIdentify(poOpenInfo))
     {
         try
         {
@@ -194,34 +178,6 @@ GDALDataset *KEADataset::Open(GDALOpenInfo *poOpenInfo)
         // not a KEA file
         return nullptr;
     }
-}
-
-// static function- pointer set in driver
-// this function is called in preference to Open
-//
-int KEADataset::Identify(GDALOpenInfo *poOpenInfo)
-{
-
-    /* -------------------------------------------------------------------- */
-    /*      Is it an HDF5 file?                                             */
-    /* -------------------------------------------------------------------- */
-    static const char achSignature[] = "\211HDF\r\n\032\n";
-
-    if (poOpenInfo->pabyHeader == nullptr ||
-        memcmp(poOpenInfo->pabyHeader, achSignature, 8) != 0)
-    {
-        return 0;
-    }
-
-    // avoid using kealib::KEAImageIO::isKEAImage as this is likely
-    // to be too slow over curl etc (and doesn't take a HDF5 file handle
-    // anyway).
-    // Just test the extension
-    CPLString osExt(CPLGetExtension(poOpenInfo->pszFilename));
-    if (EQUAL(osExt, "KEA"))
-        return 1;
-    else
-        return 0;
 }
 
 // static function

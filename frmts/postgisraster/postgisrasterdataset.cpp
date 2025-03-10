@@ -13,29 +13,12 @@
  * Copyright (c) 2009 - 2013, Jorge Arevalo, David Zwarg
  * Copyright (c) 2013-2018, Even Rouault <even.rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT.IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
+ * SPDX-License-Identifier: MIT
  **********************************************************************/
 
 #include "gdal_frmts.h"
 #include "postgisraster.h"
+#include "postgisrasterdrivercore.h"
 #include <math.h>
 
 #include <algorithm>
@@ -917,6 +900,7 @@ void PostGISRasterDataset::CacheTile(const char *pszMetadata,
     const int nExpectedBands = bAllBandCaching ? GetRasterCount() : 1;
 
     int nWKBLength = 0;
+
     struct CPLFreer
     {
         void operator()(GByte *x) const
@@ -924,6 +908,7 @@ void PostGISRasterDataset::CacheTile(const char *pszMetadata,
             CPLFree(x);
         }
     };
+
     std::unique_ptr<GByte, CPLFreer> pbyDataAutoFreed(
         CPLHexToBinary(pszRaster, &nWKBLength));
     GByte *pbyData = pbyDataAutoFreed.get();
@@ -1206,10 +1191,11 @@ GBool PostGISRasterDataset::LoadSources(int nXOff, int nYOff, int nXSize,
         CPLTestBool(CPLGetConfigOption("PR_FORCE_LOAD_RASTERS", "FALSE"));
     bool bAllBandCaching = false;
 
-    CPLString osPrimaryKeyNameI(CPLQuotedSQLIdentifier(pszPrimaryKeyName));
-    CPLString osSchemaI(CPLQuotedSQLIdentifier(pszSchema));
-    CPLString osTableI(CPLQuotedSQLIdentifier(pszTable));
-    CPLString osColumnI(CPLQuotedSQLIdentifier(pszColumn));
+    const std::string osPrimaryKeyNameI(
+        CPLQuotedSQLIdentifier(pszPrimaryKeyName));
+    const std::string osSchemaI(CPLQuotedSQLIdentifier(pszSchema));
+    const std::string osTableI(CPLQuotedSQLIdentifier(pszTable));
+    const std::string osColumnI(CPLQuotedSQLIdentifier(pszColumn));
 
     PGresult *poResult = nullptr;
     if (m_nTiles > 0 && !bFetchAll)
@@ -1297,7 +1283,7 @@ GBool PostGISRasterDataset::LoadSources(int nXOff, int nYOff, int nXSize,
 
     if (bFetchAll || !osIDsToFetch.empty() || !osSpatialFilter.empty())
     {
-        CPLString osWHERE;
+        std::string osWHERE;
         if (!osIDsToFetch.empty())
         {
             osWHERE += osPrimaryKeyNameI;
@@ -1307,7 +1293,7 @@ GBool PostGISRasterDataset::LoadSources(int nXOff, int nYOff, int nXSize,
         }
         else if (!osSpatialFilter.empty())
         {
-            osWHERE = osSpatialFilter;
+            osWHERE = std::move(osSpatialFilter);
         }
         if (pszWhere != nullptr)
         {
@@ -2801,7 +2787,7 @@ GetConnectionInfo(const char *pszFilename, char **ppszConnectionString,
 {
     int nPos = -1, sPos = -1, i;
     char *pszTmp = nullptr;
-    char **papszParams = ParseConnectionString(pszFilename);
+    char **papszParams = PostGISRasterParseConnectionString(pszFilename);
     if (papszParams == nullptr)
     {
         return false;
@@ -3146,11 +3132,9 @@ static PGconn *GetConnection(const char *pszFilename,
         /**************************************************************
          * Open a new database connection
          **************************************************************/
-        PostGISRasterDriver *poDriver = static_cast<PostGISRasterDriver *>(
-            GDALGetDriverByName("PostGISRaster"));
-
-        poConn = poDriver->GetConnection(*ppszConnectionString, pszService,
-                                         pszDbname, pszHost, pszPort, pszUser);
+        poConn = PostGISRasterDriver::gpoPostGISRasterDriver->GetConnection(
+            *ppszConnectionString, pszService, pszDbname, pszHost, pszPort,
+            pszUser);
 
         if (poConn == nullptr)
         {
@@ -3167,29 +3151,6 @@ static PGconn *GetConnection(const char *pszFilename,
     CPLFree(pszPassword);
 
     return poConn;
-}
-
-/************************************************************************/
-/*                            Identify()                                */
-/************************************************************************/
-
-int PostGISRasterDataset::Identify(GDALOpenInfo *poOpenInfo)
-{
-    if (poOpenInfo->pszFilename == nullptr || poOpenInfo->fpL != nullptr ||
-        !STARTS_WITH_CI(poOpenInfo->pszFilename, "PG:"))
-    {
-        return FALSE;
-    }
-
-    // Will avoid a OGR PostgreSQL connection string to be recognized as a
-    // PostgisRaster one and later fail (#6034)
-    if (strstr(poOpenInfo->pszFilename, " schemas=") ||
-        strstr(poOpenInfo->pszFilename, " SCHEMAS="))
-    {
-        return FALSE;
-    }
-
-    return TRUE;
 }
 
 /***********************************************************************
@@ -3219,7 +3180,7 @@ GDALDataset *PostGISRasterDataset::Open(GDALOpenInfo *poOpenInfo)
     /**************************
      * Check input parameter
      **************************/
-    if (!Identify(poOpenInfo))
+    if (!PostGISRasterDriverIdentify(poOpenInfo))
         return nullptr;
 
     poConn = GetConnection(poOpenInfo->pszFilename, &pszConnectionString,
@@ -4092,85 +4053,6 @@ GBool PostGISRasterDataset::PolygonFromCoords(int nXOff, int nYOff,
     return true;
 }
 
-/************************************************************************/
-/*                    PostGISRasterDriverGetSubdatasetInfo()            */
-/************************************************************************/
-
-struct PostGISRasterDriverSubdatasetInfo : public GDALSubdatasetInfo
-{
-  public:
-    explicit PostGISRasterDriverSubdatasetInfo(const std::string &fileName)
-        : GDALSubdatasetInfo(fileName)
-    {
-    }
-
-    // GDALSubdatasetInfo interface
-  private:
-    void parseFileName() override
-    {
-        if (!STARTS_WITH_CI(m_fileName.c_str(), "PG:"))
-        {
-            return;
-        }
-
-        char **papszParams = ParseConnectionString(m_fileName.c_str());
-
-        const int nTableIdx = CSLFindName(papszParams, "table");
-        if (nTableIdx != -1)
-        {
-            size_t nTableStart = m_fileName.find("table=");
-            bool bHasQuotes{false};
-            try
-            {
-                bHasQuotes = m_fileName.at(nTableStart + 6) == '\'';
-            }
-            catch (const std::out_of_range &)
-            {
-                // ignore error
-            }
-
-            m_subdatasetComponent = papszParams[nTableIdx];
-
-            if (bHasQuotes)
-            {
-                m_subdatasetComponent.insert(6, "'");
-                m_subdatasetComponent.push_back('\'');
-            }
-
-            m_driverPrefixComponent = "PG";
-
-            size_t nPathLength = m_subdatasetComponent.length();
-            if (nTableStart != 0)
-            {
-                nPathLength++;
-                nTableStart--;
-            }
-
-            m_pathComponent = m_fileName;
-            m_pathComponent.erase(nTableStart, nPathLength);
-            m_pathComponent.erase(0, 3);
-        }
-
-        CSLDestroy(papszParams);
-    }
-};
-
-static GDALSubdatasetInfo *
-PostGISRasterDriverGetSubdatasetInfo(const char *pszFileName)
-{
-    if (STARTS_WITH_CI(pszFileName, "PG:"))
-    {
-        std::unique_ptr<GDALSubdatasetInfo> info =
-            cpl::make_unique<PostGISRasterDriverSubdatasetInfo>(pszFileName);
-        if (!info->GetSubdatasetComponent().empty() &&
-            !info->GetPathComponent().empty())
-        {
-            return info.release();
-        }
-    }
-    return nullptr;
-}
-
 /***********************************************************************
  * GDALRegister_PostGISRaster()
  **********************************************************************/
@@ -4180,21 +4062,15 @@ void GDALRegister_PostGISRaster()
     if (!GDAL_CHECK_VERSION("PostGISRaster driver"))
         return;
 
-    if (GDALGetDriverByName("PostGISRaster") != nullptr)
+    if (GDALGetDriverByName(DRIVER_NAME) != nullptr)
         return;
 
     GDALDriver *poDriver = new PostGISRasterDriver();
-
-    poDriver->SetDescription("PostGISRaster");
-    poDriver->SetMetadataItem(GDAL_DCAP_RASTER, "YES");
-    poDriver->SetMetadataItem(GDAL_DMD_LONGNAME, "PostGIS Raster driver");
-    poDriver->SetMetadataItem(GDAL_DMD_SUBDATASETS, "YES");
+    PostGISRasterDriverSetCommonMetadata(poDriver);
 
     poDriver->pfnOpen = PostGISRasterDataset::Open;
-    poDriver->pfnIdentify = PostGISRasterDataset::Identify;
     poDriver->pfnCreateCopy = PostGISRasterDataset::CreateCopy;
     poDriver->pfnDelete = PostGISRasterDataset::Delete;
-    poDriver->pfnGetSubdatasetInfoFunc = PostGISRasterDriverGetSubdatasetInfo;
 
     GetGDALDriverManager()->RegisterDriver(poDriver);
 }

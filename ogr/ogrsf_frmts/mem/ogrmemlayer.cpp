@@ -8,23 +8,7 @@
  * Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2009-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -84,6 +68,7 @@ OGRMemLayer::OGRMemLayer(const char *pszName,
     }
 
     m_oMapFeaturesIter = m_oMapFeatures.begin();
+    m_poFeatureDefn->Seal(/* bSealFields = */ true);
 }
 
 /************************************************************************/
@@ -438,7 +423,8 @@ OGRErr OGRMemLayer::ICreateFeature(OGRFeature *poFeature)
         }
     }
 
-    return ISetFeature(poFeature);
+    // Prevent calling ISetFeature() from derived classes
+    return OGRMemLayer::ISetFeature(poFeature);
 }
 
 /************************************************************************/
@@ -496,6 +482,9 @@ OGRErr OGRMemLayer::IUpdateFeature(OGRFeature *poFeature,
     {
         poFeatureRef->SetStyleString(poFeature->GetStyleString());
     }
+
+    m_bUpdated = true;
+
     return OGRERR_NONE;
 }
 
@@ -613,7 +602,8 @@ int OGRMemLayer::TestCapability(const char *pszCap)
 /*                            CreateField()                             */
 /************************************************************************/
 
-OGRErr OGRMemLayer::CreateField(OGRFieldDefn *poField, int /* bApproxOK */)
+OGRErr OGRMemLayer::CreateField(const OGRFieldDefn *poField,
+                                int /* bApproxOK */)
 {
     if (!m_bUpdatable)
         return OGRERR_FAILURE;
@@ -621,12 +611,14 @@ OGRErr OGRMemLayer::CreateField(OGRFieldDefn *poField, int /* bApproxOK */)
     // Simple case, no features exist yet.
     if (m_nFeatureCount == 0)
     {
-        m_poFeatureDefn->AddFieldDefn(poField);
+        whileUnsealing(m_poFeatureDefn)->AddFieldDefn(poField);
         return OGRERR_NONE;
     }
 
     // Add field definition and setup remap definition.
-    m_poFeatureDefn->AddFieldDefn(poField);
+    {
+        whileUnsealing(m_poFeatureDefn)->AddFieldDefn(poField);
+    }
 
     // Remap all the internal features.  Hopefully there aren't any
     // external features referring to our OGRFeatureDefn!
@@ -682,7 +674,7 @@ OGRErr OGRMemLayer::DeleteField(int iField)
 
     m_bUpdated = true;
 
-    return m_poFeatureDefn->DeleteFieldDefn(iField);
+    return whileUnsealing(m_poFeatureDefn)->DeleteFieldDefn(iField);
 }
 
 /************************************************************************/
@@ -712,7 +704,7 @@ OGRErr OGRMemLayer::ReorderFields(int *panMap)
 
     m_bUpdated = true;
 
-    return m_poFeatureDefn->ReorderFieldDefns(panMap);
+    return whileUnsealing(m_poFeatureDefn)->ReorderFieldDefns(panMap);
 }
 
 /************************************************************************/
@@ -732,6 +724,7 @@ OGRErr OGRMemLayer::AlterFieldDefn(int iField, OGRFieldDefn *poNewFieldDefn,
     }
 
     OGRFieldDefn *poFieldDefn = m_poFeatureDefn->GetFieldDefn(iField);
+    auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
 
     if ((nFlagsIn & ALTER_TYPE_FLAG) &&
         (poFieldDefn->GetType() != poNewFieldDefn->GetType() ||
@@ -876,6 +869,7 @@ OGRErr OGRMemLayer::AlterGeomFieldDefn(
     }
 
     auto poFieldDefn = m_poFeatureDefn->GetGeomFieldDefn(iGeomField);
+    auto oTemporaryUnsealer(poFieldDefn->GetTemporaryUnsealer());
 
     if (nFlagsIn & ALTER_GEOM_FIELD_DEFN_NAME_FLAG)
         poFieldDefn->SetName(poNewGeomFieldDefn->GetNameRef());
@@ -931,7 +925,7 @@ OGRErr OGRMemLayer::AlterGeomFieldDefn(
 /*                          CreateGeomField()                           */
 /************************************************************************/
 
-OGRErr OGRMemLayer::CreateGeomField(OGRGeomFieldDefn *poGeomField,
+OGRErr OGRMemLayer::CreateGeomField(const OGRGeomFieldDefn *poGeomField,
                                     int /* bApproxOK */)
 {
     if (!m_bUpdatable)
@@ -940,12 +934,12 @@ OGRErr OGRMemLayer::CreateGeomField(OGRGeomFieldDefn *poGeomField,
     // Simple case, no features exist yet.
     if (m_nFeatureCount == 0)
     {
-        m_poFeatureDefn->AddGeomFieldDefn(poGeomField);
+        whileUnsealing(m_poFeatureDefn)->AddGeomFieldDefn(poGeomField);
         return OGRERR_NONE;
     }
 
     // Add field definition and setup remap definition.
-    m_poFeatureDefn->AddGeomFieldDefn(poGeomField);
+    whileUnsealing(m_poFeatureDefn)->AddGeomFieldDefn(poGeomField);
 
     const int nGeomFieldCount = m_poFeatureDefn->GetGeomFieldCount();
     std::vector<int> anRemap(nGeomFieldCount);

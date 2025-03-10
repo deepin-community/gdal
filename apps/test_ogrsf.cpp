@@ -8,23 +8,7 @@
  * Copyright (c) 1999, Frank Warmerdam
  * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_conv.h"
@@ -161,8 +145,7 @@ MAIN_START(nArgc, papszArgv)
         {
             pszSQLStatement = papszArgv[++iArg];
         }
-        else if (EQUAL(papszArgv[iArg], "-dialect") &&
-                 papszArgv[iArg + 1] != nullptr)
+        else if (EQUAL(papszArgv[iArg], "-dialect") && iArg + 1 < nArgc)
         {
             pszDialect = papszArgv[++iArg];
         }
@@ -264,6 +247,7 @@ MAIN_START(nArgc, papszArgv)
 
     return (bRet) ? 0 : 1;
 }
+
 MAIN_END
 
 /************************************************************************/
@@ -661,6 +645,22 @@ static int TestCreateLayer(GDALDriver *poDriver, OGRwkbGeometryType eGeomType)
                    "creation.\n",
                    poDriver->GetDescription());
             bRet = FALSE;
+        }
+
+        auto poLyrDS = LOG_ACTION(poLayer->GetDataset());
+        if (!poLyrDS)
+        {
+            printf("ERROR: %s: GetDataset() returns NUL just after layer "
+                   "creation.\n",
+                   poDriver->GetDescription());
+            bRet = FALSE;
+        }
+        else if (poLyrDS != poDS)
+        {
+            printf("WARNING: %s: GetDataset()->GetDescription() (=%s) != %s"
+                   "creation.\n",
+                   poDriver->GetDescription(), poLyrDS->GetDescription(),
+                   poDS->GetDescription());
         }
 
         // Create fields of various types
@@ -1483,20 +1483,30 @@ bye:
 static const char *GetLayerNameForSQL(GDALDataset *poDS,
                                       const char *pszLayerName)
 {
-    char ch;
-    for (int i = 0; (ch = pszLayerName[i]) != 0; i++)
+    /* Only quote if needed. Quoting conventions depend on the driver... */
+    if (!EQUAL(pszLayerName, "SELECT") && !EQUAL(pszLayerName, "AS") &&
+        !EQUAL(pszLayerName, "CAST") && !EQUAL(pszLayerName, "FROM") &&
+        !EQUAL(pszLayerName, "JOIN") && !EQUAL(pszLayerName, "WHERE") &&
+        !EQUAL(pszLayerName, "ON") && !EQUAL(pszLayerName, "USING") &&
+        !EQUAL(pszLayerName, "ORDER") && !EQUAL(pszLayerName, "BY") &&
+        !EQUAL(pszLayerName, "ASC") && !EQUAL(pszLayerName, "DESC") &&
+        !EQUAL(pszLayerName, "GROUP") && !EQUAL(pszLayerName, "LIMIT") &&
+        !EQUAL(pszLayerName, "OFFSET"))
     {
-        if (ch >= '0' && ch <= '9')
+        char ch;
+        for (int i = 0; (ch = pszLayerName[i]) != 0; i++)
         {
-            if (i == 0)
+            if (ch >= '0' && ch <= '9')
+            {
+                if (i == 0)
+                    break;
+            }
+            else if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')))
                 break;
         }
-        else if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')))
-            break;
+        if (ch == 0)
+            return pszLayerName;
     }
-    /* Only quote if needed. Quoting conventions depend on the driver... */
-    if (ch == 0)
-        return pszLayerName;
 
     if (EQUAL(poDS->GetDriverName(), "MYSQL"))
         return CPLSPrintf("`%s`", pszLayerName);
@@ -1985,7 +1995,7 @@ static int TestOGRLayerRandomWrite(OGRLayer *poLayer)
 
 {
     int bRet = TRUE;
-    OGRFeature *papoFeatures[5], *poFeature;
+    OGRFeature *papoFeatures[5];
 
     memset(papoFeatures, 0, sizeof(papoFeatures));
 
@@ -2015,7 +2025,8 @@ static int TestOGRLayerRandomWrite(OGRLayer *poLayer)
     CPLString os_Id2;
     CPLString os_Id5;
 
-    const bool bHas_Id = poLayer->GetLayerDefn()->GetFieldIndex("_id") == 0;
+    const bool bHas_Id = poLayer->GetLayerDefn()->GetFieldIndex("_id") == 0 ||
+                         poLayer->GetLayerDefn()->GetFieldIndex("id") == 0;
 
     /* -------------------------------------------------------------------- */
     /*      Fetch five features.                                            */
@@ -2070,25 +2081,27 @@ static int TestOGRLayerRandomWrite(OGRLayer *poLayer)
     /* -------------------------------------------------------------------- */
     /*      Now re-read feature 2 to verify the effect stuck.               */
     /* -------------------------------------------------------------------- */
-    poFeature = LOG_ACTION(poLayer->GetFeature(nFID5));
-    if (poFeature == nullptr)
     {
-        bRet = FALSE;
-        printf("ERROR: Attempt to GetFeature( nFID5 ) failed.\n");
-        goto end;
+        auto poFeature =
+            std::unique_ptr<OGRFeature>(LOG_ACTION(poLayer->GetFeature(nFID5)));
+        if (poFeature == nullptr)
+        {
+            bRet = FALSE;
+            printf("ERROR: Attempt to GetFeature( nFID5 ) failed.\n");
+            goto end;
+        }
+        if (!poFeature->Equal(papoFeatures[1]))
+        {
+            bRet = FALSE;
+            poFeature->DumpReadable(stderr);
+            papoFeatures[1]->DumpReadable(stderr);
+            printf("ERROR: Written feature didn't seem to retain value.\n");
+        }
+        else if (bVerbose)
+        {
+            printf("INFO: Random write test passed.\n");
+        }
     }
-    if (!poFeature->Equal(papoFeatures[1]))
-    {
-        bRet = FALSE;
-        poFeature->DumpReadable(stderr);
-        papoFeatures[1]->DumpReadable(stderr);
-        printf("ERROR: Written feature didn't seem to retain value.\n");
-    }
-    else if (bVerbose)
-    {
-        printf("INFO: Random write test passed.\n");
-    }
-    DestroyFeatureAndNullify(poFeature);
 
     /* -------------------------------------------------------------------- */
     /*      Re-invert the features to restore to original state             */
@@ -2112,6 +2125,156 @@ static int TestOGRLayerRandomWrite(OGRLayer *poLayer)
     {
         bRet = FALSE;
         printf("ERROR: Attempt to restore SetFeature(4) failed.\n");
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*      Test UpdateFeature()                                            */
+    /* -------------------------------------------------------------------- */
+
+    if (bRet)
+    {
+        int nOldVal = 0;
+        std::string osOldVal;
+        int iUpdatedFeature = -1;
+        int iUpdatedField = -1;
+        std::unique_ptr<OGRFeature> poUpdatedFeature;
+
+        for (int iFeature = 0; iUpdatedFeature < 0 && iFeature < 5; iFeature++)
+        {
+            for (int iField = 0;
+                 iField < poLayer->GetLayerDefn()->GetFieldCount(); ++iField)
+            {
+                if (papoFeatures[iFeature]->IsFieldSetAndNotNull(iField))
+                {
+                    if (poLayer->GetLayerDefn()
+                            ->GetFieldDefn(iField)
+                            ->GetType() == OFTInteger)
+                    {
+                        iUpdatedFeature = iFeature;
+                        iUpdatedField = iField;
+                        nOldVal =
+                            papoFeatures[iFeature]->GetFieldAsInteger(iField);
+                        poUpdatedFeature.reset(papoFeatures[iFeature]->Clone());
+                        poUpdatedFeature->SetField(iField, 0xBEEF);
+                        break;
+                    }
+                    else if (poLayer->GetLayerDefn()
+                                 ->GetFieldDefn(iField)
+                                 ->GetType() == OFTString)
+                    {
+                        iUpdatedFeature = iFeature;
+                        iUpdatedField = iField;
+                        osOldVal =
+                            papoFeatures[iFeature]->GetFieldAsString(iField);
+                        poUpdatedFeature.reset(papoFeatures[iFeature]->Clone());
+                        poUpdatedFeature->SetField(iField, "0xBEEF");
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (poUpdatedFeature)
+        {
+            if (LOG_ACTION(poLayer->UpdateFeature(poUpdatedFeature.get(), 1,
+                                                  &iUpdatedField, 0, nullptr,
+                                                  false)) != OGRERR_NONE)
+            {
+                bRet = FALSE;
+                printf("ERROR: UpdateFeature() failed.\n");
+            }
+            if (bRet)
+            {
+                LOG_ACTION(poLayer->ResetReading());
+                for (int iFeature = 0; iFeature < 5; iFeature++)
+                {
+                    auto poFeature = std::unique_ptr<OGRFeature>(LOG_ACTION(
+                        poLayer->GetFeature(papoFeatures[iFeature]->GetFID())));
+                    if (iFeature != iUpdatedFeature)
+                    {
+                        if (!poFeature ||
+                            !poFeature->Equal(papoFeatures[iFeature]))
+                        {
+                            bRet = false;
+                            printf("ERROR: UpdateFeature() test: "
+                                   "!poFeature->Equals(papoFeatures[iFeature]) "
+                                   "unexpected.\n");
+                            if (poFeature)
+                                poFeature->DumpReadable(stdout);
+                            papoFeatures[iFeature]->DumpReadable(stdout);
+                        }
+                    }
+                }
+
+                auto poFeature =
+                    std::unique_ptr<OGRFeature>(LOG_ACTION(poLayer->GetFeature(
+                        papoFeatures[iUpdatedFeature]->GetFID())));
+                if (!poFeature)
+                {
+                    bRet = FALSE;
+                    printf("ERROR: at line %d", __LINE__);
+                    goto end;
+                }
+                if (poLayer->GetLayerDefn()
+                        ->GetFieldDefn(iUpdatedField)
+                        ->GetType() == OFTInteger)
+                {
+                    if (poFeature->GetFieldAsInteger(iUpdatedField) != 0xBEEF)
+                    {
+                        bRet = FALSE;
+                        printf("ERROR: Did not get expected field value after "
+                               "UpdateFeature().\n");
+                    }
+                    poFeature->SetField(iUpdatedField, nOldVal);
+                }
+                else if (poLayer->GetLayerDefn()
+                             ->GetFieldDefn(iUpdatedField)
+                             ->GetType() == OFTString)
+                {
+                    if (!EQUAL(poFeature->GetFieldAsString(iUpdatedField),
+                               "0xBEEF"))
+                    {
+                        bRet = FALSE;
+                        printf("ERROR: Did not get expected field value after "
+                               "UpdateFeature().\n");
+                    }
+                    poFeature->SetField(iUpdatedField, osOldVal.c_str());
+                }
+                else
+                {
+                    CPLAssert(false);
+                }
+
+                if (LOG_ACTION(poLayer->UpdateFeature(
+                        poFeature.get(), 1, &iUpdatedField, 0, nullptr,
+                        false)) != OGRERR_NONE)
+                {
+                    bRet = FALSE;
+                    printf("ERROR: UpdateFeature() failed.\n");
+                }
+
+                poFeature.reset(LOG_ACTION(poLayer->GetFeature(
+                    papoFeatures[iUpdatedFeature]->GetFID())));
+                if (!poFeature)
+                {
+                    bRet = FALSE;
+                    printf("ERROR: at line %d", __LINE__);
+                    goto end;
+                }
+                if (!poFeature->Equal(papoFeatures[iUpdatedFeature]))
+                {
+                    bRet = false;
+                    printf("ERROR: UpdateFeature() test: "
+                           "!poFeature->Equals(papoFeatures[iUpdatedFeature]) "
+                           "unexpected.\n");
+                }
+            }
+        }
+        else
+        {
+            if (bVerbose)
+                printf("INFO: Could not test UpdateFeature().\n");
+        }
     }
 
 end:
@@ -2299,7 +2462,7 @@ static int TestSpatialFilter(OGRLayer *poLayer, int iGeomField)
     if (poUniquePtrFeature != nullptr)
     {
         bRet = FALSE;
-        printf("ERROR: Spatial filter (%d) failed to eliminate"
+        printf("ERROR: Spatial filter (%d) failed to eliminate "
                "a feature unexpectedly!\n",
                iGeomField);
     }
@@ -3775,11 +3938,32 @@ static int TestLayerSQL(GDALDataset *poDS, OGRLayer *poLayer)
     oPoly.addRing(&oRing);
 
     CPLErrorReset();
-    poSQLLyr = LOG_ACTION(poDS->ExecuteSQL(osSQL.c_str(), &oPoly, nullptr));
-    if (CPLGetLastErrorType() == CE_Failure)
+    if (poLayer->GetLayerDefn()->GetGeomFieldCount() == 0)
     {
-        bRet = FALSE;
-        printf("ERROR: ExecuteSQL() triggered an unexpected error.\n");
+        CPLPushErrorHandler(CPLQuietErrorHandler);
+        poSQLLyr = LOG_ACTION(poDS->ExecuteSQL(osSQL.c_str(), &oPoly, nullptr));
+        CPLPopErrorHandler();
+        if (poSQLLyr)
+        {
+            printf("WARNING: ExecuteSQL() with a spatial filter on a "
+                   "non-spatial layer should have triggered an error.\n");
+        }
+    }
+    else
+    {
+        poSQLLyr = LOG_ACTION(poDS->ExecuteSQL(osSQL.c_str(), &oPoly, nullptr));
+        if (CPLGetLastErrorType() == CE_Failure &&
+            poLayer->GetLayerDefn()->GetGeomFieldCount() > 0)
+        {
+            bRet = FALSE;
+            printf("ERROR: ExecuteSQL() triggered an unexpected error.\n");
+        }
+        if (!poSQLLyr)
+        {
+            printf("ERROR: ExecuteSQL() should have returned a non-NULL "
+                   "result.\n");
+            bRet = FALSE;
+        }
     }
     if (poSQLLyr)
     {
@@ -3798,11 +3982,6 @@ static int TestLayerSQL(GDALDataset *poDS, OGRLayer *poLayer)
         }
         DestroyFeatureAndNullify(poSQLFeat);
         LOG_ACTION(poDS->ReleaseResultSet(poSQLLyr));
-    }
-    else
-    {
-        printf("ERROR: ExecuteSQL() should have returned a non-NULL result.\n");
-        bRet = FALSE;
     }
 
     if (bRet && bVerbose)
@@ -4538,22 +4717,21 @@ static int TestVirtualIO(GDALDataset *poDS)
         return TRUE;
     }
 
-    char **papszFileList = LOG_ACTION(poDS->GetFileList());
-    char **papszIter = papszFileList;
+    const CPLStringList aosFileList(LOG_ACTION(poDS->GetFileList()));
     CPLString osPath;
     int bAllPathIdentical = TRUE;
-    for (; *papszIter != nullptr; papszIter++)
+    for (const char *pszFilename : aosFileList)
     {
-        if (papszIter == papszFileList)
-            osPath = CPLGetPath(*papszIter);
-        else if (strcmp(osPath, CPLGetPath(*papszIter)) != 0)
+        if (pszFilename == aosFileList[0])
+            osPath = CPLGetPath(pszFilename);
+        else if (strcmp(osPath, CPLGetPath(pszFilename)) != 0)
         {
             bAllPathIdentical = FALSE;
             break;
         }
     }
     CPLString osVirtPath;
-    if (bAllPathIdentical && CSLCount(papszFileList) > 1)
+    if (bAllPathIdentical && aosFileList.size() > 1)
     {
         osVirtPath =
             CPLFormFilename("/vsimem", CPLGetFilename(osPath), nullptr);
@@ -4561,14 +4739,14 @@ static int TestVirtualIO(GDALDataset *poDS)
     }
     else
         osVirtPath = "/vsimem";
-    papszIter = papszFileList;
-    for (; *papszIter != nullptr; papszIter++)
+
+    for (const char *pszFilename : aosFileList)
     {
         const char *pszDestFile =
-            CPLFormFilename(osVirtPath, CPLGetFilename(*papszIter), nullptr);
-        /* CPLDebug("test_ogrsf", "Copying %s to %s", *papszIter, pszDestFile);
+            CPLFormFilename(osVirtPath, CPLGetFilename(pszFilename), nullptr);
+        /* CPLDebug("test_ogrsf", "Copying %s to %s", pszFilename, pszDestFile);
          */
-        CPLCopyFile(pszDestFile, *papszIter);
+        CPLCopyFile(pszDestFile, pszFilename);
     }
 
     const char *pszVirtFile;
@@ -4612,13 +4790,11 @@ static int TestVirtualIO(GDALDataset *poDS)
         }
     }
 
-    papszIter = papszFileList;
-    for (; *papszIter != nullptr; papszIter++)
+    for (const char *pszFilename : aosFileList)
     {
         VSIUnlink(
-            CPLFormFilename(osVirtPath, CPLGetFilename(*papszIter), nullptr));
+            CPLFormFilename(osVirtPath, CPLGetFilename(pszFilename), nullptr));
     }
-    CSLDestroy(papszFileList);
 
     return bRet;
 }

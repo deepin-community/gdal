@@ -8,23 +8,7 @@
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -59,11 +43,12 @@ class OGRCSVEditableLayerSynchronizer final
 
   public:
     OGRCSVEditableLayerSynchronizer(OGRCSVLayer *poCSVLayer,
-                                    char **papszOpenOptions)
+                                    CSLConstList papszOpenOptions)
         : m_poCSVLayer(poCSVLayer),
           m_papszOpenOptions(CSLDuplicate(papszOpenOptions))
     {
     }
+
     virtual ~OGRCSVEditableLayerSynchronizer() override;
 
     virtual OGRErr EditableSyncToDisk(OGRLayer *poEditableLayer,
@@ -93,6 +78,7 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
 {
     CPLAssert(m_poCSVLayer == *ppoDecoratedLayer);
 
+    GDALDataset *poDS = m_poCSVLayer->GetDataset();
     const CPLString osLayerName(m_poCSVLayer->GetName());
     const CPLString osFilename(m_poCSVLayer->GetFilename());
     const bool bCreateCSVT = m_poCSVLayer->GetCreateCSVT();
@@ -108,7 +94,7 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
     }
     const char chDelimiter = m_poCSVLayer->GetDelimiter();
     OGRCSVLayer *poCSVTmpLayer = new OGRCSVLayer(
-        osLayerName, nullptr, -1, osTmpFilename, true, true, chDelimiter);
+        poDS, osLayerName, nullptr, -1, osTmpFilename, true, true, chDelimiter);
     poCSVTmpLayer->BuildFeatureDefn(nullptr, nullptr, m_papszOpenOptions);
     poCSVTmpLayer->SetCRLF(m_poCSVLayer->GetCRLF());
     poCSVTmpLayer->SetCreateCSVT(bCreateCSVT || bHasCSVT);
@@ -297,8 +283,8 @@ OGRErr OGRCSVEditableLayerSynchronizer::EditableSyncToDisk(
     }
 
     m_poCSVLayer =
-        new OGRCSVLayer(osLayerName, fp, -1, osFilename, false, /* new */
-                        true,                                   /* update */
+        new OGRCSVLayer(poDS, osLayerName, fp, -1, osFilename, false, /* new */
+                        true, /* update */
                         chDelimiter);
     m_poCSVLayer->BuildFeatureDefn(nullptr, nullptr, m_papszOpenOptions);
     *ppoDecoratedLayer = m_poCSVLayer;
@@ -315,7 +301,7 @@ class OGRCSVEditableLayer final : public IOGRCSVLayer, public OGREditableLayer
     std::set<CPLString> m_oSetFields;
 
   public:
-    OGRCSVEditableLayer(OGRCSVLayer *poCSVLayer, char **papszOpenOptions);
+    OGRCSVEditableLayer(OGRCSVLayer *poCSVLayer, CSLConstList papszOpenOptions);
 
     OGRLayer *GetLayer() override
     {
@@ -329,7 +315,7 @@ class OGRCSVEditableLayer final : public IOGRCSVLayer, public OGREditableLayer
             ->GetFileList();
     }
 
-    virtual OGRErr CreateField(OGRFieldDefn *poField,
+    virtual OGRErr CreateField(const OGRFieldDefn *poField,
                                int bApproxOK = TRUE) override;
     virtual OGRErr DeleteField(int iField) override;
     virtual OGRErr AlterFieldDefn(int iField, OGRFieldDefn *poNewFieldDefn,
@@ -342,7 +328,7 @@ class OGRCSVEditableLayer final : public IOGRCSVLayer, public OGREditableLayer
 /************************************************************************/
 
 OGRCSVEditableLayer::OGRCSVEditableLayer(OGRCSVLayer *poCSVLayer,
-                                         char **papszOpenOptions)
+                                         CSLConstList papszOpenOptions)
     : OGREditableLayer(
           poCSVLayer, true,
           new OGRCSVEditableLayerSynchronizer(poCSVLayer, papszOpenOptions),
@@ -356,7 +342,8 @@ OGRCSVEditableLayer::OGRCSVEditableLayer(OGRCSVLayer *poCSVLayer,
 /*                            CreateField()                             */
 /************************************************************************/
 
-OGRErr OGRCSVEditableLayer::CreateField(OGRFieldDefn *poNewField, int bApproxOK)
+OGRErr OGRCSVEditableLayer::CreateField(const OGRFieldDefn *poNewField,
+                                        int bApproxOK)
 
 {
     if (m_poEditableFeatureDefn->GetFieldCount() >= 10000)
@@ -507,8 +494,9 @@ CPLString OGRCSVDataSource::GetRealExtension(CPLString osFilename)
 /*                                Open()                                */
 /************************************************************************/
 
-int OGRCSVDataSource::Open(const char *pszFilename, int bUpdateIn,
-                           int bForceOpen, char **papszOpenOptionsIn)
+bool OGRCSVDataSource::Open(const char *pszFilename, bool bUpdateIn,
+                            bool bForceOpen, CSLConstList papszOpenOptionsIn,
+                            bool bSingleDriver)
 
 {
     pszName = CPLStrdup(pszFilename);
@@ -525,11 +513,12 @@ int OGRCSVDataSource::Open(const char *pszFilename, int bUpdateIn,
     const CPLString osBaseFilename = CPLGetFilename(pszFilename);
     const CPLString osExt = GetRealExtension(osFilename);
 
-    bool bIgnoreExtension = STARTS_WITH_CI(osFilename, "CSV:");
+    bool bIgnoreExtension = bSingleDriver;
     bool bUSGeonamesFile = false;
-    if (bIgnoreExtension)
+    if (STARTS_WITH_CI(osFilename, "CSV:"))
     {
-        osFilename = osFilename + 4;
+        bIgnoreExtension = true;
+        osFilename = osFilename.substr(strlen("CSV:"));
     }
 
     // Those are *not* real .XLS files, but text file with tab as column
@@ -733,7 +722,7 @@ int OGRCSVDataSource::Open(const char *pszFilename, int bUpdateIn,
 /************************************************************************/
 
 bool OGRCSVDataSource::OpenTable(const char *pszFilename,
-                                 char **papszOpenOptionsIn,
+                                 CSLConstList papszOpenOptionsIn,
                                  const char *pszNfdcRunwaysGeomField,
                                  const char *pszGeonamesGeomFieldPrefix)
 
@@ -894,14 +883,14 @@ bool OGRCSVDataSource::OpenTable(const char *pszFilename,
         osLayerName = "layer";
 
     auto poCSVLayer =
-        cpl::make_unique<OGRCSVLayer>(osLayerName, fp, nMaxLineSize,
+        std::make_unique<OGRCSVLayer>(this, osLayerName, fp, nMaxLineSize,
                                       pszFilename, FALSE, bUpdate, chDelimiter);
     poCSVLayer->BuildFeatureDefn(pszNfdcRunwaysGeomField,
                                  pszGeonamesGeomFieldPrefix,
                                  papszOpenOptionsIn);
     if (bUpdate)
     {
-        m_apoLayers.emplace_back(cpl::make_unique<OGRCSVEditableLayer>(
+        m_apoLayers.emplace_back(std::make_unique<OGRCSVEditableLayer>(
             poCSVLayer.release(), papszOpenOptionsIn));
     }
     else
@@ -918,8 +907,8 @@ bool OGRCSVDataSource::OpenTable(const char *pszFilename,
 
 OGRLayer *
 OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
-                               const OGRSpatialReference *poSpatialRef,
-                               OGRwkbGeometryType eGType, char **papszOptions)
+                               const OGRGeomFieldDefn *poSrcGeomFieldDefn,
+                               CSLConstList papszOptions)
 {
     // Verify we are in update mode.
     if (!bUpdate)
@@ -931,6 +920,11 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
 
         return nullptr;
     }
+
+    const auto eGType =
+        poSrcGeomFieldDefn ? poSrcGeomFieldDefn->GetType() : wkbNone;
+    const auto poSpatialRef =
+        poSrcGeomFieldDefn ? poSrcGeomFieldDefn->GetSpatialRef() : nullptr;
 
     // Verify that the datasource is a directory.
     VSIStatBufL sStatBuf;
@@ -1009,8 +1003,8 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
 
     // Create a layer.
 
-    auto poCSVLayer = cpl::make_unique<OGRCSVLayer>(
-        pszLayerName, nullptr, -1, osFilename, true, true, chDelimiter);
+    auto poCSVLayer = std::make_unique<OGRCSVLayer>(
+        this, pszLayerName, nullptr, -1, osFilename, true, true, chDelimiter);
 
     poCSVLayer->BuildFeatureDefn();
 
@@ -1020,7 +1014,7 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
 
     if (pszCRLFFormat == nullptr)
     {
-#ifdef WIN32
+#ifdef _WIN32
         bUseCRLF = true;
 #endif
     }
@@ -1033,7 +1027,7 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
         CPLError(CE_Warning, CPLE_AppDefined,
                  "LINEFORMAT=%s not understood, use one of CRLF or LF.",
                  pszCRLFFormat);
-#ifdef WIN32
+#ifdef _WIN32
         bUseCRLF = true;
 #endif
     }
@@ -1077,17 +1071,19 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
             }
             else
             {
-                CPLError(CE_Warning, CPLE_AppDefined,
+                CPLError(CE_Failure, CPLE_AppDefined,
                          "Geometry type %s is not compatible with "
-                         "GEOMETRY=AS_XYZ.",
-                         OGRGeometryTypeToName(eGType));
+                         "GEOMETRY=%s.",
+                         OGRGeometryTypeToName(eGType), pszGeometry);
+                return nullptr;
             }
         }
         else
         {
-            CPLError(CE_Warning, CPLE_AppDefined,
+            CPLError(CE_Failure, CPLE_AppDefined,
                      "Unsupported value %s for creation option GEOMETRY",
                      pszGeometry);
+            return nullptr;
         }
     }
 
@@ -1120,8 +1116,16 @@ OGRCSVDataSource::ICreateLayer(const char *pszLayerName,
     if (pszWriteBOM)
         poCSVLayer->SetWriteBOM(CPLTestBool(pszWriteBOM));
 
+    if (poCSVLayer->GetLayerDefn()->GetGeomFieldCount() > 0 &&
+        poSrcGeomFieldDefn)
+    {
+        auto poGeomFieldDefn = poCSVLayer->GetLayerDefn()->GetGeomFieldDefn(0);
+        poGeomFieldDefn->SetCoordinatePrecision(
+            poSrcGeomFieldDefn->GetCoordinatePrecision());
+    }
+
     if (osFilename != "/vsistdout/")
-        m_apoLayers.emplace_back(cpl::make_unique<OGRCSVEditableLayer>(
+        m_apoLayers.emplace_back(std::make_unique<OGRCSVEditableLayer>(
             poCSVLayer.release(), nullptr));
     else
         m_apoLayers.emplace_back(std::move(poCSVLayer));

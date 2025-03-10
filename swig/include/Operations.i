@@ -9,23 +9,7 @@
  ******************************************************************************
  * Copyright (c) 2007, Howard Butler
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************/
 
 %{
@@ -462,7 +446,7 @@ int wrapper_GridCreate( char* algorithmOptions,
 
     CPLErrorReset();
 
-    if (xSize * ySize * (GDALGetDataTypeSize(dataType) / 8) > nioBufferSize)
+    if ((GUIntBig)xSize * ySize * GDALGetDataTypeSizeBytes(dataType) > nioBufferSize)
     {
         CPLError( eErr, CPLE_AppDefined, "Buffer too small" );
         return eErr;
@@ -634,6 +618,41 @@ GDALDatasetShadow *ViewshedGenerate( GDALRasterBandShadow *srcBand,
 %}
 %clear GDALRasterBandShadow *srcBand;
 %clear (char **creationOptions);
+
+/************************************************************************/
+/*                         IsLineOfSightVisible()                       */
+/************************************************************************/
+
+#ifdef SWIGPYTHON
+%feature( "kwargs" ) IsLineOfSightVisible;
+%apply Pointer NONNULL {GDALRasterBandShadow *band};
+%inline %{
+void IsLineOfSightVisible(GDALRasterBandShadow *band,
+                          int xA, int yA, double zA,
+                          int xB, int yB, double zB,
+                          bool *pbVisible, int *pnXIntersection, int *pnYIntersection,
+                          char** options = NULL)
+{
+    *pbVisible = GDALIsLineOfSightVisible(band, xA, yA, zA, xB, yB, zB, pnXIntersection, pnYIntersection, options);
+}
+%}
+%clear GDALRasterBandShadow *band;
+#else
+#ifndef SWIGJAVA
+%feature( "kwargs" ) IsLineOfSightVisible;
+#endif
+%apply Pointer NONNULL {GDALRasterBandShadow *band};
+%inline %{
+bool IsLineOfSightVisible(GDALRasterBandShadow *band,
+                          int xA, int yA, double zA,
+                          int xB, int yB, double zB,
+                          char** options = NULL)
+{
+    return GDALIsLineOfSightVisible(band, xA, yA, zA, xB, yB, zB, NULL, NULL, options);
+}
+%}
+%clear GDALRasterBandShadow *band;
+#endif
 
 /************************************************************************/
 /*                        AutoCreateWarpedVRT()                         */
@@ -1027,4 +1046,5 @@ GDALDatasetShadow* ApplyVerticalShiftGrid( GDALDatasetShadow *src_ds,
 }
 %}
 %clear GDALDatasetShadow *src_ds, GDALDatasetShadow *grid_ds;
+
 

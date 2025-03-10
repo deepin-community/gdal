@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -44,6 +28,7 @@
 #include "cpl_error.h"
 #include "cpl_progress.h"
 #include "cpl_string.h"
+#include "cpl_vsi.h"
 #include "gdal.h"
 #include "gdal_alg.h"
 #include "gdal_priv.h"
@@ -52,6 +37,7 @@
 #include "ogr_mem.h"
 #include "ogrsf_frmts.h"
 #include "ogr_spatialref.h"
+#include "gdalargumentparser.h"
 
 constexpr const char *DEFAULT_LAYER_NAME = "footprint";
 
@@ -112,8 +98,178 @@ struct GDALFootprintOptions
     /*! Whether to combine bands unioning (true) or intersecting (false) */
     bool bCombineBandsUnion = true;
 
-    std::string osSrcNoData;
+    /*! Field name where to write the path of the raster. Empty if not desired */
+    std::string osLocationFieldName = "location";
+
+    /*! Clears the osLocationFieldName var when set */
+    bool bClearLocation = false;
+
+    /*! Whether to force writing absolute paths in location field. */
+    bool bAbsolutePath = false;
+
+    std::string osSrcNoData{};
 };
+
+static std::unique_ptr<GDALArgumentParser> GDALFootprintAppOptionsGetParser(
+    GDALFootprintOptions *psOptions,
+    GDALFootprintOptionsForBinary *psOptionsForBinary)
+{
+    auto argParser = std::make_unique<GDALArgumentParser>(
+        "gdal_footprint", /* bForBinary=*/psOptionsForBinary != nullptr);
+
+    argParser->add_description(_("Compute footprint of a raster."));
+
+    argParser->add_epilog(_("For more details, consult "
+                            "https://gdal.org/programs/gdal_footprint.html"));
+
+    argParser->add_argument("-b")
+        .metavar("<band>")
+        .scan<'i', int>()
+        .append()
+        .store_into(psOptions->anBands)
+        .help(_("Band(s) of interest."));
+
+    argParser->add_argument("-combine_bands")
+        .choices("union", "intersection")
+        .action([psOptions](const auto &s)
+                { psOptions->bCombineBandsUnion = s == "union"; })
+        .default_value("union")
+        .help(_("Defines how the mask bands of the selected bands are combined "
+                "to generate a single mask band, before being vectorized."));
+
+    {
+        auto &group = argParser->add_mutually_exclusive_group();
+
+        group.add_argument("-ovr")
+            .metavar("<index>")
+            .scan<'i', int>()
+            .store_into(psOptions->nOvrIndex)
+            .help(_("Defines which overview level of source file must be used, "
+                    "when overviews are available on the source raster."));
+
+        group.add_argument("-srcnodata")
+            .metavar("\"<value>[ <value>]...\"")
+            .store_into(psOptions->osSrcNoData)
+            .help(_("Set nodata value(s) for input bands."));
+    }
+
+    argParser->add_argument("-t_cs")
+        .choices("pixel", "georef")
+        .default_value("georef")
+        .action(
+            [psOptions](const auto &s)
+            {
+                const bool georefSet{s == "georef"};
+                psOptions->bOutCSGeoref = georefSet;
+                psOptions->bOutCSGeorefRequested = georefSet;
+            })
+        .help(_("Target coordinate system."));
+
+    // Note: no store_into (requires post validation)
+    argParser->add_argument("-t_srs")
+        .metavar("<srs_def>")
+        .help(_("Target CRS of the output file.."));
+
+    argParser->add_argument("-split_polys")
+        .flag()
+        .store_into(psOptions->bSplitPolys)
+        .help(_("Split multipolygons into several features each one with a "
+                "single polygon."));
+
+    argParser->add_argument("-convex_hull")
+        .flag()
+        .store_into(psOptions->bConvexHull)
+        .help(_("Compute the convex hull of the (multi)polygons."));
+
+    argParser->add_argument("-densify")
+        .metavar("<value>")
+        .scan<'g', double>()
+        .store_into(psOptions->dfDensifyDistance)
+        .help(_("The specified value of this option is the maximum distance "
+                "between 2 consecutive points of the output geometry. "));
+
+    argParser->add_argument("-simplify")
+        .metavar("<value>")
+        .scan<'g', double>()
+        .store_into(psOptions->dfSimplifyTolerance)
+        .help(_("The specified value of this option is the tolerance used to "
+                "merge consecutive points of the output geometry."));
+
+    argParser->add_argument("-min_ring_area")
+        .metavar("<value>")
+        .scan<'g', double>()
+        .store_into(psOptions->dfMinRingArea)
+        .help(_("The specified value of this option is the minimum area of a "
+                "ring to be considered."));
+
+    // Note: no store_into (requires post validation)
+    argParser->add_argument("-max_points")
+        .metavar("<value>|unlimited")
+        .default_value("100")
+        .help(_("The maximum number of points in the output geometry."));
+
+    if (psOptionsForBinary)
+    {
+        argParser->add_quiet_argument(&psOptionsForBinary->bQuiet);
+        argParser->add_open_options_argument(
+            psOptionsForBinary->aosOpenOptions);
+    }
+
+    argParser->add_output_format_argument(psOptions->osFormat);
+
+    {
+        auto &group = argParser->add_mutually_exclusive_group();
+
+        group.add_argument("-location_field_name")
+            .metavar("<field_name>")
+            .default_value("location")
+            .store_into(psOptions->osLocationFieldName)
+            .help(_(
+                "Specifies the name of the field in the resulting vector "
+                "dataset where the path of the input dataset will be stored."));
+
+        group.add_argument("-no_location")
+            .flag()
+            .store_into(psOptions->bClearLocation)
+            .help(
+                _("Turns off the writing of the path of the input dataset as a "
+                  "field in the output vector dataset."));
+    }
+
+    argParser->add_argument("-write_absolute_path")
+        .flag()
+        .store_into(psOptions->bAbsolutePath)
+        .help(_("Enables writing the absolute path of the input dataset."));
+
+    argParser->add_layer_creation_options_argument(psOptions->aosLCO);
+
+    argParser->add_dataset_creation_options_argument(psOptions->aosDSCO);
+
+    argParser->add_argument("-lyr_name")
+        .metavar("<value>")
+        .store_into(psOptions->osDestLayerName)
+        .help(_("Name of the target layer."));
+
+    if (psOptionsForBinary)
+    {
+        argParser->add_argument("-overwrite")
+            .flag()
+            .store_into(psOptionsForBinary->bOverwrite)
+            .help(_("Overwrite the target layer if it exists."));
+
+        argParser->add_argument("src_filename")
+            .metavar("<src_filename>")
+            .store_into(psOptionsForBinary->osSource)
+            .help(_("Source raster file name."));
+
+        argParser->add_argument("dst_filename")
+            .metavar("<dst_filename>")
+            .store_into(psOptionsForBinary->osDest)
+            .help(_("Destination vector file name."));
+    }
+
+    return argParser;
+}
 
 /************************************************************************/
 /*                       GDALFootprintMaskBand                          */
@@ -122,6 +278,8 @@ struct GDALFootprintOptions
 class GDALFootprintMaskBand final : public GDALRasterBand
 {
     GDALRasterBand *m_poSrcBand = nullptr;
+
+    CPL_DISALLOW_COPY_ASSIGN(GDALFootprintMaskBand)
 
   public:
     explicit GDALFootprintMaskBand(GDALRasterBand *poSrcBand)
@@ -397,8 +555,7 @@ GetOutputLayerAndUpdateDstDS(const char *pszDest, GDALDatasetH &hDstDS,
         std::string osFormat(psOptions->osFormat);
         if (osFormat.empty())
         {
-            std::vector<CPLString> aoDrivers =
-                GetOutputDriversFor(pszDest, GDAL_OF_VECTOR);
+            const auto aoDrivers = GetOutputDriversFor(pszDest, GDAL_OF_VECTOR);
             if (aoDrivers.empty())
             {
                 CPLError(CE_Failure, CPLE_AppDefined,
@@ -501,6 +658,14 @@ GetOutputLayerAndUpdateDstDS(const char *pszDest, GDALDatasetH &hDstDS,
             osDestLayerName.c_str(), poSRS.get(),
             psOptions->bSplitPolys ? wkbPolygon : wkbMultiPolygon,
             const_cast<char **>(psOptions->aosLCO.List()));
+
+        if (!psOptions->osLocationFieldName.empty())
+        {
+            OGRFieldDefn oFieldDefn(psOptions->osLocationFieldName.c_str(),
+                                    OFTString);
+            if (poLayer->CreateField(&oFieldDefn) != OGRERR_NONE)
+                return nullptr;
+        }
     }
 
     return poLayer;
@@ -545,10 +710,10 @@ class GeoTransformCoordinateTransformation final
         return nullptr;
     }
 
-    int Transform(int nCount, double *x, double *y, double * /* z */,
+    int Transform(size_t nCount, double *x, double *y, double * /* z */,
                   double * /* t */, int *pabSuccess) override
     {
-        for (int i = 0; i < nCount; ++i)
+        for (size_t i = 0; i < nCount; ++i)
         {
             const double X = m_gt[0] + x[i] * m_gt[1] + y[i] * m_gt[2];
             const double Y = m_gt[3] + x[i] * m_gt[4] + y[i] * m_gt[5];
@@ -700,7 +865,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
         {
             bGlobalMask = false;
             apoTmpNoDataMaskBands.emplace_back(
-                cpl::make_unique<GDALNoDataMaskBand>(
+                std::make_unique<GDALNoDataMaskBand>(
                     poBand, adfSrcNoData.size() == 1 ? adfSrcNoData[0]
                                                      : adfSrcNoData[i]));
             apoSrcMaskBands.push_back(apoTmpNoDataMaskBands.back().get());
@@ -804,7 +969,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
             double(poSrcDS->GetRasterXSize()) / poMaskBand->GetXSize();
         adfGeoTransform[5] *=
             double(poSrcDS->GetRasterYSize()) / poMaskBand->GetYSize();
-        poCT_GT = cpl::make_unique<GeoTransformCoordinateTransformation>(
+        poCT_GT = std::make_unique<GeoTransformCoordinateTransformation>(
             adfGeoTransform);
     }
     else if (psOptions->bOutCSGeorefRequested)
@@ -825,7 +990,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
         adfGeoTransform[4] = 0;
         adfGeoTransform[5] =
             double(poSrcDS->GetRasterYSize()) / poMaskBand->GetYSize();
-        poCT_GT = cpl::make_unique<GeoTransformCoordinateTransformation>(
+        poCT_GT = std::make_unique<GeoTransformCoordinateTransformation>(
             adfGeoTransform);
     }
 
@@ -833,16 +998,16 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
     if (bGlobalMask || anBands.size() == 1)
     {
         poMaskForRasterize =
-            cpl::make_unique<GDALFootprintMaskBand>(apoSrcMaskBands[0]);
+            std::make_unique<GDALFootprintMaskBand>(apoSrcMaskBands[0]);
     }
     else
     {
-        poMaskForRasterize = cpl::make_unique<GDALFootprintCombinedMaskBand>(
+        poMaskForRasterize = std::make_unique<GDALFootprintCombinedMaskBand>(
             apoSrcMaskBands, psOptions->bCombineBandsUnion);
     }
 
     auto hBand = GDALRasterBand::ToHandle(poMaskForRasterize.get());
-    auto poMemLayer = cpl::make_unique<OGRMemLayer>("", nullptr, wkbUnknown);
+    auto poMemLayer = std::make_unique<OGRMemLayer>("", nullptr, wkbUnknown);
     const CPLErr eErr =
         GDALPolygonize(hBand, hBand, OGRLayer::ToHandle(poMemLayer.get()),
                        /* iPixValField = */ -1,
@@ -855,7 +1020,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
 
     if (!psOptions->bSplitPolys)
     {
-        auto poMP = cpl::make_unique<OGRMultiPolygon>();
+        auto poMP = std::make_unique<OGRMultiPolygon>();
         for (auto &&poFeature : poMemLayer.get())
         {
             auto poGeom =
@@ -866,9 +1031,9 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
                 poMP->addGeometryDirectly(poGeom.release());
             }
         }
-        poMemLayer = cpl::make_unique<OGRMemLayer>("", nullptr, wkbUnknown);
+        poMemLayer = std::make_unique<OGRMemLayer>("", nullptr, wkbUnknown);
         auto poFeature =
-            cpl::make_unique<OGRFeature>(poMemLayer->GetLayerDefn());
+            std::make_unique<OGRFeature>(poMemLayer->GetLayerDefn());
         poFeature->SetGeometryDirectly(poMP.release());
         CPL_IGNORE_RET_VAL(poMemLayer->CreateFeature(poFeature.get()));
     }
@@ -881,7 +1046,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
             continue;
 
         auto poDstFeature =
-            cpl::make_unique<OGRFeature>(poDstLayer->GetLayerDefn());
+            std::make_unique<OGRFeature>(poDstLayer->GetLayerDefn());
         poDstFeature->SetFrom(poFeature.get());
 
         if (poCT_GT)
@@ -918,10 +1083,10 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
         {
             if (poGeom->getGeometryType() == wkbMultiPolygon)
             {
-                auto poMP = cpl::make_unique<OGRMultiPolygon>();
+                auto poMP = std::make_unique<OGRMultiPolygon>();
                 for (auto *poPoly : poGeom->toMultiPolygon())
                 {
-                    auto poNewPoly = cpl::make_unique<OGRPolygon>();
+                    auto poNewPoly = std::make_unique<OGRPolygon>();
                     for (auto *poRing : poPoly)
                     {
                         if (poRing->get_Area() >= psOptions->dfMinRingArea)
@@ -936,7 +1101,7 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
             }
             else if (poGeom->getGeometryType() == wkbPolygon)
             {
-                auto poNewPoly = cpl::make_unique<OGRPolygon>();
+                auto poNewPoly = std::make_unique<OGRPolygon>();
                 for (auto *poRing : poGeom->toPolygon())
                 {
                     if (poRing->get_Area() >= psOptions->dfMinRingArea)
@@ -1009,6 +1174,28 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
 
         poDstFeature->SetGeometryDirectly(poGeom.release());
 
+        if (!psOptions->osLocationFieldName.empty())
+        {
+
+            std::string osFilename = poSrcDS->GetDescription();
+            // Make sure it is a file before building absolute path name.
+            VSIStatBufL sStatBuf;
+            if (psOptions->bAbsolutePath &&
+                CPLIsFilenameRelative(osFilename.c_str()) &&
+                VSIStatL(osFilename.c_str(), &sStatBuf) == 0)
+            {
+                char *pszCurDir = CPLGetCurrentDir();
+                if (pszCurDir)
+                {
+                    osFilename = CPLProjectRelativeFilename(pszCurDir,
+                                                            osFilename.c_str());
+                    CPLFree(pszCurDir);
+                }
+            }
+            poDstFeature->SetField(psOptions->osLocationFieldName.c_str(),
+                                   osFilename.c_str());
+        }
+
         if (poDstLayer->CreateFeature(poDstFeature.get()) != OGRERR_NONE)
         {
             return false;
@@ -1016,6 +1203,28 @@ static bool GDALFootprintProcess(GDALDataset *poSrcDS, OGRLayer *poDstLayer,
     }
 
     return true;
+}
+
+/************************************************************************/
+/*                  GDALFootprintAppGetParserUsage()                    */
+/************************************************************************/
+
+std::string GDALFootprintAppGetParserUsage()
+{
+    try
+    {
+        GDALFootprintOptions sOptions;
+        GDALFootprintOptionsForBinary sOptionsForBinary;
+        auto argParser =
+            GDALFootprintAppOptionsGetParser(&sOptions, &sOptionsForBinary);
+        return argParser->usage();
+    }
+    catch (const std::exception &err)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Unexpected exception: %s",
+                 err.what());
+        return std::string();
+    }
 }
 
 /************************************************************************/
@@ -1151,79 +1360,34 @@ GDALFootprintOptions *
 GDALFootprintOptionsNew(char **papszArgv,
                         GDALFootprintOptionsForBinary *psOptionsForBinary)
 {
-    auto psOptions = cpl::make_unique<GDALFootprintOptions>();
+    auto psOptions = std::make_unique<GDALFootprintOptions>();
 
-    bool bGotSourceFilename = false;
-    bool bGotDestFilename = false;
     /* -------------------------------------------------------------------- */
-    /*      Handle command line arguments.                                  */
+    /*      Parse arguments.                                                */
     /* -------------------------------------------------------------------- */
-    const int argc = CSLCount(papszArgv);
-    for (int i = 0; papszArgv != nullptr && i < argc; i++)
+
+    CPLStringList aosArgv;
+
+    if (papszArgv)
     {
-        if (i < argc - 1 &&
-            (EQUAL(papszArgv[i], "-of") || EQUAL(papszArgv[i], "-f")))
+        const int nArgc = CSLCount(papszArgv);
+        for (int i = 0; i < nArgc; i++)
         {
-            ++i;
-            psOptions->osFormat = papszArgv[i];
-            psOptions->bCreateOutput = true;
+            aosArgv.AddString(papszArgv[i]);
         }
+    }
 
-        else if (EQUAL(papszArgv[i], "-q") || EQUAL(papszArgv[i], "-quiet"))
-        {
-            if (psOptionsForBinary)
-            {
-                psOptionsForBinary->bQuiet = true;
-            }
-            else
-            {
-                CPLError(CE_Failure, CPLE_NotSupported,
-                         "%s switch only supported from gdal_footprint binary.",
-                         papszArgv[i]);
-                return nullptr;
-            }
-        }
+    try
+    {
+        auto argParser = GDALFootprintAppOptionsGetParser(psOptions.get(),
+                                                          psOptionsForBinary);
 
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-oo"))
-        {
-            i++;
-            if (psOptionsForBinary)
-            {
-                psOptionsForBinary->aosOpenOptions.AddString(papszArgv[i]);
-            }
-            else
-            {
-                CPLError(
-                    CE_Failure, CPLE_NotSupported,
-                    "-oo switch only supported from gdal_footprint binary.");
-            }
-        }
+        argParser->parse_args_without_binary_name(aosArgv.List());
 
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-t_cs"))
+        if (argParser->is_used("-t_srs"))
         {
-            i++;
-            const std::string osVal(papszArgv[i]);
-            if (osVal == "georef")
-            {
-                psOptions->bOutCSGeoref = true;
-                psOptions->bOutCSGeorefRequested = true;
-            }
-            else if (osVal == "pixel")
-            {
-                psOptions->bOutCSGeoref = false;
-            }
-            else
-            {
-                CPLError(CE_Failure, CPLE_NotSupported,
-                         "Invalid value for -t_cs");
-                return nullptr;
-            }
-        }
 
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-t_srs"))
-        {
-            i++;
-            const std::string osVal(papszArgv[i]);
+            const std::string osVal(argParser->get<std::string>("-t_srs"));
             if (psOptions->oOutputSRS.SetFromUserInput(osVal.c_str()) !=
                 OGRERR_NONE)
             {
@@ -1235,85 +1399,17 @@ GDALFootprintOptionsNew(char **papszArgv,
                 OAMS_TRADITIONAL_GIS_ORDER);
         }
 
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-b"))
+        if (argParser->is_used("-max_points"))
         {
-            i++;
-            psOptions->anBands.push_back(atoi(papszArgv[i]));
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-combine_bands"))
-        {
-            i++;
-            if (EQUAL(papszArgv[i], "union"))
-                psOptions->bCombineBandsUnion = true;
-            else if (EQUAL(papszArgv[i], "intersection"))
-                psOptions->bCombineBandsUnion = false;
-            else
-            {
-                CPLError(CE_Failure, CPLE_NotSupported,
-                         "Invalid value for -combine_bands");
-                return nullptr;
-            }
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-srcnodata"))
-        {
-            i++;
-            psOptions->osSrcNoData = papszArgv[i];
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-lco"))
-        {
-            i++;
-            psOptions->aosLCO.AddString(papszArgv[i]);
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-dsco"))
-        {
-            i++;
-            psOptions->aosDSCO.AddString(papszArgv[i]);
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-lyr_name"))
-        {
-            i++;
-            psOptions->osDestLayerName = papszArgv[i];
-        }
-
-        else if (EQUAL(papszArgv[i], "-split_polys"))
-        {
-            i++;
-            psOptions->bSplitPolys = true;
-        }
-
-        else if (EQUAL(papszArgv[i], "-convex_hull"))
-        {
-            i++;
-            psOptions->bConvexHull = true;
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-densify"))
-        {
-            i++;
-            psOptions->dfDensifyDistance = CPLAtof(papszArgv[i]);
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-simplify"))
-        {
-            i++;
-            psOptions->dfSimplifyTolerance = CPLAtof(papszArgv[i]);
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-max_points"))
-        {
-            i++;
-            if (EQUAL(papszArgv[i], "unlimited"))
+            const std::string maxPoints{
+                argParser->get<std::string>("-max_points")};
+            if (maxPoints == "unlimited")
             {
                 psOptions->nMaxPoints = 0;
             }
             else
             {
-                psOptions->nMaxPoints = atoi(papszArgv[i]);
+                psOptions->nMaxPoints = atoi(maxPoints.c_str());
                 if (psOptions->nMaxPoints > 0 && psOptions->nMaxPoints < 3)
                 {
                     CPLError(CE_Failure, CPLE_NotSupported,
@@ -1323,67 +1419,13 @@ GDALFootprintOptionsNew(char **papszArgv,
             }
         }
 
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-min_ring_area"))
-        {
-            i++;
-            psOptions->dfMinRingArea = CPLAtof(papszArgv[i]);
-        }
-
-        else if (EQUAL(papszArgv[i], "-overwrite"))
-        {
-            if (psOptionsForBinary)
-            {
-                psOptionsForBinary->bOverwrite = true;
-            }
-            else
-            {
-                CPLError(CE_Failure, CPLE_NotSupported,
-                         "-overwrite switch only supported from gdal_footprint "
-                         "binary.");
-                return nullptr;
-            }
-        }
-
-        else if (i < argc - 1 && EQUAL(papszArgv[i], "-ovr"))
-        {
-            i++;
-            psOptions->nOvrIndex = atoi(papszArgv[i]);
-        }
-
-        else if (papszArgv[i][0] == '-')
-        {
-            CPLError(CE_Failure, CPLE_NotSupported, "Unknown option name '%s'",
-                     papszArgv[i]);
-            return nullptr;
-        }
-        else if (!bGotSourceFilename)
-        {
-            bGotSourceFilename = true;
-            if (psOptionsForBinary)
-            {
-                psOptionsForBinary->osSource = papszArgv[i];
-            }
-            else
-            {
-                CPLError(CE_Failure, CPLE_NotSupported,
-                         "{source_filename} only supported from gdal_footprint "
-                         "binary.");
-                return nullptr;
-            }
-        }
-        else if (!bGotDestFilename)
-        {
-            bGotDestFilename = true;
-            CPLAssert(psOptionsForBinary);
-            psOptionsForBinary->bDestSpecified = true;
-            psOptionsForBinary->osDest = papszArgv[i];
-        }
-        else
-        {
-            CPLError(CE_Failure, CPLE_NotSupported,
-                     "Too many command options '%s'", papszArgv[i]);
-            return nullptr;
-        }
+        psOptions->bCreateOutput = !psOptions->osFormat.empty();
+    }
+    catch (const std::exception &err)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined, "Unexpected exception: %s",
+                 err.what());
+        return nullptr;
     }
 
     if (!psOptions->bOutCSGeoref && !psOptions->oOutputSRS.IsEmpty())
@@ -1393,11 +1435,9 @@ GDALFootprintOptionsNew(char **papszArgv,
         return nullptr;
     }
 
-    if (!psOptions->osSrcNoData.empty() && psOptions->nOvrIndex >= 0)
+    if (psOptions->bClearLocation)
     {
-        CPLError(CE_Failure, CPLE_AppDefined,
-                 "-srcnodata and -ovr are mutually exclusive.");
-        return nullptr;
+        psOptions->osLocationFieldName.clear();
     }
 
     if (psOptionsForBinary)

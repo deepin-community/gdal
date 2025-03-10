@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2022, Planet Labs
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_json.h"
@@ -162,9 +146,9 @@ void OGRFeatherLayer::EstablishFeatureDefn()
         LoadGeoMetadata(kv_metadata.get(), "geo");
     }
     const auto oMapFieldNameToGDALSchemaFieldDefn =
-        LoadGDALMetadata(kv_metadata.get());
+        LoadGDALSchema(kv_metadata.get());
 
-    const auto fields = m_poSchema->fields();
+    const auto &fields = m_poSchema->fields();
     for (int i = 0; i < m_poSchema->num_fields(); ++i)
     {
         const auto &field = fields[i];
@@ -175,7 +159,7 @@ void OGRFeatherLayer::EstablishFeatureDefn()
         if (field_kv_metadata)
         {
             auto extension_name =
-                field_kv_metadata->Get("ARROW:extension:name");
+                field_kv_metadata->Get(ARROW_EXTENSION_NAME_KEY);
             if (extension_name.ok())
             {
                 osExtensionName = *extension_name;
@@ -205,12 +189,13 @@ void OGRFeatherLayer::EstablishFeatureDefn()
                 oJSONDef = oIter->second;
             auto osEncoding = oJSONDef.GetString("encoding");
             if (osEncoding.empty() && !osExtensionName.empty())
-                osEncoding = osExtensionName;
+                osEncoding = std::move(osExtensionName);
 
             OGRwkbGeometryType eGeomType = wkbUnknown;
             auto eGeomEncoding = OGRArrowGeomEncoding::WKB;
-            if (IsValidGeometryEncoding(field, osEncoding, eGeomType,
-                                        eGeomEncoding))
+            if (IsValidGeometryEncoding(field, osEncoding,
+                                        oIter != m_oMapGeometryColumns.end(),
+                                        eGeomType, eGeomEncoding))
             {
                 bRegularField = false;
                 OGRGeomFieldDefn oField(fieldName.c_str(), wkbUnknown);

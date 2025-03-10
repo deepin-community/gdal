@@ -8,23 +8,7 @@
  * Copyright (c) 2005, Frank Warmerdam
  * Copyright (c) 2008-2011, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_string.h"
@@ -57,10 +41,12 @@ class NDFDataset final : public RawDataset
     ~NDFDataset() override;
 
     CPLErr GetGeoTransform(double *padfTransform) override;
+
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return m_oSRS.IsEmpty() ? nullptr : &m_oSRS;
     }
+
     char **GetFileList(void) override;
 
     static GDALDataset *Open(GDALOpenInfo *);
@@ -264,7 +250,7 @@ GDALDataset *NDFDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<NDFDataset>();
+    auto poDS = std::make_unique<NDFDataset>();
     poDS->papszHeader = papszHeader;
 
     poDS->nRasterXSize = atoi(poDS->Get("PIXELS_PER_LINE", ""));
@@ -383,7 +369,7 @@ GDALDataset *NDFDataset::Open(GDALOpenInfo *poOpenInfo)
 
     if (oSRS.GetRoot() != nullptr)
     {
-        poDS->m_oSRS = oSRS;
+        poDS->m_oSRS = std::move(oSRS);
     }
 
     /* -------------------------------------------------------------------- */

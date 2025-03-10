@@ -9,23 +9,7 @@
  * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  * Copyright (c) 2017-2020, Alan Thomas <alant@outlook.com.au>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogr_dxf.h"
@@ -464,7 +448,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMTEXT()
 {
     char szLineBuf[512];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX = 0.0;
     double dfY = 0.0;
     double dfZ = 0.0;
@@ -554,7 +538,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMTEXT()
     /*      Apply text after stripping off any extra terminating newline.   */
     /* -------------------------------------------------------------------- */
     if (!osText.empty() && osText.back() == '\n')
-        osText.resize(osText.size() - 1);
+        osText.pop_back();
 
     poFeature->SetField("Text", osText);
 
@@ -564,7 +548,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMTEXT()
     /* -------------------------------------------------------------------- */
     if (strchr(osText, '"') != nullptr)
     {
-        CPLString osEscaped;
+        std::string osEscaped;
 
         for (size_t iC = 0; iC < osText.size(); iC++)
         {
@@ -573,7 +557,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMTEXT()
             else
                 osEscaped += osText[iC];
         }
-        osText = osEscaped;
+        osText = std::move(osEscaped);
     }
 
     /* -------------------------------------------------------------------- */
@@ -657,7 +641,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateTEXT(const bool bIsAttribOrAttdef)
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
 
     double dfX = 0.0;
     double dfY = 0.0;
@@ -836,7 +820,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateTEXT(const bool bIsAttribOrAttdef)
             else
                 osEscaped += osText[iC];
         }
-        osText = osEscaped;
+        osText = std::move(osEscaped);
     }
 
     /* -------------------------------------------------------------------- */
@@ -923,7 +907,7 @@ OGRDXFFeature *OGRDXFLayer::TranslatePOINT()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX = 0.0;
     double dfY = 0.0;
     double dfZ = 0.0;
@@ -983,7 +967,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateLINE()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -1042,7 +1026,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateLINE()
     /* -------------------------------------------------------------------- */
     /*      Create geometry                                                 */
     /* -------------------------------------------------------------------- */
-    auto poLS = cpl::make_unique<OGRLineString>();
+    auto poLS = std::make_unique<OGRLineString>();
     if (bHaveZ)
     {
         poLS->addPoint(dfX1, dfY1, dfZ1);
@@ -1075,7 +1059,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateLWPOLYLINE()
     int nCode = 0;
     int nPolylineFlag = 0;
 
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX = 0.0;
     double dfY = 0.0;
     double dfZ = 0.0;
@@ -1170,11 +1154,15 @@ OGRDXFFeature *OGRDXFLayer::TranslateLWPOLYLINE()
     /* -------------------------------------------------------------------- */
     /*      Close polyline if necessary.                                    */
     /* -------------------------------------------------------------------- */
-    if (nPolylineFlag & 0x01)
+    const bool bIsClosed = (nPolylineFlag & 0x01) != 0;
+    if (bIsClosed)
         smoothPolyline.Close();
 
+    const bool bAsPolygon = bIsClosed && poDS->ClosedLineAsPolygon();
+
     smoothPolyline.SetUseMaxGapWhenTessellatingArcs(poDS->InlineBlocks());
-    auto poGeom = std::unique_ptr<OGRGeometry>(smoothPolyline.Tessellate());
+    auto poGeom =
+        std::unique_ptr<OGRGeometry>(smoothPolyline.Tessellate(bAsPolygon));
     poFeature->ApplyOCSTransformer(poGeom.get());
     poFeature->SetGeometryDirectly(poGeom.release());
 
@@ -1206,7 +1194,7 @@ OGRDXFFeature *OGRDXFLayer::TranslatePOLYLINE()
     char szLineBuf[257];
     int nCode = 0;
     int nPolylineFlag = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
 
     /* -------------------------------------------------------------------- */
     /*      Collect information from the POLYLINE object itself.            */
@@ -1250,7 +1238,7 @@ OGRDXFFeature *OGRDXFLayer::TranslatePOLYLINE()
     unsigned int vertexIndex73 = 0;
     unsigned int vertexIndex74 = 0;
     std::vector<OGRPoint> aoPoints;
-    auto poPS = cpl::make_unique<OGRPolyhedralSurface>();
+    auto poPS = std::make_unique<OGRPolyhedralSurface>();
 
     smoothPolyline.setCoordinateDimension(2);
 
@@ -1344,7 +1332,7 @@ OGRDXFFeature *OGRDXFLayer::TranslatePOLYLINE()
         if (nVertexFlag == 128)
         {
             // create a polygon and add it to the Polyhedral Surface
-            auto poLR = cpl::make_unique<OGRLinearRing>();
+            auto poLR = std::make_unique<OGRLinearRing>();
             int iPoint = 0;
             int startPoint = -1;
             poLR->set3D(TRUE);
@@ -1419,11 +1407,14 @@ OGRDXFFeature *OGRDXFLayer::TranslatePOLYLINE()
     /* -------------------------------------------------------------------- */
     /*      Close polyline if necessary.                                    */
     /* -------------------------------------------------------------------- */
-    if (nPolylineFlag & 0x01)
+    const bool bIsClosed = (nPolylineFlag & 0x01) != 0;
+    if (bIsClosed)
         smoothPolyline.Close();
 
+    const bool bAsPolygon = bIsClosed && poDS->ClosedLineAsPolygon();
+
     smoothPolyline.SetUseMaxGapWhenTessellatingArcs(poDS->InlineBlocks());
-    OGRGeometry *poGeom = smoothPolyline.Tessellate();
+    OGRGeometry *poGeom = smoothPolyline.Tessellate(bAsPolygon);
 
     if ((nPolylineFlag & 8) == 0)
         poFeature->ApplyOCSTransformer(poGeom);
@@ -1444,7 +1435,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMLINE()
     char szLineBuf[257];
     int nCode = 0;
 
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
 
     bool bIsClosed = false;
     int nNumVertices = 0;
@@ -1494,7 +1485,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMLINE()
     /*      translate these values into line geometries.                    */
     /* -------------------------------------------------------------------- */
 
-    auto poMLS = cpl::make_unique<OGRMultiLineString>();
+    auto poMLS = std::make_unique<OGRMultiLineString>();
     std::vector<std::unique_ptr<OGRLineString>> apoCurrentLines(nNumElements);
 
     // For use when bIsClosed is true
@@ -1595,7 +1586,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateMLINE()
                 {
                     // The dfCurrent(X,Y,Z) point is the end of a break
                     apoCurrentLines[iElement] =
-                        cpl::make_unique<OGRLineString>();
+                        std::make_unique<OGRLineString>();
                     apoCurrentLines[iElement]->addPoint(dfCurrentX, dfCurrentY,
                                                         dfCurrentZ);
                 }
@@ -1648,7 +1639,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateCIRCLE()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -1735,7 +1726,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateCIRCLE()
         poSurface->addGeometryDirectly(poBase2);
 
         // Add the side of the cylinder as two "semicylindrical" polygons
-        auto poRect = cpl::make_unique<OGRLinearRing>();
+        auto poRect = std::make_unique<OGRLinearRing>();
         OGRPoint oPoint;
 
         for (int iPoint = nPoints / 2; iPoint >= 0; iPoint--)
@@ -1755,7 +1746,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateCIRCLE()
         poRectPolygon->addRingDirectly(poRect.release());
         poSurface->addGeometryDirectly(poRectPolygon);
 
-        poRect = cpl::make_unique<OGRLinearRing>();
+        poRect = std::make_unique<OGRLinearRing>();
 
         for (int iPoint = nPoints - 1; iPoint >= nPoints / 2; iPoint--)
         {
@@ -1801,7 +1792,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateELLIPSE()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -1950,7 +1941,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateARC()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -2047,14 +2038,16 @@ OGRDXFFeature *OGRDXFLayer::TranslateSPLINE()
 {
     char szLineBuf[257];
     int nCode;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
 
-    std::vector<double> adfControlPoints(1, 0.0);
-    std::vector<double> adfKnots(1, 0.0);
-    std::vector<double> adfWeights(1, 0.0);
+    std::vector<double> adfControlPoints(FORTRAN_INDEXING, 0.0);
+    std::vector<double> adfKnots(FORTRAN_INDEXING, 0.0);
+    std::vector<double> adfWeights(FORTRAN_INDEXING, 0.0);
     int nDegree = -1;
     int nControlPoints = -1;
     int nKnots = -1;
+    bool bInsertNullZ = false;
+    bool bHasZ = false;
 
     /* -------------------------------------------------------------------- */
     /*      Process values.                                                 */
@@ -2065,12 +2058,23 @@ OGRDXFFeature *OGRDXFLayer::TranslateSPLINE()
         switch (nCode)
         {
             case 10:
+                if (bInsertNullZ)
+                {
+                    adfControlPoints.push_back(0.0);
+                    bInsertNullZ = false;
+                }
                 adfControlPoints.push_back(CPLAtof(szLineBuf));
                 break;
 
             case 20:
                 adfControlPoints.push_back(CPLAtof(szLineBuf));
-                adfControlPoints.push_back(0.0);
+                bInsertNullZ = true;
+                break;
+
+            case 30:
+                adfControlPoints.push_back(CPLAtof(szLineBuf));
+                bHasZ = true;
+                bInsertNullZ = false;
                 break;
 
             case 40:
@@ -2145,12 +2149,25 @@ OGRDXFFeature *OGRDXFLayer::TranslateSPLINE()
     if (nCode == 0)
         poDS->UnreadValue();
 
+    if (bInsertNullZ)
+    {
+        adfControlPoints.push_back(0.0);
+    }
+
+    if (static_cast<int>(adfControlPoints.size() % 3) != FORTRAN_INDEXING)
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Invalid number of values for spline control points");
+        DXF_LAYER_READER_ERROR();
+        return nullptr;
+    }
+
     /* -------------------------------------------------------------------- */
     /*      Use the helper function to check the input data and insert      */
     /*      the spline.                                                     */
     /* -------------------------------------------------------------------- */
     auto poLS =
-        InsertSplineWithChecks(nDegree, adfControlPoints, nControlPoints,
+        InsertSplineWithChecks(nDegree, adfControlPoints, bHasZ, nControlPoints,
                                adfKnots, nKnots, adfWeights);
 
     if (!poLS)
@@ -2174,7 +2191,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateSPLINE()
 /************************************************************************/
 
 std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
-    const int nDegree, std::vector<double> &adfControlPoints,
+    const int nDegree, std::vector<double> &adfControlPoints, bool bHasZ,
     int nControlPoints, std::vector<double> &adfKnots, int nKnots,
     std::vector<double> &adfWeights)
 {
@@ -2187,11 +2204,13 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
     if (bResult == true)
     {
         // Check whether nctrlpts value matches number of vertices read
-        int nCheck = (static_cast<int>(adfControlPoints.size()) - 1) / 3;
+        int nCheck =
+            (static_cast<int>(adfControlPoints.size()) - FORTRAN_INDEXING) / 3;
 
         if (nControlPoints == -1)
             nControlPoints =
-                (static_cast<int>(adfControlPoints.size()) - 1) / 3;
+                (static_cast<int>(adfControlPoints.size()) - FORTRAN_INDEXING) /
+                3;
 
         // min( num(ctrlpts) ) = order
         bResult = (nControlPoints >= nOrder && nControlPoints == nCheck);
@@ -2200,7 +2219,7 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
     bool bCalculateKnots = false;
     if (bResult == true)
     {
-        int nCheck = static_cast<int>(adfKnots.size()) - 1;
+        int nCheck = static_cast<int>(adfKnots.size()) - FORTRAN_INDEXING;
 
         // Recalculate knots when:
         // - no knots data present, nknots is -1 and ncheck is 0
@@ -2212,13 +2231,13 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
             for (int i = 0; i < (nControlPoints + nOrder); i++)
                 adfKnots.push_back(0.0);
 
-            nCheck = static_cast<int>(adfKnots.size()) - 1;
+            nCheck = static_cast<int>(adfKnots.size()) - FORTRAN_INDEXING;
         }
         // Adjust nknots value when:
         // - nknots value not present, knot vertices present
         //   nknots is -1, ncheck is (nctrlpts + order)
         if (nKnots == -1)
-            nKnots = static_cast<int>(adfKnots.size()) - 1;
+            nKnots = static_cast<int>(adfKnots.size()) - FORTRAN_INDEXING;
 
         // num(knots) = num(ctrlpts) + order
         bResult = (nKnots == (nControlPoints + nOrder) && nKnots == nCheck);
@@ -2226,14 +2245,14 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
 
     if (bResult == true)
     {
-        int nWeights = static_cast<int>(adfWeights.size()) - 1;
+        int nWeights = static_cast<int>(adfWeights.size()) - FORTRAN_INDEXING;
 
         if (nWeights == 0)
         {
             for (int i = 0; i < nControlPoints; i++)
                 adfWeights.push_back(1.0);
 
-            nWeights = static_cast<int>(adfWeights.size()) - 1;
+            nWeights = static_cast<int>(adfWeights.size()) - FORTRAN_INDEXING;
         }
 
         // num(weights) = num(ctrlpts)
@@ -2247,11 +2266,7 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
     /*      Interpolate spline                                              */
     /* -------------------------------------------------------------------- */
     int p1 = nControlPoints * 8;
-    std::vector<double> p;
-
-    p.push_back(0.0);
-    for (int i = 0; i < 3 * p1; i++)
-        p.push_back(0.0);
+    std::vector<double> p(3 * p1 + FORTRAN_INDEXING);
 
     rbspline2(nControlPoints, nOrder, p1, &(adfControlPoints[0]),
               &(adfWeights[0]), bCalculateKnots, &(adfKnots[0]), &(p[0]));
@@ -2259,11 +2274,22 @@ std::unique_ptr<OGRLineString> OGRDXFLayer::InsertSplineWithChecks(
     /* -------------------------------------------------------------------- */
     /*      Turn into OGR geometry.                                         */
     /* -------------------------------------------------------------------- */
-    auto poLS = cpl::make_unique<OGRLineString>();
+    auto poLS = std::make_unique<OGRLineString>();
 
     poLS->setNumPoints(p1);
-    for (int i = 0; i < p1; i++)
-        poLS->setPoint(i, p[i * 3 + 1], p[i * 3 + 2]);
+    if (bHasZ)
+    {
+        for (int i = 0; i < p1; i++)
+            poLS->setPoint(i, p[i * 3 + FORTRAN_INDEXING],
+                           p[i * 3 + FORTRAN_INDEXING + 1],
+                           p[i * 3 + FORTRAN_INDEXING + 2]);
+    }
+    else
+    {
+        for (int i = 0; i < p1; i++)
+            poLS->setPoint(i, p[i * 3 + FORTRAN_INDEXING],
+                           p[i * 3 + FORTRAN_INDEXING + 1]);
+    }
 
     return poLS;
 }
@@ -2277,7 +2303,7 @@ OGRDXFFeature *OGRDXFLayer::Translate3DFACE()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -2363,7 +2389,7 @@ OGRDXFFeature *OGRDXFLayer::Translate3DFACE()
     /* -------------------------------------------------------------------- */
     /*      Create geometry                                                 */
     /* -------------------------------------------------------------------- */
-    auto poPoly = cpl::make_unique<OGRPolygon>();
+    auto poPoly = std::make_unique<OGRPolygon>();
     OGRLinearRing *poLR = new OGRLinearRing();
     poLR->addPoint(dfX1, dfY1, dfZ1);
     poLR->addPoint(dfX2, dfY2, dfZ2);
@@ -2415,7 +2441,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateSOLID()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
     double dfX1 = 0.0;
     double dfY1 = 0.0;
     double dfZ1 = 0.0;
@@ -2538,7 +2564,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateSOLID()
     }
     else if (nCornerCount == 2)
     {
-        auto poLS = cpl::make_unique<OGRLineString>();
+        auto poLS = std::make_unique<OGRLineString>();
         poLS->setPoint(0, &oCorners[0]);
         poLS->setPoint(1, &oCorners[1]);
         poFinalGeom.reset(poLS.release());
@@ -2563,7 +2589,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateSOLID()
         if (!bWantZ)
             poLinearRing->flattenTo2D();
 
-        auto poPoly = cpl::make_unique<OGRPolygon>();
+        auto poPoly = std::make_unique<OGRPolygon>();
         poPoly->addRingDirectly(poLinearRing);
         poFinalGeom.reset(poPoly.release());
 
@@ -2588,7 +2614,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateASMEntity()
 {
     char szLineBuf[257];
     int nCode = 0;
-    auto poFeature = cpl::make_unique<OGRDXFFeature>(poFeatureDefn);
+    auto poFeature = std::make_unique<OGRDXFFeature>(poFeatureDefn);
 
     while ((nCode = poDS->ReadValue(szLineBuf, sizeof(szLineBuf))) > 0)
     {
@@ -2623,7 +2649,7 @@ OGRDXFFeature *OGRDXFLayer::TranslateASMEntity()
 
     // Set up an affine transformation matrix so the user will be able to
     // transform the resulting 3D geometry
-    poFeature->poASMTransform = cpl::make_unique<OGRDXFAffineTransform>();
+    poFeature->poASMTransform = std::make_unique<OGRDXFAffineTransform>();
 
     poFeature->poASMTransform->SetField(poFeature.get(), "ASMTransform");
 
@@ -2884,8 +2910,8 @@ OGRDXFFeature *OGRDXFLayer::InsertBlockInline(
             {
                 poSubFeature = InsertBlockInline(
                     nInitialErrorCounter, poSubFeature->osBlockName,
-                    oInnerTransformer, poSubFeature, apoInnerExtraFeatures,
-                    true, bMergeGeometry);
+                    std::move(oInnerTransformer), poSubFeature,
+                    apoInnerExtraFeatures, true, bMergeGeometry);
             }
             catch (const std::invalid_argument &)
             {
@@ -3141,7 +3167,7 @@ bool OGRDXFLayer::TranslateINSERT()
 
             case 70:
                 m_oInsertState.m_nColumnCount = atoi(szLineBuf);
-                if (m_oInsertState.m_nColumnCount <= 0)
+                if (m_oInsertState.m_nColumnCount < 0)
                 {
                     DXF_LAYER_READER_ERROR();
                     m_oInsertState.m_nRowCount = 0;
@@ -3152,7 +3178,7 @@ bool OGRDXFLayer::TranslateINSERT()
 
             case 71:
                 m_oInsertState.m_nRowCount = atoi(szLineBuf);
-                if (m_oInsertState.m_nRowCount <= 0)
+                if (m_oInsertState.m_nRowCount < 0)
                 {
                     DXF_LAYER_READER_ERROR();
                     m_oInsertState.m_nRowCount = 0;
@@ -3177,6 +3203,14 @@ bool OGRDXFLayer::TranslateINSERT()
         m_oInsertState.m_nRowCount = 0;
         m_oInsertState.m_nColumnCount = 0;
         return false;
+    }
+
+    if (m_oInsertState.m_nRowCount == 0 || m_oInsertState.m_nColumnCount == 0)
+    {
+        // AutoCad doesn't allow setting to 0 in its UI, but interprets 0
+        // as 1 (but other software such as LibreCAD interpret 0 as 0)
+        m_oInsertState.m_nRowCount = 1;
+        m_oInsertState.m_nColumnCount = 1;
     }
 
     /* -------------------------------------------------------------------- */
@@ -3281,7 +3315,7 @@ bool OGRDXFLayer::GenerateINSERTFeatures()
         {
             poFeature = InsertBlockInline(
                 CPLGetErrorCounter(), m_oInsertState.m_osBlockName,
-                oTransformer, poFeature, apoExtraFeatures, true,
+                std::move(oTransformer), poFeature, apoExtraFeatures, true,
                 poDS->ShouldMergeBlockGeometries());
         }
         catch (const std::invalid_argument &)
@@ -3559,4 +3593,13 @@ int OGRDXFLayer::TestCapability(const char *pszCap)
     else if (EQUAL(pszCap, OLCZGeometries))
         return true;
     return false;
+}
+
+/************************************************************************/
+/*                             GetDataset()                             */
+/************************************************************************/
+
+GDALDataset *OGRDXFLayer::GetDataset()
+{
+    return poDS;
 }

@@ -8,23 +8,7 @@
  * Copyright (c) 2004, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2009, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_string.h"
@@ -91,16 +75,19 @@ class CPGDataset final : public RawDataset
     ~CPGDataset() override;
 
     int GetGCPCount() override;
+
     const OGRSpatialReference *GetGCPSpatialRef() const override
     {
         return m_oGCPSRS.IsEmpty() ? nullptr : &m_oGCPSRS;
     }
+
     const GDAL_GCP *GetGCPs() override;
 
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return m_oSRS.IsEmpty() ? nullptr : &m_oSRS;
     }
+
     CPLErr GetGeoTransform(double *) override;
 
     char **GetFileList() override;
@@ -193,6 +180,7 @@ class SIRC_QSLCRasterBand final : public GDALRasterBand
 
   public:
     SIRC_QSLCRasterBand(CPGDataset *, int, GDALDataType);
+
     ~SIRC_QSLCRasterBand() override
     {
     }
@@ -232,6 +220,7 @@ class CPG_STOKESRasterBand final : public GDALRasterBand
   public:
     CPG_STOKESRasterBand(GDALDataset *poDS, GDALDataType eType,
                          int bNativeOrder);
+
     ~CPG_STOKESRasterBand() override
     {
     }
@@ -627,7 +616,7 @@ GDALDataset *CPGDataset::InitializeType1Or2Dataset(const char *pszFilename)
     /* -------------------------------------------------------------------- */
     /*      Initialize dataset.                                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<CPGDataset>();
+    auto poDS = std::make_unique<CPGDataset>();
 
     poDS->nRasterXSize = nSamples;
     poDS->nRasterYSize = nLines;

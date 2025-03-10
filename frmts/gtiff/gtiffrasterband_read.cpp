@@ -8,23 +8,7 @@
  * Copyright (c) 1998, 2002, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2007-2015, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "gtiffrasterband.h"
@@ -32,6 +16,7 @@
 #include "gtiffjpegoverviewds.h"
 
 #include <algorithm>
+#include <cassert>
 #include <limits>
 #include <map>
 #include <set>
@@ -225,7 +210,7 @@ int GTiffRasterBand::DirectIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
         panOffsets[iLine] +=
             (nXOff + static_cast<vsi_l_offset>(nYOffsetInBlock) * nBlockXSize) *
             nSrcPixelSize;
-        panSizes[iLine] = nReqXSize * nSrcPixelSize;
+        panSizes[iLine] = static_cast<size_t>(nReqXSize) * nSrcPixelSize;
     }
 
     // Extract data from the file.
@@ -509,6 +494,9 @@ CPLVirtualMem *GTiffRasterBand::GetVirtualMemAutoInternal(GDALRWFlag eRWFlag,
             CPLAssert(panByteCounts[0] == static_cast<toff_t>(nBlockSize));
 
             // Now simulate the writing of other blocks.
+            assert(nBlocks > 0);
+            assert(static_cast<vsi_l_offset>(nBlockSize) <
+                   std::numeric_limits<vsi_l_offset>::max() / nBlocks);
             const vsi_l_offset nDataSize =
                 static_cast<vsi_l_offset>(nBlockSize) * nBlocks;
             if (VSIFTruncateL(fp, nBaseOffset + nDataSize) != 0)
@@ -615,7 +603,6 @@ CPLVirtualMem *GTiffRasterBand::GetVirtualMemAutoInternal(GDALRWFlag eRWFlag,
 /*                         CacheMultiRange()                            */
 /************************************************************************/
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
 static bool CheckTrailer(const GByte *strileData, vsi_l_offset nStrileSize)
 {
     GByte abyTrailer[4];
@@ -632,7 +619,6 @@ static bool CheckTrailer(const GByte *strileData, vsi_l_offset nStrileSize)
     }
     return memcmp(abyTrailer, abyLastBytes, 4) == 0;
 }
-#endif
 
 void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                                        int nYSize, int nBufXSize, int nBufYSize,
@@ -670,14 +656,16 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
             std::min(static_cast<double>(nRasterYSize - 1),
                      (nBufYSize - 1 + 0.5) * dfSrcYInc + dfYOff + EPS)) /
         nBlockYSize;
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
+
     const int nBlockCount = nBlocksPerRow * nBlocksPerColumn;
+
     struct StrileData
     {
         vsi_l_offset nOffset;
         vsi_l_offset nByteCount;
         bool bTryMask;
     };
+
     std::map<int, StrileData> oMapStrileToOffsetByteCount;
 
     // Dedicated method to retrieved the offset and size in an efficient way
@@ -792,7 +780,7 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
             {
                 // Sparse tile
                 m_poGDS->m_oCacheStrileToOffsetByteCount.insert(
-                    nBlockId, std::pair<vsi_l_offset, vsi_l_offset>(0, 0));
+                    nBlockId, std::pair(0, 0));
                 continue;
             }
 
@@ -855,8 +843,7 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                          nBlockId, nRealOffset, nRealSize);
 #endif
                 m_poGDS->m_oCacheStrileToOffsetByteCount.insert(
-                    nBlockId, std::pair<vsi_l_offset, vsi_l_offset>(nRealOffset,
-                                                                    nRealSize));
+                    nBlockId, std::pair(nRealOffset, nRealSize));
             }
 
             // Processing of mask
@@ -915,8 +902,7 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
 #endif
 
                     m_poGDS->m_poMaskDS->m_oCacheStrileToOffsetByteCount.insert(
-                        nBlockId, std::pair<vsi_l_offset, vsi_l_offset>(
-                                      nRealOffset, nRealSize));
+                        nBlockId, std::pair(nRealOffset, nRealSize));
                 }
             }
             if (!bOK)
@@ -929,7 +915,6 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
         }
         return true;
     };
-#endif
 
     thandle_t th = TIFFClientdata(m_poGDS->m_hTIFF);
     if (!VSI_TIFFHasCachedRanges(th))
@@ -955,7 +940,6 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                 vsi_l_offset nOffset = 0;
                 vsi_l_offset nSize = 0;
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
                 if ((m_poGDS->m_nPlanarConfig == PLANARCONFIG_CONTIG ||
                      m_poGDS->nBands == 1) &&
                     !m_poGDS->m_bStreamingIn &&
@@ -967,10 +951,9 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                                                    nMaxRawBlockCacheSize);
                 }
                 else
-#endif
                 {
-                    CPL_IGNORE_RET_VAL(
-                        m_poGDS->IsBlockAvailable(nBlockId, &nOffset, &nSize));
+                    CPL_IGNORE_RET_VAL(m_poGDS->IsBlockAvailable(
+                        nBlockId, &nOffset, &nSize, nullptr));
                 }
                 if (nSize)
                 {
@@ -983,8 +966,8 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                                  iX, iY, nOffset,
                                  nOffset + static_cast<size_t>(nSize) - 1);
 #endif
-                        aOffsetSize.push_back(std::pair<vsi_l_offset, size_t>(
-                            nOffset, static_cast<size_t>(nSize)));
+                        aOffsetSize.push_back(
+                            std::pair(nOffset, static_cast<size_t>(nSize)));
                         nTotalSize += static_cast<size_t>(nSize);
                     }
                     else
@@ -1057,11 +1040,18 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
 
                 VSILFILE *fp = VSI_TIFFGetVSILFile(th);
 
-                if (VSIFReadMultiRangeL(static_cast<int>(anSizes.size()),
+                // An error in VSIFReadMultiRangeL() will not be critical,
+                // as this method is an optimization, and if it fails,
+                // tile-by-tile data acquisition will be done, so we can
+                // temporary turn failures into warnings.
+                CPLTurnFailureIntoWarning(true);
+                const bool ok =
+                    VSIFReadMultiRangeL(static_cast<int>(anSizes.size()),
                                         &apData[0], &anOffsets[0], &anSizes[0],
-                                        fp) == 0)
+                                        fp) == 0;
+                CPLTurnFailureIntoWarning(false);
+                if (ok)
                 {
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
                     if (!oMapStrileToOffsetByteCount.empty() &&
                         !FillCacheStrileToOffsetByteCount(anOffsets, anSizes,
                                                           apData))
@@ -1076,10 +1066,14 @@ void *GTiffRasterBand::CacheMultiRange(int nXOff, int nYOff, int nXSize,
                         return pRet;
                     }
 
-#endif
                     VSI_TIFFSetCachedRanges(
                         th, static_cast<int>(anSizes.size()), &apData[0],
                         &anOffsets[0], &anSizes[0]);
+                }
+                else
+                {
+                    CPLFree(pBufferedData);
+                    pBufferedData = nullptr;
                 }
             }
         }
@@ -1117,8 +1111,12 @@ int GTiffRasterBand::IGetDataCoverageStatus(int nXOff, int nYOff, int nXSize,
             vsi_l_offset nOffset = 0;
             vsi_l_offset nLength = 0;
             bool bHasData = false;
-            if (!m_poGDS->IsBlockAvailable(nBlockId, &nOffset, &nLength))
+            bool bError = false;
+            if (!m_poGDS->IsBlockAvailable(nBlockId, &nOffset, &nLength,
+                                           &bError))
             {
+                if (bError)
+                    return GDAL_DATA_COVERAGE_STATUS_UNIMPLEMENTED;
                 nStatus |= GDAL_DATA_COVERAGE_STATUS_EMPTY;
             }
             else
@@ -1348,9 +1346,8 @@ CPLErr GTiffRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
         }
     }
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
     CacheMaskForBlock(nBlockXOff, nBlockYOff);
-#endif
+
     return eErr;
 }
 
@@ -1358,7 +1355,6 @@ CPLErr GTiffRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff, void *pImage)
 /*                           CacheMaskForBlock()                       */
 /************************************************************************/
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
 void GTiffRasterBand::CacheMaskForBlock(int nBlockXOff, int nBlockYOff)
 
 {
@@ -1378,7 +1374,6 @@ void GTiffRasterBand::CacheMaskForBlock(int nBlockXOff, int nBlockYOff)
         }
     }
 }
-#endif
 
 /************************************************************************/
 /*                       FillCacheForOtherBands()                       */
@@ -1575,7 +1570,8 @@ const char *GTiffRasterBand::GetMetadataItem(const char *pszName,
             }
 
             vsi_l_offset nOffset = 0;
-            if (!m_poGDS->IsBlockAvailable(nBlockId, &nOffset))
+            if (!m_poGDS->IsBlockAvailable(nBlockId, &nOffset, nullptr,
+                                           nullptr))
             {
                 return nullptr;
             }
@@ -1596,7 +1592,8 @@ const char *GTiffRasterBand::GetMetadataItem(const char *pszName,
             }
 
             vsi_l_offset nByteCount = 0;
-            if (!m_poGDS->IsBlockAvailable(nBlockId, nullptr, &nByteCount))
+            if (!m_poGDS->IsBlockAvailable(nBlockId, nullptr, &nByteCount,
+                                           nullptr))
             {
                 return nullptr;
             }
@@ -1604,7 +1601,7 @@ const char *GTiffRasterBand::GetMetadataItem(const char *pszName,
             return CPLSPrintf(CPL_FRMT_GUIB, static_cast<GUIntBig>(nByteCount));
         }
     }
-    else if (pszDomain != nullptr && EQUAL(pszDomain, "_DEBUG_"))
+    else if (pszName && pszDomain && EQUAL(pszDomain, "_DEBUG_"))
     {
         if (EQUAL(pszName, "HAS_BLOCK_CACHE"))
             return HasBlockCache() ? "1" : "0";
@@ -1612,7 +1609,7 @@ const char *GTiffRasterBand::GetMetadataItem(const char *pszName,
 
     const char *pszRet = m_oGTiffMDMD.GetMetadataItem(pszName, pszDomain);
 
-    if (pszRet == nullptr && eDataType == GDT_Byte && pszDomain != nullptr &&
+    if (pszRet == nullptr && eDataType == GDT_Byte && pszName && pszDomain &&
         EQUAL(pszDomain, "IMAGE_STRUCTURE") && EQUAL(pszName, "PIXELTYPE"))
     {
         // to get a chance of emitting the warning about this legacy usage
@@ -1643,7 +1640,7 @@ GDALColorTable *GTiffRasterBand::GetColorTable()
     m_poGDS->LoadGeoreferencingAndPamIfNeeded();
 
     if (nBand == 1)
-        return m_poGDS->m_poColorTable;
+        return m_poGDS->m_poColorTable.get();
 
     return nullptr;
 }

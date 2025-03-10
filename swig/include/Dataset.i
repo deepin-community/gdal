@@ -9,23 +9,7 @@
  ******************************************************************************
  * Copyright (c) 2005, Kevin Ruland
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************/
 
 %{
@@ -288,6 +272,10 @@ public:
     }
   }
 
+#ifdef SWIGJAVA
+  %rename (CloseInternal) Close;
+  %javamethodmodifiers Close() "private";
+#endif
   CPLErr Close() {
      return GDALClose(self);
   }
@@ -298,6 +286,17 @@ public:
 
   GDALRasterBandShadow* GetRasterBand(int nBand ) {
     return (GDALRasterBandShadow*) GDALGetRasterBand( self, nBand );
+  }
+
+  bool IsThreadSafe(int nScopeFlags)
+  {
+      return GDALDatasetIsThreadSafe(self, nScopeFlags, nullptr);
+  }
+
+%newobject GetThreadSafeDataset;
+  GDALDatasetShadow* GetThreadSafeDataset(int nScopeFlags)
+  {
+      return GDALGetThreadSafeDataset(self, nScopeFlags, nullptr);
   }
 
 %newobject GetRootGroup;
@@ -312,6 +311,16 @@ public:
   char const *GetProjectionRef() {
     return GDALGetProjectionRef( self );
   }
+
+#ifdef SWIGPYTHON
+  int GetRefCount() {
+    return OGR_DS_GetRefCount(self);
+  }
+
+  int GetSummaryRefCount() {
+    return OGR_DS_GetSummaryRefCount(self);
+  }
+#endif
 
   %newobject GetSpatialRef;
   OSRSpatialReferenceShadow *GetSpatialRef() {
@@ -787,6 +796,20 @@ CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
     return layer;
   }
 
+  /* Note that datasources own their layers */
+#ifndef SWIGJAVA
+  %feature( "kwargs" ) CreateLayer;
+#endif
+  OGRLayerShadow *CreateLayerFromGeomFieldDefn(const char* name,
+              OGRGeomFieldDefnShadow* geom_field,
+              char** options=0) {
+    OGRLayerShadow* layer = (OGRLayerShadow*) GDALDatasetCreateLayerFromGeomFieldDefn( self,
+                                  name,
+                                  geom_field,
+                                  options);
+    return layer;
+  }
+
 #ifndef SWIGJAVA
   %feature( "kwargs" ) CopyLayer;
 #endif
@@ -805,32 +828,12 @@ CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
     return GDALDatasetDeleteLayer(self, index);
   }
 
-  int GetLayerCount() {
-    return GDALDatasetGetLayerCount(self);
-  }
-
   bool IsLayerPrivate( int index ) {
     return GDALDatasetIsLayerPrivate(self, index);
   }
 
-#ifdef SWIGJAVA
-  OGRLayerShadow *GetLayerByIndex( int index ) {
-#else
-  OGRLayerShadow *GetLayerByIndex( int index=0) {
-#endif
-    OGRLayerShadow* layer = (OGRLayerShadow*) GDALDatasetGetLayer(self, index);
-    return layer;
-  }
 
-  OGRLayerShadow *GetLayerByName( const char* layer_name) {
-    OGRLayerShadow* layer = (OGRLayerShadow*) GDALDatasetGetLayerByName(self, layer_name);
-    return layer;
-  }
 
-  void ResetReading()
-  {
-    GDALDatasetResetReading( self );
-  }
 
 #ifdef SWIGPYTHON
 %newobject GetNextFeature;
@@ -889,6 +892,46 @@ CPLErr AdviseRead(  int xoff, int yoff, int xsize, int ysize,
 
 #endif /* defined(SWIGPYTHON) || defined(SWIGJAVA) */
 
+
+#ifdef SWIGJAVA
+  OGRLayerShadow *GetLayerByIndex( int index ) {
+#elif SWIGPYTHON
+  OGRLayerShadow *GetLayerByIndex( int index=0) {
+#else
+  OGRLayerShadow *GetLayer( int index ) {
+#endif
+    OGRLayerShadow* layer = (OGRLayerShadow*) GDALDatasetGetLayer(self, index);
+    return layer;
+  }
+
+  OGRLayerShadow *GetLayerByName(const char* layer_name) {
+    OGRLayerShadow* layer = (OGRLayerShadow*) GDALDatasetGetLayerByName(self, layer_name);
+    return layer;
+  }
+
+  void ResetReading()
+  {
+    GDALDatasetResetReading(self);
+  }
+
+  int GetLayerCount() {
+    return GDALDatasetGetLayerCount(self);
+  }
+
+#ifdef SWIGCSHARP
+
+  %newobject GetNextFeature;
+  OGRFeatureShadow *GetNextFeature( OGRLayerShadow** ppoBelongingLayer = NULL,
+                                    double* pdfProgressPct = NULL,
+                                    GDALProgressFunc callback = NULL,
+                                    void* callback_data=NULL )
+  {
+    return GDALDatasetGetNextFeature( self, ppoBelongingLayer, pdfProgressPct,
+                                      callback, callback_data );
+  }
+
+
+#endif
 
 OGRErr AbortSQL() {
     return GDALDatasetAbortSQL(self);

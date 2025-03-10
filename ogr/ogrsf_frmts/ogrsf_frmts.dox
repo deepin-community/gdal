@@ -8,23 +8,7 @@
  ******************************************************************************
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ******************************************************************************/
 
 /************************************************************************/
@@ -65,9 +49,9 @@
   otherwise a handle to a GDALDataset.  This GDALDataset should be
   closed by deleting the object when it is no longer needed.
 
-  <b>Example:</b>
+  Example:
 
-  <pre>
+  \code{.cpp}
     OGRDataSourceH	hDS;
     OGRSFDriverH        *pahDriver;
 
@@ -80,7 +64,7 @@
     ... use the data source ...
 
     OGRReleaseDataSource( hDS );
-  </pre>
+  \endcode
 
 */
 
@@ -117,9 +101,9 @@
   otherwise a handle to a GDALDataset.  This GDALDataset should be
   closed by deleting the object when it is no longer needed.
 
-  <b>Example:</b>
+  Example:
 
-  <pre>
+  \code{.cpp}
     OGRDataSourceH  hDS;
     OGRSFDriverH        *pahDriver;
 
@@ -132,7 +116,7 @@
     ... use the data source ...
 
     OGRReleaseDataSource( hDS );
-  </pre>
+  \endcode
 
 */
 
@@ -1015,6 +999,73 @@ by the OGRSFDriverManager.
 
  @return OGRERR_NONE on success, OGRERR_FAILURE if extent not known.
 
+*/
+
+/**
+ \fn OGRErr OGRLayer::GetExtent3D(int iGeomField, OGREnvelope3D *psExtent3D, int bForce = TRUE);
+
+ \brief Fetch the 3D extent of this layer, on the specified geometry field.
+
+ Returns the 3D extent (MBR) of the data in the layer.  If bForce is FALSE,
+ and it would be expensive to establish the extent then OGRERR_FAILURE
+ will be returned indicating that the extent isn't know.  If bForce is
+ TRUE then some implementations will actually scan the entire layer once
+ to compute the MBR of all the features in the layer.
+
+ (Contrarty to GetExtent() 2D), the returned extent will always take into
+ account the attribute and spatial filters that may be installed.
+
+ Layers without any geometry may return OGRERR_FAILURE just indicating that
+ no meaningful extents could be collected.
+
+ For layers that have no 3D geometries, the psExtent3D->MinZ and psExtent3D->MaxZ
+ fields will be respectively set to +Infinity and -Infinity.
+
+ Note that some implementations of this method may alter the read cursor
+ of the layer.
+
+ This function is the same as the C function OGR_L_GetExtent3D().
+
+ @param iGeomField 0-based index of the geometry field to consider.
+ @param psExtent3D the computed 3D extent of the layer.
+ @param bForce if TRUE, the extent will be computed even if all the
+        layer features have to be fetched.
+ @return OGRERR_NONE on success or an error code in case of failure.
+ @since GDAL 3.9
+*/
+
+/**
+ \fn OGRErr OGR_L_GetExtent3D( OGRLayerH hLayer, int iGeomField, OGREnvelope3D *psExtent3D, int bForce);
+
+ \brief Fetch the 3D extent of this layer, on the specified geometry field.
+
+ Returns the 3D extent (MBR) of the data in the layer.  If bForce is FALSE,
+ and it would be expensive to establish the extent then OGRERR_FAILURE
+ will be returned indicating that the extent isn't know.  If bForce is
+ TRUE then some implementations will actually scan the entire layer once
+ to compute the MBR of all the features in the layer.
+
+ (Contrarty to GetExtent() 2D), the returned extent will always take into
+ account the attribute and spatial filters that may be installed.
+
+ Layers without any geometry may return OGRERR_FAILURE just indicating that
+ no meaningful extents could be collected.
+
+ For layers that have no 3D geometries, the psExtent3D->MinZ and psExtent3D->MaxZ
+ fields will be respectively set to +Infinity and -Infinity.
+
+ Note that some implementations of this method may alter the read cursor
+ of the layer.
+
+ This function is the same as the C++ method OGRLayer::GetExtent3D().
+
+ @param hLayer the layer to consider.
+ @param iGeomField 0-based index of the geometry field to consider.
+ @param psExtent3D the computed 3D extent of the layer.
+ @param bForce if TRUE, the extent will be computed even if all the
+        layer features have to be fetched.
+ @return OGRERR_NONE on success or an error code in case of failure.
+ @since GDAL 3.9
 */
 
 /**
@@ -2465,6 +2516,10 @@ used by a layer directly.
 This method should not be called while there are feature objects in existence that
 were obtained or created with the previous layer definition.
 
+If a OGRFieldDefn* object corresponding to the deleted field has been retrieved
+from the layer definition before the call to DeleteField(), it must no longer be
+used after the call to DeleteField(), which will have destroyed it.
+
 Not all drivers support this method. You can query a layer to check if it supports it
 with the OLCDeleteField capability. Some drivers may only support this method while
 there are still no features in the layer. When it is supported, the existing features of the
@@ -2492,6 +2547,10 @@ used by a layer directly.
 
 This function should not be called while there are feature objects in existence that
 were obtained or created with the previous layer definition.
+
+If a OGRFieldDefnH object corresponding to the deleted field has been retrieved
+from the layer definition before the call to DeleteField(), it must no longer be
+used after the call to DeleteField(), which will have destroyed it.
 
 Not all drivers support this function. You can query a layer to check if it supports it
 with the OLCDeleteField capability. Some drivers may only support this method while
@@ -3080,6 +3139,10 @@ form depending on the limitations of the format driver.
 
  By default, no fields are ignored.
 
+ Note that fields that are used in an attribute filter should generally not be set as
+ ignored fields, as most drivers (such as those relying on the OGR SQL engine)
+ will be unable to correctly evaluate the attribute filter.
+
  This method is the same as the C function OGR_L_SetIgnoredFields()
 
  @param papszFields an array of field names terminated by NULL item. If NULL is passed, the ignored list is cleared.
@@ -3099,6 +3162,10 @@ form depending on the limitations of the format driver.
  "OGR_STYLE" to ignore layer style.
 
  By default, no fields are ignored.
+
+ Note that fields that are used in an attribute filter should generally not be set as
+ ignored fields, as most drivers (such as those relying on the OGR SQL engine)
+ will be unable to correctly evaluate the attribute filter.
 
  This method is the same as the C++ method OGRLayer::SetIgnoredFields()
 

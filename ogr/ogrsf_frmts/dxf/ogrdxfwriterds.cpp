@@ -9,28 +9,14 @@
  * Copyright (c) 2009, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2010-2012, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
 
+#include <cmath>
 #include <cstdlib>
+#include <limits>
 
 #include "ogr_dxf.h"
 #include "cpl_conv.h"
@@ -64,7 +50,7 @@ OGRDXFWriterDS::~OGRDXFWriterDS()
          */
         CPLDebug("DXF", "Compose final DXF file from components.");
 
-        if (bSuppressOnClose && fpTemp != nullptr)
+        if (IsMarkedSuppressOnClose() && fpTemp != nullptr)
         {
             CPLDebug("DXF", "Do not copy final DXF when 'suppress on close'.");
             VSIFCloseL(fpTemp);
@@ -237,7 +223,7 @@ int OGRDXFWriterDS::Open(const char *pszFilename, char **papszOptions)
     /*      Attempt to read the template header file so we have a list      */
     /*      of layers, linestyles and blocks.                               */
     /* -------------------------------------------------------------------- */
-    if (!oHeaderDS.Open(osHeaderFile, TRUE))
+    if (!oHeaderDS.Open(osHeaderFile, true, nullptr))
         return FALSE;
 
     /* -------------------------------------------------------------------- */
@@ -274,9 +260,10 @@ int OGRDXFWriterDS::Open(const char *pszFilename, char **papszOptions)
 /*                           ICreateLayer()                             */
 /************************************************************************/
 
-OGRLayer *OGRDXFWriterDS::ICreateLayer(const char *pszName,
-                                       const OGRSpatialReference *,
-                                       OGRwkbGeometryType, char **)
+OGRLayer *
+OGRDXFWriterDS::ICreateLayer(const char *pszName,
+                             const OGRGeomFieldDefn * /*poGeomFieldDefn*/,
+                             CSLConstList /*papszOptions*/)
 
 {
     if (EQUAL(pszName, "blocks") && poBlocksLayer == nullptr)
@@ -339,6 +326,7 @@ static bool WriteValue(VSILFILE *fp, int nCode, double dfValue)
 
     return true;
 }
+
 /************************************************************************/
 /*                        TransferUpdateHeader()                        */
 /************************************************************************/
@@ -350,10 +338,10 @@ bool OGRDXFWriterDS::TransferUpdateHeader(VSILFILE *fpOut)
 
     // We don't like non-finite extents. In this case, just write a generic
     // bounding box. Most CAD programs probably ignore this anyway.
-    if (!CPLIsFinite(oGlobalEnvelope.MinX) ||
-        !CPLIsFinite(oGlobalEnvelope.MinY) ||
-        !CPLIsFinite(oGlobalEnvelope.MaxX) ||
-        !CPLIsFinite(oGlobalEnvelope.MaxY))
+    if (!std::isfinite(oGlobalEnvelope.MinX) ||
+        !std::isfinite(oGlobalEnvelope.MinY) ||
+        !std::isfinite(oGlobalEnvelope.MaxX) ||
+        !std::isfinite(oGlobalEnvelope.MaxY))
     {
         oGlobalEnvelope.MinX = 0.0;
         oGlobalEnvelope.MinY = 0.0;
@@ -693,7 +681,7 @@ bool OGRDXFWriterDS::WriteNewLayerDefinitions(VSILFILE *fpOut)
             }
             else if (anDefaultLayerCode[i] == 5)
             {
-                long nIgnored;
+                unsigned int nIgnored;
                 if (!WriteEntityID(fpOut, nIgnored))
                     return false;
             }
@@ -729,14 +717,14 @@ bool OGRDXFWriterDS::WriteNewLineTypeRecords(VSILFILE *fpIn)
     if (poLayer == nullptr)
         return true;
 
-    std::map<CPLString, std::vector<double>> &oNewLineTypes =
+    const std::map<CPLString, std::vector<double>> &oNewLineTypes =
         poLayer->GetNewLineTypeMap();
 
     bool bRet = true;
     for (const auto &oPair : oNewLineTypes)
     {
         bRet &= WriteValue(fpIn, 0, "LTYPE");
-        long nIgnored;
+        unsigned int nIgnored;
         bRet &= WriteEntityID(fpIn, nIgnored);
         bRet &= WriteValue(fpIn, 100, "AcDbSymbolTableRecord");
         bRet &= WriteValue(fpIn, 100, "AcDbLinetypeTableRecord");
@@ -777,7 +765,7 @@ bool OGRDXFWriterDS::WriteNewTextStyleRecords(VSILFILE *fpIn)
     for (auto &oPair : oNewTextStyles)
     {
         bRet &= WriteValue(fpIn, 0, "STYLE");
-        long nIgnored;
+        unsigned int nIgnored;
         bRet &= WriteEntityID(fpIn, nIgnored);
         bRet &= WriteValue(fpIn, 100, "AcDbSymbolTableRecord");
         bRet &= WriteValue(fpIn, 100, "AcDbTextStyleTableRecord");
@@ -852,7 +840,7 @@ bool OGRDXFWriterDS::WriteNewBlockRecords(VSILFILE *fpIn)
         /* --------------------------------------------------------------------
          */
         bRet &= WriteValue(fpIn, 0, "BLOCK_RECORD");
-        long nIgnored;
+        unsigned int nIgnored;
         bRet &= WriteEntityID(fpIn, nIgnored);
         bRet &= WriteValue(fpIn, 100, "AcDbSymbolTableRecord");
         bRet &= WriteValue(fpIn, 100, "AcDbBlockTableRecord");
@@ -901,7 +889,7 @@ bool OGRDXFWriterDS::WriteNewBlockDefinitions(VSILFILE *fpIn)
                  poThisBlockFeat->GetFieldAsString("Block"));
 
         bRet &= WriteValue(fpIn, 0, "BLOCK");
-        long nIgnored;
+        unsigned int nIgnored;
         bRet &= WriteEntityID(fpIn, nIgnored);
         bRet &= WriteValue(fpIn, 100, "AcDbEntity");
         if (strlen(poThisBlockFeat->GetFieldAsString("Layer")) > 0)
@@ -1040,22 +1028,26 @@ bool OGRDXFWriterDS::CheckEntityID(const char *pszEntityID)
 /*                           WriteEntityID()                            */
 /************************************************************************/
 
-bool OGRDXFWriterDS::WriteEntityID(VSILFILE *fpIn, long &nAssignedFID,
-                                   long nPreferredFID)
+bool OGRDXFWriterDS::WriteEntityID(VSILFILE *fpIn, unsigned int &nAssignedFID,
+                                   GIntBig nPreferredFID)
 
 {
     CPLString osEntityID;
 
-    if (nPreferredFID != OGRNullFID)
+    // From https://github.com/OSGeo/gdal/issues/11299 it seems that 0 is an
+    // invalid handle value.
+    if (nPreferredFID > 0 &&
+        nPreferredFID <=
+            static_cast<GIntBig>(std::numeric_limits<unsigned int>::max()))
     {
 
-        osEntityID.Printf("%X", (unsigned int)nPreferredFID);
+        osEntityID.Printf("%X", static_cast<unsigned int>(nPreferredFID));
         if (!CheckEntityID(osEntityID))
         {
             aosUsedEntities.insert(osEntityID);
             if (!WriteValue(fpIn, 5, osEntityID))
                 return false;
-            nAssignedFID = nPreferredFID;
+            nAssignedFID = static_cast<unsigned int>(nPreferredFID);
             return true;
         }
     }

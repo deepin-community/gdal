@@ -9,23 +9,7 @@
  ******************************************************************************
  * Copyright (c) 2005, Kevin Ruland
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************/
 
 %include constraints.i
@@ -110,6 +94,7 @@ typedef void OGRGeometryShadow;
 
 typedef struct OGRStyleTableHS OGRStyleTableShadow;
 typedef struct OGRFieldDomainHS OGRFieldDomainShadow;
+typedef struct OGRGeomFieldDefnHS OGRGeomFieldDefnShadow;
 %}
 #endif /* #if defined(SWIGPYTHON) || defined(SWIGJAVA) */
 
@@ -368,6 +353,7 @@ $1;
 %rename (GetDataTypeByName) GDALGetDataTypeByName;
 %rename (DataTypeUnion) GDALDataTypeUnion;
 %rename (GetColorInterpretationName) GDALGetColorInterpretationName;
+%rename (GetColorInterpretationByName) GDALGetColorInterpretationByName;
 %rename (GetPaletteInterpretationName) GDALGetPaletteInterpretationName;
 %rename (DecToDMS) GDALDecToDMS;
 %rename (PackedDMSToDec) GDALPackedDMSToDec;
@@ -723,6 +709,8 @@ GDALDataType GDALGetDataTypeByName( const char * pszDataTypeName );
 GDALDataType GDALDataTypeUnion( GDALDataType a, GDALDataType b );
 
 const char *GDALGetColorInterpretationName( GDALColorInterp eColorInterp );
+
+GDALColorInterp GDALGetColorInterpretationByName( const char* pszColorInterpName );
 
 const char *GDALGetPaletteInterpretationName( GDALPaletteInterp ePaletteInterp );
 
@@ -1280,6 +1268,8 @@ struct GDALWarpAppOptions {
 
 /* Note: we must use 2 distinct names due to different ownership of the result */
 
+
+%apply Pointer NONNULL { GDALDatasetShadow* dstDS };
 %inline %{
 
 int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
@@ -1318,6 +1308,7 @@ int wrapper_GDALWarpDestDS( GDALDatasetShadow* dstDS,
     return bRet;
 }
 %}
+%clear GDALDatasetShadow* dstDS;
 
 #ifdef SWIGJAVA
 %rename (Warp) wrapper_GDALWarpDestName;
@@ -2029,6 +2020,77 @@ GDALDatasetShadow* wrapper_GDALBuildVRT_names( const char* dest,
 %clear char** source_filenames;
 
 //************************************************************************
+// gdal.TileIndex()
+//************************************************************************
+
+#ifdef SWIGJAVA
+%rename (TileIndexOptions) GDALTileIndexOptions;
+#endif
+struct GDALTileIndexOptions {
+%extend {
+    GDALTileIndexOptions(char** options) {
+        return GDALTileIndexOptionsNew(options, NULL);
+    }
+
+    ~GDALTileIndexOptions() {
+        GDALTileIndexOptionsFree( self );
+    }
+}
+};
+
+#ifdef SWIGPYTHON
+%rename (TileIndexInternalNames) wrapper_TileIndex_names;
+#elif defined(SWIGJAVA)
+%rename (TileIndex) wrapper_TileIndex_names;
+#endif
+%newobject wrapper_TileIndex_names;
+
+%apply (char **options) {char** source_filenames};
+%inline %{
+GDALDatasetShadow* wrapper_TileIndex_names( const char* dest,
+                                            char ** source_filenames,
+                                            GDALTileIndexOptions* options,
+                                            GDALProgressFunc callback=NULL,
+                                            void* callback_data=NULL)
+{
+    int usageError; /* ignored */
+#if 0
+    bool bFreeOptions = false;
+    if( callback )
+    {
+        if( options == NULL )
+        {
+            bFreeOptions = true;
+            options = GDALTileIndexOptionsNew(NULL, NULL);
+        }
+        GDALTileIndexOptionsSetProgress(options, callback, callback_data);
+    }
+#endif
+
+#ifdef SWIGPYTHON
+    std::vector<ErrorStruct> aoErrors;
+    if( GetUseExceptions() )
+    {
+        PushStackingErrorHandler(&aoErrors);
+    }
+#endif
+    GDALDatasetH hDSRet = GDALTileIndex(dest, CSLCount(source_filenames), source_filenames, options, &usageError);
+#if 0
+    if( bFreeOptions )
+        GDALTileIndexOptionsFree(options);
+#endif
+#ifdef SWIGPYTHON
+    if( GetUseExceptions() )
+    {
+        PopStackingErrorHandler(&aoErrors, hDSRet != NULL);
+    }
+#endif
+    return hDSRet;
+}
+%}
+%clear char** source_filenames;
+
+//************************************************************************
 // gdal.MultiDimTranslate()
 //************************************************************************
 
@@ -2093,4 +2155,14 @@ GDALDatasetShadow* wrapper_GDALMultiDimTranslateDestName( const char* dest,
 
 
 %clear (const char* dest);
+
+#if defined(SWIGPYTHON)
+// This enables constructs such as isinstance(x, ogr.DataSource) to
+// return True for a gdal.Dataset. We can't include it in gdal_python.i
+// because Dataset is not defined at that point.
+%pythoncode %{
+ogr.DataSource = Dataset
+ogr.Driver = Driver
+%}
+#endif
 

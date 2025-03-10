@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2021, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "zarr.h"
@@ -35,6 +19,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdlib>
 #include <limits>
 #include <map>
@@ -237,8 +222,7 @@ CPLJSONObject ZarrArray::SerializeSpecialAttributes()
         CPLFree(pszWKT);
 
         {
-            CPLErrorHandlerPusher quietError(CPLQuietErrorHandler);
-            CPLErrorStateBackuper errorStateBackuper;
+            CPLErrorStateBackuper oErrorStateBackuper(CPLQuietErrorHandler);
             char *projjson = nullptr;
             if (m_poSRS->exportToPROJJSON(&projjson, nullptr) == OGRERR_NONE &&
                 projjson != nullptr)
@@ -372,7 +356,7 @@ void ZarrArray::DeallocateDecodedTileData()
         const size_t nDTSize = m_oType.GetSize();
         GByte *pDst = &m_abyDecodedTileData[0];
         const size_t nValues = m_abyDecodedTileData.size() / nDTSize;
-        for (auto &elt : m_aoDtypeElts)
+        for (const auto &elt : m_aoDtypeElts)
         {
             if (elt.nativeType == DtypeElt::NativeType::STRING_ASCII ||
                 elt.nativeType == DtypeElt::NativeType::STRING_UNICODE)
@@ -558,20 +542,7 @@ void ZarrArray::SerializeNumericNoData(CPLJSONObject &oRoot) const
     else if (m_oType.GetNumericDataType() == GDT_UInt64)
     {
         const auto nVal = GetNoDataValueAsUInt64();
-        if (nVal <= static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
-        {
-            oRoot.Add("fill_value", static_cast<GInt64>(nVal));
-        }
-        else if (nVal == static_cast<uint64_t>(static_cast<double>(nVal)))
-        {
-            oRoot.Add("fill_value", static_cast<double>(nVal));
-        }
-        else
-        {
-            // not really compliant...
-            oRoot.Add("fill_value",
-                      CPLSPrintf(CPL_FRMT_GUIB, static_cast<GUIntBig>(nVal)));
-        }
+        oRoot.Add("fill_value", static_cast<uint64_t>(nVal));
     }
     else
     {
@@ -764,7 +735,7 @@ lbl_next_depth:
 void ZarrArray::DecodeSourceElt(const std::vector<DtypeElt> &elts,
                                 const GByte *pSrc, GByte *pDst)
 {
-    for (auto &elt : elts)
+    for (const auto &elt : elts)
     {
         if (elt.nativeType == DtypeElt::NativeType::STRING_UNICODE)
         {
@@ -1064,9 +1035,16 @@ bool ZarrArray::IRead(const GUInt64 *arrayStartIdx, const size_t *count,
     // Make sure that arrayStep[i] are positive for sake of simplicity
     if (negativeStep)
     {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         arrayStartIdxMod.resize(nDims);
         arrayStepMod.resize(nDims);
         bufferStrideMod.resize(nDims);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         for (size_t i = 0; i < nDims; ++i)
         {
             if (arrayStep[i] < 0)
@@ -1559,9 +1537,16 @@ bool ZarrArray::IWrite(const GUInt64 *arrayStartIdx, const size_t *count,
     // Make sure that arrayStep[i] are positive for sake of simplicity
     if (negativeStep)
     {
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         arrayStartIdxMod.resize(nDims);
         arrayStepMod.resize(nDims);
         bufferStrideMod.resize(nDims);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
         for (size_t i = 0; i < nDims; ++i)
         {
             if (arrayStep[i] < 0)
@@ -2064,7 +2049,7 @@ ZarrArray::OpenTilePresenceCache(bool bCanCreate) const
     if (poTilePresenceArray)
     {
         bool ok = true;
-        const auto apoDimsCache = poTilePresenceArray->GetDimensions();
+        const auto &apoDimsCache = poTilePresenceArray->GetDimensions();
         if (poTilePresenceArray->GetDataType() != eByteDT ||
             apoDimsCache.size() != m_aoDims.size())
         {
@@ -2173,6 +2158,7 @@ bool ZarrArray::CacheTilePresence()
         explicit DirCloser(VSIDIR *psDir) : m_psDir(psDir)
         {
         }
+
         ~DirCloser()
         {
             VSICloseDir(m_psDir);
@@ -2202,7 +2188,7 @@ bool ZarrArray::CacheTilePresence()
     const std::vector<size_t> anCount(m_aoDims.size(), 1);
     const std::vector<GInt64> anArrayStep(m_aoDims.size(), 0);
     const std::vector<GPtrDiff_t> anBufferStride(m_aoDims.size(), 0);
-    const auto apoDimsCache = poTilePresenceArray->GetDimensions();
+    const auto &apoDimsCache = poTilePresenceArray->GetDimensions();
     const auto eByteDT = GDALExtendedDataType::Create(GDT_Byte);
 
     CPLDebug(ZARR_DEBUG_KEY,
@@ -2210,12 +2196,16 @@ bool ZarrArray::CacheTilePresence()
              "present...",
              osDirectoryName.c_str());
     uint64_t nCounter = 0;
+    const char chSrcFilenameDirSeparator =
+        VSIGetDirectorySeparator(osDirectoryName.c_str())[0];
     while (const VSIDIREntry *psEntry = VSIGetNextDirEntry(psDir))
     {
         if (!VSI_ISDIR(psEntry->nMode))
         {
-            const CPLStringList aosTokens =
-                GetTileIndicesFromFilename(psEntry->pszName);
+            const CPLStringList aosTokens = GetTileIndicesFromFilename(
+                CPLString(psEntry->pszName)
+                    .replaceAll(chSrcFilenameDirSeparator, '/')
+                    .c_str());
             if (aosTokens.size() == static_cast<int>(m_aoDims.size()))
             {
                 // Get tile indices from filename
@@ -2721,7 +2711,8 @@ void ZarrArray::NotifyChildrenOfDeletion()
 /*                     ParseSpecialAttributes()                         */
 /************************************************************************/
 
-void ZarrArray::ParseSpecialAttributes(CPLJSONObject &oAttributes)
+void ZarrArray::ParseSpecialAttributes(
+    const std::shared_ptr<GDALGroup> &poGroup, CPLJSONObject &oAttributes)
 {
     const auto crs = oAttributes[CRS_ATTRIBUTE_NAME];
     std::shared_ptr<OGRSpatialReference> poSRS;
@@ -2733,38 +2724,13 @@ void ZarrArray::ParseSpecialAttributes(CPLJSONObject &oAttributes)
             if (item.IsValid())
             {
                 poSRS = std::make_shared<OGRSpatialReference>();
+                poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
                 if (poSRS->SetFromUserInput(
                         item.ToString().c_str(),
                         OGRSpatialReference::
                             SET_FROM_USER_INPUT_LIMITATIONS_get()) ==
                     OGRERR_NONE)
                 {
-                    int iDimX = 0;
-                    int iDimY = 0;
-                    int iCount = 1;
-                    for (const auto &poDim : GetDimensions())
-                    {
-                        if (poDim->GetType() == GDAL_DIM_TYPE_HORIZONTAL_X)
-                            iDimX = iCount;
-                        else if (poDim->GetType() == GDAL_DIM_TYPE_HORIZONTAL_Y)
-                            iDimY = iCount;
-                        iCount++;
-                    }
-                    if ((iDimX == 0 || iDimY == 0) && GetDimensionCount() >= 2)
-                    {
-                        iDimX = static_cast<int>(GetDimensionCount());
-                        iDimY = iDimX - 1;
-                    }
-                    if (iDimX > 0 && iDimY > 0)
-                    {
-                        if (poSRS->GetDataAxisToSRSAxisMapping() ==
-                            std::vector<int>{2, 1})
-                            poSRS->SetDataAxisToSRSAxisMapping({iDimY, iDimX});
-                        else if (poSRS->GetDataAxisToSRSAxisMapping() ==
-                                 std::vector<int>{1, 2})
-                            poSRS->SetDataAxisToSRSAxisMapping({iDimX, iDimY});
-                    }
-
                     oAttributes.Delete(CRS_ATTRIBUTE_NAME);
                     break;
                 }
@@ -2772,7 +2738,79 @@ void ZarrArray::ParseSpecialAttributes(CPLJSONObject &oAttributes)
             }
         }
     }
-    SetSRS(poSRS);
+    else
+    {
+        // Check if SRS is using CF-1 conventions
+        const auto gridMapping = oAttributes["grid_mapping"];
+        if (gridMapping.GetType() == CPLJSONObject::Type::String)
+        {
+            const auto gridMappingArray =
+                poGroup->OpenMDArray(gridMapping.ToString());
+            if (gridMappingArray)
+            {
+                poSRS = std::make_shared<OGRSpatialReference>();
+                poSRS->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                CPLStringList aosKeyValues;
+                for (const auto &poAttr : gridMappingArray->GetAttributes())
+                {
+                    if (poAttr->GetDataType().GetClass() == GEDTC_STRING)
+                    {
+                        aosKeyValues.SetNameValue(poAttr->GetName().c_str(),
+                                                  poAttr->ReadAsString());
+                    }
+                    else if (poAttr->GetDataType().GetClass() == GEDTC_NUMERIC)
+                    {
+                        std::string osVal;
+                        for (double val : poAttr->ReadAsDoubleArray())
+                        {
+                            if (!osVal.empty())
+                                osVal += ',';
+                            osVal += CPLSPrintf("%.17g", val);
+                        }
+                        aosKeyValues.SetNameValue(poAttr->GetName().c_str(),
+                                                  osVal.c_str());
+                    }
+                }
+                if (poSRS->importFromCF1(aosKeyValues.List(), nullptr) !=
+                    OGRERR_NONE)
+                {
+                    poSRS.reset();
+                }
+            }
+        }
+    }
+
+    if (poSRS)
+    {
+        int iDimX = 0;
+        int iDimY = 0;
+        int iCount = 1;
+        for (const auto &poDim : GetDimensions())
+        {
+            if (poDim->GetType() == GDAL_DIM_TYPE_HORIZONTAL_X)
+                iDimX = iCount;
+            else if (poDim->GetType() == GDAL_DIM_TYPE_HORIZONTAL_Y)
+                iDimY = iCount;
+            iCount++;
+        }
+        if ((iDimX == 0 || iDimY == 0) && GetDimensionCount() >= 2)
+        {
+            iDimX = static_cast<int>(GetDimensionCount());
+            iDimY = iDimX - 1;
+        }
+        if (iDimX > 0 && iDimY > 0)
+        {
+            const auto &oMapping = poSRS->GetDataAxisToSRSAxisMapping();
+            if (oMapping == std::vector<int>{2, 1} ||
+                oMapping == std::vector<int>{2, 1, 3})
+                poSRS->SetDataAxisToSRSAxisMapping({iDimY, iDimX});
+            else if (oMapping == std::vector<int>{1, 2} ||
+                     oMapping == std::vector<int>{1, 2, 3})
+                poSRS->SetDataAxisToSRSAxisMapping({iDimX, iDimY});
+        }
+
+        SetSRS(poSRS);
+    }
 
     const auto unit = oAttributes[CF_UNITS];
     if (unit.GetType() == CPLJSONObject::Type::String)

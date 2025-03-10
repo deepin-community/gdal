@@ -8,23 +8,7 @@
  * Copyright (c) 2005, Frans van den Bergh <fvdbergh@csir.co.za>
  * Copyright (c) 2008-2009, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 #include "cpl_port.h"
 #include "cpl_error.h"
@@ -125,6 +109,7 @@ class MSGNRasterBand final : public GDALRasterBand
     virtual CPLErr IReadBlock(int, int, void *) override;
     virtual double GetMinimum(int *pbSuccess = nullptr) override;
     virtual double GetMaximum(int *pbSuccess = nullptr) override;
+
     virtual const char *GetDescription() const override
     {
         return band_description;
@@ -205,15 +190,17 @@ CPLErr MSGNRasterBand::IReadBlock(CPL_UNUSED int nBlockXOff, int nBlockYOff,
         data_offset =
             poGDS->msg_reader_core->get_f_data_offset() +
             static_cast<vsi_l_offset>(interline_spacing) * i_nBlockYOff +
-            (band_in_file - 1) * packet_size + (packet_size - data_length);
+            static_cast<vsi_l_offset>(band_in_file - 1) * packet_size +
+            (packet_size - data_length);
     }
     else
     {
-        data_offset = poGDS->msg_reader_core->get_f_data_offset() +
-                      static_cast<vsi_l_offset>(interline_spacing) *
-                          (int(i_nBlockYOff / 3) + 1) -
-                      packet_size * (3 - (i_nBlockYOff % 3)) +
-                      (packet_size - data_length);
+        data_offset =
+            poGDS->msg_reader_core->get_f_data_offset() +
+            static_cast<vsi_l_offset>(interline_spacing) *
+                (int(i_nBlockYOff / 3) + 1) -
+            static_cast<vsi_l_offset>(packet_size) * (3 - (i_nBlockYOff % 3)) +
+            (packet_size - data_length);
     }
 
     if (VSIFSeekL(poGDS->fp, data_offset, SEEK_SET) != 0)
@@ -428,14 +415,14 @@ GDALDataset *MSGNDataset::Open(GDALOpenInfo *poOpenInfo)
     {
         if (STARTS_WITH_CI(poOpenInfo->pszFilename, "HRV:"))
         {
-            poOpenInfoToFree = cpl::make_unique<GDALOpenInfo>(
+            poOpenInfoToFree = std::make_unique<GDALOpenInfo>(
                 &poOpenInfo->pszFilename[4], poOpenInfo->eAccess);
             open_info = poOpenInfoToFree.get();
             open_mode = MODE_HRV;
         }
         else if (STARTS_WITH_CI(poOpenInfo->pszFilename, "RAD:"))
         {
-            poOpenInfoToFree = cpl::make_unique<GDALOpenInfo>(
+            poOpenInfoToFree = std::make_unique<GDALOpenInfo>(
                 &poOpenInfo->pszFilename[4], poOpenInfo->eAccess);
             open_info = poOpenInfoToFree.get();
             open_mode = MODE_RAD;
@@ -479,7 +466,7 @@ GDALDataset *MSGNDataset::Open(GDALOpenInfo *poOpenInfo)
         return nullptr;
     }
 
-    auto poDS = cpl::make_unique<MSGNDataset>();
+    auto poDS = std::make_unique<MSGNDataset>();
 
     poDS->m_open_mode = open_mode;
     poDS->fp = fp;

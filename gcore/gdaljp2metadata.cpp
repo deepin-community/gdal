@@ -11,23 +11,7 @@
  * Copyright (c) 2010-2015, Even Rouault <even dot rouault at spatialys dot com>
  * Copyright (c) 2015, European Union Satellite Centre
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -52,12 +36,14 @@
 #include "cpl_string.h"
 #include "cpl_minixml.h"
 #include "gdaljp2metadatagenerator.h"
+#ifdef HAVE_TIFF
 #include "gt_wkt_srs_for_gdal.h"
+#endif
 #include "ogr_api.h"
 #include "ogr_core.h"
 #include "ogr_geometry.h"
 #include "ogr_spatialref.h"
-#include "ogrgeojsonreader.h"
+#include "ogrlibjsonutils.h"
 
 /*! @cond Doxygen_Suppress */
 
@@ -185,10 +171,8 @@ int GDALJP2Metadata::ReadAndParse(VSILFILE *fpLL, int nGEOJP2Index,
         aoSetPriorities.insert(nGMLJP2Index);
     if (nMSIGIndex >= 0)
         aoSetPriorities.insert(nMSIGIndex);
-    std::set<int>::iterator oIter = aoSetPriorities.begin();
-    for (; oIter != aoSetPriorities.end(); ++oIter)
+    for (const int nIndex : aoSetPriorities)
     {
-        int nIndex = *oIter;
         if ((nIndex == nGEOJP2Index && ParseJP2GeoTIFF()) ||
             (nIndex == nGMLJP2Index && ParseGMLCoverageDesc()) ||
             (nIndex == nMSIGIndex && ParseMSIG()))
@@ -582,6 +566,7 @@ int GDALJP2Metadata::ReadBoxes(VSILFILE *fpVSIL)
 int GDALJP2Metadata::ParseJP2GeoTIFF()
 
 {
+#ifdef HAVE_TIFF
     if (!CPLTestBool(CPLGetConfigOption("GDAL_USE_GEOJP2", "TRUE")))
         return FALSE;
 
@@ -693,6 +678,9 @@ int GDALJP2Metadata::ParseJP2GeoTIFF()
     }
 
     return iBestIndex >= 0;
+#else
+    return false;
+#endif
 }
 
 /************************************************************************/
@@ -871,7 +859,7 @@ int GDALJP2Metadata::GMLSRSLookup(const char *pszURN)
 
     if (oSRS.importFromXML(pszDictEntryXML) == OGRERR_NONE)
     {
-        m_oSRS = oSRS;
+        m_oSRS = std::move(oSRS);
         m_oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         bSuccess = true;
     }
@@ -1021,13 +1009,13 @@ int GDALJP2Metadata::ParseGMLCoverageDesc()
     /* -------------------------------------------------------------------- */
     bool bNeedAxisFlip = false;
 
-    OGRSpatialReference oSRS;
     if (bSuccess && pszSRSName != nullptr && m_oSRS.IsEmpty())
     {
+        OGRSpatialReference oSRS;
         if (STARTS_WITH_CI(pszSRSName, "epsg:"))
         {
             if (oSRS.SetFromUserInput(pszSRSName) == OGRERR_NONE)
-                m_oSRS = oSRS;
+                m_oSRS = std::move(oSRS);
         }
         else if ((STARTS_WITH_CI(pszSRSName, "urn:") &&
                   strstr(pszSRSName, ":def:") != nullptr &&
@@ -1040,11 +1028,11 @@ int GDALJP2Metadata::ParseGMLCoverageDesc()
                                  "http://www.opengis.net/def/crs/") &&
                   oSRS.importFromCRSURL(pszSRSName) == OGRERR_NONE))
         {
-            m_oSRS = oSRS;
+            m_oSRS = std::move(oSRS);
 
             // Per #2131
-            if (oSRS.EPSGTreatsAsLatLong() ||
-                oSRS.EPSGTreatsAsNorthingEasting())
+            if (m_oSRS.EPSGTreatsAsLatLong() ||
+                m_oSRS.EPSGTreatsAsNorthingEasting())
             {
                 CPLDebug("GMLJP2", "Request axis flip for SRS=%s", pszSRSName);
                 bNeedAxisFlip = true;
@@ -1225,6 +1213,7 @@ void GDALJP2Metadata::SetRPCMD(char **papszRPCMDIn)
 GDALJP2Box *GDALJP2Metadata::CreateJP2GeoTIFF()
 
 {
+#ifdef HAVE_TIFF
     /* -------------------------------------------------------------------- */
     /*      Prepare the memory buffer containing the degenerate GeoTIFF     */
     /*      file.                                                           */
@@ -1250,6 +1239,34 @@ GDALJP2Box *GDALJP2Metadata::CreateJP2GeoTIFF()
     CPLFree(pabyGTBuf);
 
     return poBox;
+#else
+    return nullptr;
+#endif
+}
+
+/************************************************************************/
+/*                          IsSRSCompatible()                           */
+/************************************************************************/
+
+/* Returns true if the SRS can be references through a EPSG code, or encoded
+ * as a GML SRS
+ */
+bool GDALJP2Metadata::IsSRSCompatible(const OGRSpatialReference *poSRS)
+{
+    const char *pszAuthName = poSRS->GetAuthorityName(nullptr);
+    const char *pszAuthCode = poSRS->GetAuthorityCode(nullptr);
+
+    if (pszAuthName && pszAuthCode && EQUAL(pszAuthName, "epsg"))
+    {
+        if (atoi(pszAuthCode))
+            return true;
+    }
+
+    CPLErrorStateBackuper oErrorStateBackuper(CPLQuietErrorHandler);
+    char *pszGMLDef = nullptr;
+    const bool bRet = (poSRS->exportToXML(&pszGMLDef, nullptr) == OGRERR_NONE);
+    CPLFree(pszGMLDef);
+    return bRet;
 }
 
 /************************************************************************/
@@ -1269,42 +1286,27 @@ void GDALJP2Metadata::GetGMLJP2GeoreferencingInfo(
     bNeedAxisFlip = false;
     OGRSpatialReference oSRS(m_oSRS);
 
-    if (oSRS.IsProjected())
-    {
-        const char *pszAuthName = oSRS.GetAuthorityName("PROJCS");
+    const char *pszAuthName = oSRS.GetAuthorityName(nullptr);
+    const char *pszAuthCode = oSRS.GetAuthorityCode(nullptr);
 
-        if (pszAuthName != nullptr && EQUAL(pszAuthName, "epsg"))
-        {
-            nEPSGCode = atoi(oSRS.GetAuthorityCode("PROJCS"));
-        }
-    }
-    else if (oSRS.IsGeographic())
+    if (pszAuthName && pszAuthCode && EQUAL(pszAuthName, "epsg"))
     {
-        const char *pszAuthName = oSRS.GetAuthorityName("GEOGCS");
-
-        if (pszAuthName != nullptr && EQUAL(pszAuthName, "epsg"))
-        {
-            nEPSGCode = atoi(oSRS.GetAuthorityCode("GEOGCS"));
-        }
+        nEPSGCode = atoi(pszAuthCode);
     }
 
-    // Save error state as importFromEPSGA() will call CPLReset()
-    CPLErrorNum errNo = CPLGetLastErrorNo();
-    CPLErr eErr = CPLGetLastErrorType();
-    CPLString osLastErrorMsg = CPLGetLastErrorMsg();
-
-    // Determine if we need to flip axis. Reimport from EPSG and make
-    // sure not to strip axis definitions to determine the axis order.
-    if (nEPSGCode != 0 && oSRS.importFromEPSGA(nEPSGCode) == OGRERR_NONE)
     {
-        if (oSRS.EPSGTreatsAsLatLong() || oSRS.EPSGTreatsAsNorthingEasting())
+        CPLErrorStateBackuper oErrorStateBackuper;
+        // Determine if we need to flip axis. Reimport from EPSG and make
+        // sure not to strip axis definitions to determine the axis order.
+        if (nEPSGCode != 0 && oSRS.importFromEPSG(nEPSGCode) == OGRERR_NONE)
         {
-            bNeedAxisFlip = true;
+            if (oSRS.EPSGTreatsAsLatLong() ||
+                oSRS.EPSGTreatsAsNorthingEasting())
+            {
+                bNeedAxisFlip = true;
+            }
         }
     }
-
-    // Restore error state
-    CPLErrorSetState(eErr, errNo, osLastErrorMsg);
 
     /* -------------------------------------------------------------------- */
     /*      Prepare coverage origin and offset vectors.  Take axis          */
@@ -1369,6 +1371,7 @@ void GDALJP2Metadata::GetGMLJP2GeoreferencingInfo(
     {
         char *pszGMLDef = nullptr;
 
+        CPLErrorStateBackuper oErrorStateBackuper;
         if (oSRS.exportToXML(&pszGMLDef, nullptr) == OGRERR_NONE)
         {
             char *pszWKT = nullptr;
@@ -2584,6 +2587,8 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
         "</gmljp2:GMLJP2CoverageCollection>\n",
         osRootGMLId.c_str(), osGridCoverage.c_str());
 
+    const std::string osTmpDir = VSIMemGenerateHiddenFilename("gmljp2");
+
     /* -------------------------------------------------------------------- */
     /*      Process metadata, annotations and features collections.         */
     /* -------------------------------------------------------------------- */
@@ -2747,7 +2752,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     if (hSrcDS)
                     {
                         CPLString osTmpFile =
-                            CPLSPrintf("/vsimem/gmljp2_%p/%d/%s.gml", this, i,
+                            CPLSPrintf("%s/%d/%s.gml", osTmpDir.c_str(), i,
                                        CPLGetBasename(aoGMLFiles[i].osFile));
                         char **papszOptions = nullptr;
                         papszOptions =
@@ -2855,7 +2860,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                     !aoGMLFiles[i].osRemoteResource.empty())
                 {
                     osTmpFile =
-                        CPLSPrintf("/vsimem/gmljp2_%p/%d/%s.gml", this, i,
+                        CPLSPrintf("%s/%d/%s.gml", osTmpDir.c_str(), i,
                                    CPLGetBasename(aoGMLFiles[i].osFile));
 
                     GMLJP2V2BoxDesc oDesc;
@@ -2937,7 +2942,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                         if (!osXSD.empty())
                         {
                             GMLJP2V2BoxDesc oDesc;
-                            oDesc.osFile = osXSD;
+                            oDesc.osFile = std::move(osXSD);
                             oDesc.osLabel = CPLGetFilename(oDesc.osFile);
                             osSchemaLocation += papszTokens[0];
                             osSchemaLocation += " ";
@@ -3035,7 +3040,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
                 if (hSrcDS)
                 {
                     CPLString osTmpFile =
-                        CPLSPrintf("/vsimem/gmljp2_%p/%d/%s.kml", this, i,
+                        CPLSPrintf("%s/%d/%s.kml", osTmpDir.c_str(), i,
                                    CPLGetBasename(aoAnnotations[i].osFile));
                     char **papszOptions = nullptr;
                     if (aoAnnotations.size() > 1)
@@ -3213,7 +3218,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
     /* -------------------------------------------------------------------- */
     /*      Additional user specified boxes.                                */
     /* -------------------------------------------------------------------- */
-    for (auto &oBox : aoBoxes)
+    for (const auto &oBox : aoBoxes)
     {
         GByte *pabyContent = nullptr;
         if (VSIIngestFile(nullptr, oBox.osFile, &pabyContent, nullptr, -1))
@@ -3251,7 +3256,7 @@ GDALJP2Box *GDALJP2Metadata::CreateGMLJP2V2(int nXSize, int nYSize,
     for (auto &poGMLBox : apoGMLBoxes)
         delete poGMLBox;
 
-    VSIRmdirRecursive(CPLSPrintf("/vsimem/gmljp2_%p", this));
+    VSIRmdirRecursive(osTmpDir.c_str());
 
     return poGMLData;
 }

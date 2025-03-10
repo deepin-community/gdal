@@ -10,23 +10,7 @@
  * Copyright (c) 2017, Ari Jolma
  * Copyright (c) 2017, Finnish Environment Institute
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogr_spatialref.h"
@@ -74,7 +58,8 @@ std::string URLRemoveKey(const char *url, const std::string &key)
     {
         retval.erase(retval.size() - 1);
     }
-    return retval;
+    std::string retValAsStdString = std::move(retval);
+    return retValAsStdString;
 }
 
 std::vector<std::string> &SwapFirstTwo(std::vector<std::string> &array)
@@ -398,7 +383,7 @@ bool SetupCache(std::string &cache, bool clear)
 {
     if (cache == "")
     {
-#ifdef WIN32
+#ifdef _WIN32
         const char *home = CPLGetConfigOption("USERPROFILE", nullptr);
 #else
         const char *home = CPLGetConfigOption("HOME", nullptr);
@@ -679,7 +664,7 @@ CPLErr AddEntryToCache(const std::string &cache, const std::string &url,
     VSIFWriteL(entry.c_str(), sizeof(char), entry.size(), f);
     VSIFCloseL(f);
 
-    filename = path;
+    filename = std::move(path);
     return CE_None;
 }
 

@@ -1,3 +1,94 @@
+MIGRATION GUIDE FROM GDAL 3.9 to GDAL 3.10
+------------------------------------------
+
+- The OGR SQL parser has been modified to evaluate NULL values in boolean
+  operations similarly to other SQL engines (SQLite, PostgreSQL, etc.). Previously,
+  with a foo=NULL field, expressions ``foo NOT IN ('bar')`` and ``foo NOT LIKE ('bar')``
+  would evaluate as true. Now the result is false (with the NULL state being
+  propagated to it). Concretely, to get the same results as in previous versions,
+  the above expressions must be rewritten as ``foo IS NULL OR foo NOT IN ('bar')``
+  and ``foo IS NULL OR foo NOT LIKE ('bar')``.
+
+- MEM driver: opening a dataset with the MEM::: syntax is now disabled by
+  default because of security implications. This can be enabled by setting the
+  GDAL_MEM_ENABLE_OPEN build or configuration option. Creation of a 0-band MEM
+  dataset, and using the GDALDataset::AddBand() method with the DATAPOINTER,
+  PIXELOFFSET and LINEOFFSET options is the recommended way. For example, like
+  in https://github.com/OSGeo/gdal/blob/e32a2fde41a555b7948cece9ab9b4e979138e7dd/gcore/rasterio.cpp#L1534-L1576
+
+- The Erdas Imagine (HFA) and Derived drivers are now optional drivers. Users
+  building with GDAL_BUILD_OPTIONAL_DRIVERS=OFF may need to explicitly enable
+  them with GDAL_ENABLE_DRIVER_HFA=ON and GDAL_ENABLE_DRIVER_DERIVED=ON.
+  The MapInfo, OGR_VRT and KML drivers are now an optional driver. Users
+  building with OGR_BUILD_OPTIONAL_DRIVERS=OFF may need to explicitly enable
+  them with OGR_ENABLE_DRIVER_TAB=ON, OGR_ENABLE_DRIVER_VRT=ON and
+  OGR_ENABLE_DRIVER_KML=ON.
+
+- User code using VSIFEofL() to potentially to end read loops should also test
+  the return code of the new VSIFError() function. Some virtual file systems
+  that used to report errors through VSIFEofL() now do through VSIFError().
+
+- Out-of-tree implementations of VSIVirtualHandle():
+  2 new required virtual methods must be implemented: int Error(), and
+  void ClearErr() following POSIX semantics of ferror() and clearerr().
+  This is to distinguish Read() that returns less bytes than requested because
+  of an error (Error() != 0) or because of end-of-file (Eof() != 0)
+
+  The VSIFilesystemPluginCallbacksStruct structure is extended with 2
+  corresponding optional (but recommended to be implemented to reliably detect
+  reading errors) callbacks "error" and "clear_err".
+
+- Python bindings: Band.GetStatistics() and Band.ComputeStatistics() now
+  return a None value in case of error (when exceptions are not enabled)
+
+- New color interpretation (GCI_xxxx) items have been added to the GDALColorInterp
+  enumeration. Code testing color interpretation may need to be adapted.
+
+MIGRATION GUIDE FROM GDAL 3.8 to GDAL 3.9
+-----------------------------------------
+
+- Out-of-tree vector drivers:
+  * OGRLayer::CreateField() now takes a const OGRFieldDefn* instead of a
+    OGRFieldDefn*.
+  * OGRLayer::CreateGeomField() now takes a const OGRGeomFieldDefn* instead of
+    a OGRGeomFieldDefn*.
+  * OGRLayer::ICreateLayer() has a new prototype, due to RFC 99 "Geometry
+    coordinate precision" changes.
+
+    The fastest migration path is from:
+
+    OGRLayer *
+         MyDataset::ICreateLayer(const char* pszLayerName,
+                                 const OGRSpatialReference *poSpatialRef,
+                                 OGRwkbGeometryType eGType, char **papszOptions)
+    {
+        ...
+    }
+
+    to
+
+    OGRLayer *
+         MyDataset::ICreateLayer(const char *pszLayerName,
+                                 const OGRGeomFieldDefn *poGeomFieldDefn,
+                                 CSLConstList papszOptions)
+    {
+        const auto eGType = poGeomFieldDefn ? poGeomFieldDefn->GetType() : wkbNone;
+        const auto poSpatialRef =
+            poGeomFieldDefn ? poGeomFieldDefn->GetSpatialRef() : nullptr;
+        ...
+    }
+
+- Sealed feature and field definition (RFC 97). A number of drivers now "seal"
+  their layer definition, which might cause issue to user code currently
+  mis-using setters of OGRFeatureDefn, OGRFieldDefn or OGRGeomFieldDefn on such
+  instances.
+  The drivers that have been updated to seal their layer definition are:
+  GeoPackage, PostgreSQL, Shapefile, OpenFileGDB, MITAB, Memory, GeoJSON, JSONFG,
+  TopoJSON, ESRIJSON, ODS, XLSX.
+
+- OGRLayer::SetIgnoredFields() now accepts a ``CSLConstList papszIgnoredFields``
+  instead of a ``const char** papszIgnoredFields``
+
 MIGRATION GUIDE FROM GDAL 3.7 to GDAL 3.8
 -----------------------------------------
 

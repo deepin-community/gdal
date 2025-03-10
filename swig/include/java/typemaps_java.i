@@ -19,6 +19,45 @@
 %include "arrays_java.i";
 %include "typemaps.i"
 
+
+%fragment("SafeNewStringUTF8","header")
+%{
+static jstring
+SafeNewStringUTF8(JNIEnv *jenv, const char* pszInput)
+{
+  jstring ret = 0;
+  if (pszInput)
+  {
+      if( !CPLIsUTF8(pszInput, -1) )
+      {
+          CPLError(CE_Warning, CPLE_AppDefined,
+                   "A non-UTF8 string has been detected. Forcing it to ASCII");
+          char* pszTmp = CPLUTF8ForceToASCII(pszInput, '_');
+#ifdef __cplusplus
+          ret = jenv->NewStringUTF(pszTmp);
+#else
+          ret = (*jenv)->NewStringUTF(jenv, pszTmp);
+#endif
+          CPLFree(pszTmp);
+      }
+      else
+      {
+#ifdef __cplusplus
+          ret = jenv->NewStringUTF(pszInput);
+#else
+          ret = (*jenv)->NewStringUTF(jenv, pszInput);
+#endif
+      }
+  }
+  return ret;
+}
+%}
+
+// Overrides typemap defined in /usr/share/swig4.0/java.swg
+%typemap(out, fragment="SafeNewStringUTF8", noblock=1) char * {
+  $result = SafeNewStringUTF8(jenv, (const char *)$1);
+}
+
 %apply (int) {VSI_RETVAL};
 
 %typemap(javabody) SWIGTYPE %{
@@ -250,7 +289,7 @@
   $2 = &pGCPs;
 }
 
-%typemap(argout) (int *nGCPs, GDAL_GCP const **pGCPs )
+%typemap(argout, fragment="SafeNewStringUTF8") (int *nGCPs, GDAL_GCP const **pGCPs )
 {
   /* %typemap(argout) (int *nGCPs, GDAL_GCP const **pGCPs ) */
   const jclass GCPClass = jenv->FindClass("org/gdal/gdal/GCP");
@@ -261,8 +300,8 @@
 
   int i;
   for (i=0; i<*$1; i++ ) {
-    jstring stringInfo = jenv->NewStringUTF((*$2)[i].pszInfo);
-    jstring stringId = jenv->NewStringUTF((*$2)[i].pszId);
+    jstring stringInfo = SafeNewStringUTF8(jenv, (*$2)[i].pszInfo);
+    jstring stringId = SafeNewStringUTF8(jenv, (*$2)[i].pszId);
     jobject GCPobj = jenv->NewObject(GCPClass, GCPcon,
                                 (*$2)[i].dfGCPX,
                                 (*$2)[i].dfGCPY,
@@ -364,6 +403,45 @@
   }
 
 
+/***************************************************************
+ * Typemaps for  (const char *utf8_path, vsi_l_offset *length)
+ ***************************************************************/
+
+%typemap(in) (const char *utf8_path, vsi_l_offset *length) (vsi_l_offset length)
+{
+    /* %typemap(in) (const char *utf8_path, vsi_l_offset *length) */
+    if ($input)
+    {
+        $1 = (char *)jenv->GetStringUTFChars($input, 0);
+    }
+    else
+    {
+        SWIG_JavaException(jenv, SWIG_ValueError, "Received a NULL pointer."); return $null;
+    }
+    $2 = &length;
+}
+
+%typemap(argout) (const char *utf8_path, vsi_l_offset *length)
+{
+    /* %typemap(argout) (const char *utf8_path, vsi_l_offset *length) */
+    if ($input)
+    {
+        jenv->ReleaseStringUTFChars($input, (char*)$1);
+    }
+    $result = jenv->NewByteArray((jsize)length$argnum);
+    jenv->SetByteArrayRegion($result, (jsize)0, (jsize)length$argnum, (jbyte*)result);
+    // Do not free result, as it is owned by the /vsimem/ file
+}
+
+%typemap(jni) (const char *utf8_path, vsi_l_offset *length) "jstring"
+%typemap(jtype) (const char *utf8_path, vsi_l_offset *length) "String"
+%typemap(jstype) (const char *utf8_path, vsi_l_offset *length) "String"
+%typemap(javain) (const char *utf8_path, vsi_l_offset *length) "$javainput"
+%typemap(javaout) (const char *utf8_path, vsi_l_offset *length) {
+    return $jnicall;
+  }
+
+
 /***************************************************
  * Typemaps for  (GByte* outBytes )
  ***************************************************/
@@ -441,12 +519,12 @@
  * Typemaps for  (retStringAndCPLFree*)
  ***************************************************/
 
-%typemap(out) (retStringAndCPLFree*)
+%typemap(out, fragment="SafeNewStringUTF8") (retStringAndCPLFree*)
 {
     /* %typemap(out) (retStringAndCPLFree*) */
     if(result)
     {
-        $result = jenv->NewStringUTF((const char *)result);
+        $result = SafeNewStringUTF8(jenv, (const char *)result);
         CPLFree(result);
     }
 }
@@ -459,6 +537,29 @@
     return $jnicall;
   }
 
+/***************************************************
+ * Typemaps for (StringAsByteArray*)
+ ***************************************************/
+
+%typemap(out) (StringAsByteArray*)
+{
+    /* %typemap(out) (StringAsByteArray*) */
+    if(result)
+    {
+        const size_t nLen = strlen((const char*)result);
+        jbyteArray byteArray = jenv->NewByteArray(nLen);
+        jenv->SetByteArrayRegion(byteArray, (jsize)0, (jsize)nLen, (jbyte*)result);
+        $result = byteArray;
+    }
+}
+
+%typemap(jni) (StringAsByteArray*) "jbyteArray"
+%typemap(jtype) (StringAsByteArray*) "byte[]"
+%typemap(jstype) (StringAsByteArray*) "byte[]"
+%typemap(javain) (StringAsByteArray*) "$javainput"
+%typemap(javaout) (StringAsByteArray*) {
+    return $jnicall;
+  }
 
 /***************************************************
  * Typemaps for  (char **ignorechange)
@@ -1035,16 +1136,16 @@
   }
 }
 
-%typemap(out) char **dict
-{
-  /* %typemap(out) char **dict */
-  /* Convert a char array to a Hashtable */
-  char **stringarray = $1;
+%fragment("GetCSLStringAsHashTable","header", fragment="SafeNewStringUTF8")
+%{
+/* Convert a char array to a Hashtable */
+static jobject
+GetCSLStringAsHashTable(JNIEnv *jenv, char **stringarray, bool bFreeCSL ) {
   const jclass hashtable = jenv->FindClass("java/util/Hashtable");
   const jmethodID constructor = jenv->GetMethodID(hashtable, "<init>", "()V");
   const jmethodID put = jenv->GetMethodID(hashtable, "put",
     "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-  $result = jenv->NewObject(hashtable, constructor);
+  jobject jHashtable = jenv->NewObject(hashtable, constructor);
   if ( stringarray != NULL ) {
     while (*stringarray != NULL ) {
       char const *valptr;
@@ -1054,9 +1155,9 @@
         keyptr = CPLStrdup(*stringarray);
         keyptr[pszSep - *stringarray] = '\0';
         valptr = pszSep + 1;
-        jstring name = jenv->NewStringUTF(keyptr);
-        jstring value = jenv->NewStringUTF(valptr);
-        jenv->CallObjectMethod($result, put, name, value);
+        jstring name = SafeNewStringUTF8(jenv, keyptr);
+        jstring value = SafeNewStringUTF8(jenv, valptr);
+        jenv->CallObjectMethod(jHashtable, put, name, value);
         jenv->DeleteLocalRef(name);
         jenv->DeleteLocalRef(value);
         CPLFree(keyptr);
@@ -1064,6 +1165,16 @@
       stringarray++;
     }
   }
+  if( bFreeCSL )
+    CSLDestroy(stringarray);
+  return jHashtable;
+}
+%}
+
+%typemap(out,fragment="GetCSLStringAsHashTable") char **dict
+{
+  /* %typemap(out) char **dict */
+  $result = GetCSLStringAsHashTable(jenv, $1, false);
 }
 
 %typemap(freearg) char **dict
@@ -1077,6 +1188,22 @@
 %typemap(jstype) (char **dict) "java.util.Hashtable"
 %typemap(javain) (char **dict) "$javainput"
 %typemap(javaout) (char **dict) {
+    return $jnicall;
+  }
+
+
+/*
+ * Typemap char ** -> dict and CSLDestroy()
+ */
+%typemap(out,fragment="GetCSLStringAsHashTable") char **dictAndCSLDestroy
+{
+  /* %typemap(out) char **dictAndCSLDestroy */
+  $result = GetCSLStringAsHashTable(jenv, $1, true);
+}
+%typemap(jni) (char **dictAndCSLDestroy) "jobject"
+%typemap(jtype) (char **dictAndCSLDestroy) "java.util.Hashtable"
+%typemap(jstype) (char **dictAndCSLDestroy) "java.util.Hashtable"
+%typemap(javaout) (char **dictAndCSLDestroy) {
     return $jnicall;
   }
 
@@ -1125,7 +1252,7 @@
   CSLDestroy( $1 );
 }
 
-%typemap(out) char **options
+%typemap(out, fragment="SafeNewStringUTF8") char **options
 {
   /* %typemap(out) char **options */
   char **stringarray = $1;
@@ -1136,8 +1263,7 @@
   $result = jenv->NewObject(vector, constructor);
   if ( stringarray != NULL ) {
     while(*stringarray != NULL) {
-      /*printf("working on string %s\n", *stringarray);*/
-      jstring value = (jstring)jenv->NewStringUTF(*stringarray);
+      jstring value = SafeNewStringUTF8(jenv, *stringarray);
       jenv->CallBooleanMethod($result, add, value);
       jenv->DeleteLocalRef(value);
       stringarray++;
@@ -1157,7 +1283,7 @@
  * Typemaps for retAsStringArrayNoFree
  ***************************************************/
 
-%typemap(out) char **retAsStringArrayNoFree
+%typemap(out,fragment="SafeNewStringUTF8") char **retAsStringArrayNoFree
 {
   /* %typemap(out) char **retAsStringArrayNoFree */
   char **stringarray = result;
@@ -1170,7 +1296,7 @@
   /* exception checking omitted */
 
   for (i=0; i<len; i++) {
-      temp_string = jenv->NewStringUTF(*stringarray++);
+      temp_string = SafeNewStringUTF8(jenv, *stringarray++);
       jenv->SetObjectArrayElement(jresult, i, temp_string);
       jenv->DeleteLocalRef(temp_string);
   }
@@ -1188,7 +1314,7 @@
  * Typemaps for retAsStringArrayNoFree
  ***************************************************/
 
-%typemap(out) char **retAsStringArrayAndFree
+%typemap(out, fragment="SafeNewStringUTF8") char **retAsStringArrayAndFree
 {
   /* %typemap(out) char **retAsStringArrayAndFree */
   char **stringarray = result;
@@ -1201,7 +1327,7 @@
   /* exception checking omitted */
 
   for (i=0; i<len; i++) {
-      temp_string = jenv->NewStringUTF(*stringarray++);
+      temp_string = SafeNewStringUTF8(jenv, *stringarray++);
       jenv->SetObjectArrayElement(jresult, i, temp_string);
       jenv->DeleteLocalRef(temp_string);
   }
@@ -1235,10 +1361,10 @@
     $1 = &ret;
 }
 
-%typemap(argout) char **OUTPUT
+%typemap(argout, fragment="SafeNewStringUTF8") char **OUTPUT
 {
   /* %typemap(argout) char **OUTPUT */
-  jstring temp_string = jenv->NewStringUTF(ret$argnum);
+  jstring temp_string = SafeNewStringUTF8(jenv, ret$argnum);
   jenv->SetObjectArrayElement($input, 0, temp_string);
   jenv->DeleteLocalRef(temp_string);
 }
@@ -1259,7 +1385,7 @@
 /* Almost same as %typemap(out) char **options */
 /* but we CSLDestroy the char** pointer at the end */
 
-%typemap(out) char **CSL
+%typemap(out, fragment="SafeNewStringUTF8") char **CSL
 {
   /* %typemap(out) char **CSL */
   char **stringarray = $1;
@@ -1270,8 +1396,7 @@
   $result = jenv->NewObject(vector, constructor);
   if ( stringarray != NULL ) {
     while(*stringarray != NULL) {
-      /*printf("working on string %s\n", *stringarray);*/
-      jstring value = (jstring)jenv->NewStringUTF(*stringarray);
+      jstring value = SafeNewStringUTF8(jenv, *stringarray);
       jenv->CallBooleanMethod($result, add, value);
       jenv->DeleteLocalRef(value);
       stringarray++;
@@ -1298,13 +1423,13 @@
   $1 = &argout;
 }
 
-%typemap(argout) (char **argout)
+%typemap(argout, fragment="SafeNewStringUTF8") (char **argout)
 {
   /* %typemap(argout) (char **argout) */
   jstring temp_string;
 
   if($input != NULL && (int)jenv->GetArrayLength($input) >= 1) {
-    temp_string = jenv->NewStringUTF(argout$argnum);
+    temp_string = SafeNewStringUTF8(jenv, argout$argnum);
     jenv->SetObjectArrayElement($input, 0, temp_string);
     jenv->DeleteLocalRef(temp_string);
   }
@@ -1335,8 +1460,8 @@
 {
   /* %typemap(in) (double *argout[ANY]) */
   if($input == NULL || jenv->GetArrayLength($input) != $dim0) {
-      char errorMsg[512];
-      sprintf(errorMsg, "array of size %d expected", $dim0);
+      char errorMsg[128];
+      snprintf(errorMsg, sizeof(errorMsg), "array of size %d expected", $dim0);
       SWIG_JavaThrowException(jenv, SWIG_JavaIndexOutOfBoundsException, errorMsg);
       return $null;
   }
@@ -1371,8 +1496,8 @@
 {
   /* %typemap(in) (double argin[ANY]) */
   if($input == NULL || jenv->GetArrayLength($input) != $dim0) {
-      char errorMsg[512];
-      sprintf(errorMsg, "array of size %d expected", $dim0);
+      char errorMsg[128];
+      snprintf(errorMsg, sizeof(errorMsg), "array of size %d expected", $dim0);
       SWIG_JavaThrowException(jenv, SWIG_JavaIndexOutOfBoundsException, errorMsg);
       return $null;
   }
@@ -1408,8 +1533,8 @@
 {
   /* %typemap(in) (double argout[ANY]) */
   if($input == NULL || jenv->GetArrayLength($input) != $dim0) {
-      char errorMsg[512];
-      sprintf(errorMsg, "array of size %d expected", $dim0);
+      char errorMsg[128];
+      snprintf(errorMsg, sizeof(errorMsg), "array of size %d expected", $dim0);
       SWIG_JavaThrowException(jenv, SWIG_JavaIndexOutOfBoundsException, errorMsg);
       return $null;
   }
@@ -1471,7 +1596,7 @@
 
 /* This allows a C function to return a char ** as a Java String array */
 
-%typemap(out) char ** {
+%typemap(out, fragment="SafeNewStringUTF8") char ** {
     /* %typemap(out) char ** */
     int i;
     int len=0;
@@ -1483,7 +1608,7 @@
     /* exception checking omitted */
 
     for (i=0; i<len; i++) {
-      temp_string = jenv->NewStringUTF(*result++);
+      temp_string = SafeNewStringUTF8(jenv, *result++);
       jenv->SetObjectArrayElement(jresult, i, temp_string);
       jenv->DeleteLocalRef(temp_string);
     }
@@ -2483,7 +2608,7 @@ DEFINE_BOOLEAN_FUNC_ARRAY_IN(double, jdouble, GetDoubleArrayElements, ReleaseDou
   CPLFree( $1 );
 }
 
-%typemap(out) OGRCodedValue*
+%typemap(out, fragment="SafeNewStringUTF8") OGRCodedValue*
 {
   /* %typemap(out) OGRCodedValue* */
   /* Convert a OGRCodedValue* to a HashMap */
@@ -2499,10 +2624,10 @@ DEFINE_BOOLEAN_FUNC_ARRAY_IN(double, jdouble, GetDoubleArrayElements, ReleaseDou
   $result = jenv->NewObject(hashMapClass, constructor);
   for( int i = 0; ($1)[i].pszCode != NULL; i++ )
   {
-    jstring name = jenv->NewStringUTF(($1)[i].pszCode);
+    jstring name = SafeNewStringUTF8(jenv, ($1)[i].pszCode);
     if( ($1)[i].pszValue )
     {
-        jstring value = jenv->NewStringUTF(($1)[i].pszValue);
+        jstring value = SafeNewStringUTF8(jenv, ($1)[i].pszValue);
         jenv->CallObjectMethod($result, put, name, value);
         jenv->DeleteLocalRef(value);
     }

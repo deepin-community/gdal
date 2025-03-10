@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2022, Planet Labs
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogr_parquet.h"
@@ -32,6 +16,7 @@
 
 #include "../arrow_common/ograrrowdataset.hpp"
 #include "../arrow_common/ograrrowlayer.hpp"
+#include "../arrow_common/vsiarrowfilesystem.hpp"
 
 /************************************************************************/
 /*                         OGRParquetDataset()                          */
@@ -41,6 +26,25 @@ OGRParquetDataset::OGRParquetDataset(
     const std::shared_ptr<arrow::MemoryPool> &poMemoryPool)
     : OGRArrowDataset(poMemoryPool)
 {
+}
+
+/************************************************************************/
+/*                        ~OGRParquetDataset()                          */
+/************************************************************************/
+
+OGRParquetDataset::~OGRParquetDataset()
+{
+    // libarrow might continue to do I/O in auxiliary threads on the underlying
+    // files when using the arrow::dataset API even after we closed the dataset.
+    // This is annoying as it can cause crashes when closing GDAL, in particular
+    // the virtual file manager, as this could result in VSI files being
+    // accessed after their VSIVirtualFileSystem has been destroyed, resulting
+    // in crashes. The workaround is to make sure that VSIArrowFileSystem
+    // waits for all file handles it is aware of to have been destroyed.
+    close();
+    auto poFS = std::dynamic_pointer_cast<VSIArrowFileSystem>(m_poFS);
+    if (poFS)
+        poFS->AskToClose();
 }
 
 /***********************************************************************/
@@ -82,7 +86,7 @@ OGRLayer *OGRParquetDataset::ExecuteSQL(const char *pszSQLCommand,
                 const auto poLayerDefn = poLayer->GetLayerDefn();
 
                 int i = 0;  // Used after for.
-                for (; i < oSelect.result_columns; i++)
+                for (; i < oSelect.result_columns(); i++)
                 {
                     swq_col_func col_func = oSelect.column_defs[i].col_func;
                     if (!(col_func == SWQCF_MIN || col_func == SWQCF_MAX ||
@@ -137,19 +141,21 @@ OGRLayer *OGRParquetDataset::ExecuteSQL(const char *pszSQLCommand,
 
                             if (col_func == SWQCF_MIN)
                             {
-                                CPL_IGNORE_RET_VAL(poLayer->GetMinMaxForField(
-                                    /* iRowGroup=*/-1,  // -1 for all
-                                    iOGRField, true, sField, bFound, false,
-                                    sFieldDummy, bFoundDummy, eType, eSubType,
-                                    sVal, sValDummy));
+                                CPL_IGNORE_RET_VAL(
+                                    poLayer->GetMinMaxForOGRField(
+                                        /* iRowGroup=*/-1,  // -1 for all
+                                        iOGRField, true, sField, bFound, false,
+                                        sFieldDummy, bFoundDummy, eType,
+                                        eSubType, sVal, sValDummy));
                             }
                             else if (col_func == SWQCF_MAX)
                             {
-                                CPL_IGNORE_RET_VAL(poLayer->GetMinMaxForField(
-                                    /* iRowGroup=*/-1,  // -1 for all
-                                    iOGRField, false, sFieldDummy, bFoundDummy,
-                                    true, sField, bFound, eType, eSubType,
-                                    sValDummy, sVal));
+                                CPL_IGNORE_RET_VAL(
+                                    poLayer->GetMinMaxForOGRField(
+                                        /* iRowGroup=*/-1,  // -1 for all
+                                        iOGRField, false, sFieldDummy,
+                                        bFoundDummy, true, sField, bFound,
+                                        eType, eSubType, sValDummy, sVal));
                             }
                             else if (col_func == SWQCF_COUNT)
                             {
@@ -258,7 +264,7 @@ OGRLayer *OGRParquetDataset::ExecuteSQL(const char *pszSQLCommand,
                     CPL_IGNORE_RET_VAL(poMemLayer->SetFeature(poFeature));
                     delete poFeature;
                 }
-                if (i != oSelect.result_columns)
+                if (i != oSelect.result_columns())
                 {
                     delete poMemLayer;
                 }

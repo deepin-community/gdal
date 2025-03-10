@@ -8,23 +8,7 @@
  * Copyright (c) 2002, Frank Warmerdam
  * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************
  *
  * Independent Security Audit 2003/04/17 Andrey Kiselev:
@@ -827,28 +811,42 @@ static bool GML2OGRGeometry_AddToMultiSurface(
 }
 
 /************************************************************************/
-/*                        GetDistanceInMetre()                          */
+/*                        GetUOMInMetre()                               */
 /************************************************************************/
 
-static double GetDistanceInMetre(double dfDistance, const char *pszUnits)
+static double GetUOMInMetre(const char *pszUnits)
 {
-    if (EQUAL(pszUnits, "m"))
-        return dfDistance;
+    if (!pszUnits || EQUAL(pszUnits, "m"))
+        return 1.0;
 
     if (EQUAL(pszUnits, "km"))
-        return dfDistance * 1000;
+        return 1000.0;
 
     if (EQUAL(pszUnits, "nm") || EQUAL(pszUnits, "[nmi_i]"))
-        return dfDistance * CPLAtof(SRS_UL_INTL_NAUT_MILE_CONV);
+        return CPLAtof(SRS_UL_INTL_NAUT_MILE_CONV);
 
     if (EQUAL(pszUnits, "mi"))
-        return dfDistance * CPLAtof(SRS_UL_INTL_STAT_MILE_CONV);
+        return CPLAtof(SRS_UL_INTL_STAT_MILE_CONV);
 
     if (EQUAL(pszUnits, "ft"))
-        return dfDistance * CPLAtof(SRS_UL_INTL_FOOT_CONV);
+        return CPLAtof(SRS_UL_INTL_FOOT_CONV);
 
     CPLDebug("GML2OGRGeometry", "Unhandled unit: %s", pszUnits);
     return -1;
+}
+
+/************************************************************************/
+/*                            GetSemiMajor()                            */
+/************************************************************************/
+
+static double GetSemiMajor(const OGRSpatialReference *poSRS)
+{
+    double dfSemiMajor = poSRS->GetSemiMajor();
+    // Standardize on OGR_GREATCIRCLE_DEFAULT_RADIUS for Earth ellipsoids.
+    if (std::fabs(dfSemiMajor - OGR_GREATCIRCLE_DEFAULT_RADIUS) <
+        0.05 * OGR_GREATCIRCLE_DEFAULT_RADIUS)
+        dfSemiMajor = OGR_GREATCIRCLE_DEFAULT_RADIUS;
+    return dfSemiMajor;
 }
 
 /************************************************************************/
@@ -942,7 +940,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (psChild == nullptr)
         {
             // <gml:Polygon/> is invalid GML2, but valid GML3, so be tolerant.
-            return cpl::make_unique<OGRPolygon>();
+            return std::make_unique<OGRPolygon>();
         }
 
         // Translate outer ring and add to polygon.
@@ -978,12 +976,12 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         assert(poGeom);  // to please cppcheck
         if (EQUAL(poGeom->getGeometryName(), "LINEARRING"))
         {
-            poCP = cpl::make_unique<OGRPolygon>();
+            poCP = std::make_unique<OGRPolygon>();
             bIsPolygon = true;
         }
         else
         {
-            poCP = cpl::make_unique<OGRCurvePolygon>();
+            poCP = std::make_unique<OGRCurvePolygon>();
             bIsPolygon = false;
         }
 
@@ -1093,7 +1091,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (psChild == nullptr)
         {
             CPLError(CE_Failure, CPLE_AppDefined, "Empty Triangle");
-            return cpl::make_unique<OGRTriangle>();
+            return std::make_unique<OGRTriangle>();
         }
 
         // Translate outer ring and add to Triangle.
@@ -1127,7 +1125,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             return nullptr;
         }
 
-        auto poTriangle = cpl::make_unique<OGRTriangle>();
+        auto poTriangle = std::make_unique<OGRTriangle>();
         auto poCurve = std::unique_ptr<OGRCurve>(poGeom.release()->toCurve());
         if (poTriangle->addRing(std::move(poCurve)) != OGRERR_NONE)
         {
@@ -1142,7 +1140,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "LinearRing"))
     {
-        auto poLinearRing = cpl::make_unique<OGRLinearRing>();
+        auto poLinearRing = std::make_unique<OGRLinearRing>();
 
         if (!ParseGMLCoordinates(psNode, poLinearRing.get(), nSRSDimension))
         {
@@ -1155,13 +1153,18 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     const auto storeArcByCenterPointParameters =
         [](const CPLXMLNode *psChild, const char *l_pszSRSName,
            bool &bIsApproximateArc, double &dfLastCurveApproximateArcRadius,
-           bool &bLastCurveWasApproximateArcInvertedAxisOrder)
+           bool &bLastCurveWasApproximateArcInvertedAxisOrder,
+           double &dfSemiMajor)
     {
         const CPLXMLNode *psRadius = FindBareXMLChild(psChild, "radius");
         if (psRadius && psRadius->eType == CXT_Element)
         {
-            double dfRadius = CPLAtof(CPLGetXMLValue(psRadius, nullptr, "0"));
             const char *pszUnits = CPLGetXMLValue(psRadius, "uom", nullptr);
+            const double dfUOMConv = GetUOMInMetre(pszUnits);
+            const double dfRadiusRaw =
+                CPLAtof(CPLGetXMLValue(psRadius, nullptr, "0"));
+            const double dfRadius =
+                dfUOMConv > 0 ? dfRadiusRaw * dfUOMConv : dfRadiusRaw;
             bool bSRSUnitIsDegree = false;
             bool bInvertedAxisOrder = false;
             if (l_pszSRSName != nullptr)
@@ -1173,14 +1176,15 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                     {
                         bInvertedAxisOrder =
                             CPL_TO_BOOL(oSRS.EPSGTreatsAsLatLong());
+                        dfSemiMajor = GetSemiMajor(&oSRS);
                         bSRSUnitIsDegree =
                             fabs(oSRS.GetAngularUnits(nullptr) -
                                  CPLAtof(SRS_UA_DEGREE_CONV)) < 1e-8;
                     }
                 }
             }
-            if (bSRSUnitIsDegree && pszUnits != nullptr &&
-                (dfRadius = GetDistanceInMetre(dfRadius, pszUnits)) > 0)
+
+            if (bSRSUnitIsDegree && dfUOMConv > 0)
             {
                 bIsApproximateArc = true;
                 dfLastCurveApproximateArcRadius = dfRadius;
@@ -1194,7 +1198,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         [](OGRGeometry *poGeom, OGRCompoundCurve *poCC,
            const bool bIsApproximateArc, const bool bLastCurveWasApproximateArc,
            const double dfLastCurveApproximateArcRadius,
-           const bool bLastCurveWasApproximateArcInvertedAxisOrder)
+           const bool bLastCurveWasApproximateArcInvertedAxisOrder,
+           const double dfSemiMajor)
     {
         if (bIsApproximateArc)
         {
@@ -1213,10 +1218,12 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                     double dfDistance = 0.0;
                     if (bLastCurveWasApproximateArcInvertedAxisOrder)
                         dfDistance = OGR_GreatCircle_Distance(
-                            p.getX(), p.getY(), p2.getX(), p2.getY());
+                            p.getX(), p.getY(), p2.getX(), p2.getY(),
+                            dfSemiMajor);
                     else
                         dfDistance = OGR_GreatCircle_Distance(
-                            p.getY(), p.getX(), p2.getY(), p2.getX());
+                            p.getY(), p.getX(), p2.getY(), p2.getX(),
+                            dfSemiMajor);
                     // CPLDebug("OGR", "%f %f",
                     //          dfDistance,
                     //          dfLastCurveApproximateArcRadius
@@ -1249,10 +1256,12 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                     double dfDistance = 0.0;
                     if (bLastCurveWasApproximateArcInvertedAxisOrder)
                         dfDistance = OGR_GreatCircle_Distance(
-                            p.getX(), p.getY(), p2.getX(), p2.getY());
+                            p.getX(), p.getY(), p2.getX(), p2.getY(),
+                            dfSemiMajor);
                     else
                         dfDistance = OGR_GreatCircle_Distance(
-                            p.getY(), p.getX(), p2.getY(), p2.getX());
+                            p.getY(), p.getX(), p2.getY(), p2.getX(),
+                            dfSemiMajor);
                     // CPLDebug(
                     //    "OGR", "%f %f",
                     //    dfDistance,
@@ -1289,6 +1298,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         bool bFirstChildIsApproximateArc = false;
         double dfFirstChildApproximateArcRadius = 0.0;
         bool bFirstChildWasApproximateArcInvertedAxisOrder = false;
+
+        double dfSemiMajor = OGR_GREATCIRCLE_DEFAULT_RADIUS;
 
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
              psChild = psChild->psNext)
@@ -1352,7 +1363,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                     storeArcByCenterPointParameters(
                         psChild3, pszSRSName, bIsApproximateArc,
                         dfLastCurveApproximateArcRadius,
-                        bLastCurveWasApproximateArcInvertedAxisOrder);
+                        bLastCurveWasApproximateArcInvertedAxisOrder,
+                        dfSemiMajor);
                     if (bIsFirstChild && bIsApproximateArc)
                     {
                         bFirstChildIsApproximateArc = true;
@@ -1376,7 +1388,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 {
                     if (poCC == nullptr)
                     {
-                        poCC = cpl::make_unique<OGRCompoundCurve>();
+                        poCC = std::make_unique<OGRCompoundCurve>();
                         bool bIgnored = false;
                         if (!GML2OGRGeometry_AddToCompositeCurve(
                                 poCC.get(), std::move(poRing), bIgnored))
@@ -1390,7 +1402,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                         poGeom.get(), poCC.get(), bIsApproximateArc,
                         bLastCurveWasApproximateArc,
                         dfLastCurveApproximateArcRadius,
-                        bLastCurveWasApproximateArcInvertedAxisOrder);
+                        bLastCurveWasApproximateArcInvertedAxisOrder,
+                        dfSemiMajor);
 
                     auto poCurve =
                         std::unique_ptr<OGRCurve>(poGeom.release()->toCurve());
@@ -1448,7 +1461,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                                     psChild2, pszSRSName,
                                     bLastChildIsApproximateArc,
                                     dfLastCurveApproximateArcRadius,
-                                    bLastCurveWasApproximateArcInvertedAxisOrder);
+                                    bLastCurveWasApproximateArcInvertedAxisOrder,
+                                    dfSemiMajor);
                             }
                             else
                             {
@@ -1486,11 +1500,11 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 poLS->EndPoint(&p2);
                 double dfDistance = 0.0;
                 if (bFirstChildWasApproximateArcInvertedAxisOrder)
-                    dfDistance = OGR_GreatCircle_Distance(p.getX(), p.getY(),
-                                                          p2.getX(), p2.getY());
+                    dfDistance = OGR_GreatCircle_Distance(
+                        p.getX(), p.getY(), p2.getX(), p2.getY(), dfSemiMajor);
                 else
-                    dfDistance = OGR_GreatCircle_Distance(p.getY(), p.getX(),
-                                                          p2.getY(), p2.getX());
+                    dfDistance = OGR_GreatCircle_Distance(
+                        p.getY(), p.getX(), p2.getY(), p2.getX(), dfSemiMajor);
                 if (dfDistance < dfFirstChildApproximateArcRadius / 5.0)
                 {
                     CPLDebug("OGR", "Moving approximate start of "
@@ -1511,11 +1525,11 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 poLS->EndPoint(&p2);
                 double dfDistance = 0.0;
                 if (bLastCurveWasApproximateArcInvertedAxisOrder)
-                    dfDistance = OGR_GreatCircle_Distance(p.getX(), p.getY(),
-                                                          p2.getX(), p2.getY());
+                    dfDistance = OGR_GreatCircle_Distance(
+                        p.getX(), p.getY(), p2.getX(), p2.getY(), dfSemiMajor);
                 else
-                    dfDistance = OGR_GreatCircle_Distance(p.getY(), p.getX(),
-                                                          p2.getY(), p2.getX());
+                    dfDistance = OGR_GreatCircle_Distance(
+                        p.getY(), p.getX(), p2.getY(), p2.getX(), dfSemiMajor);
                 if (dfDistance < dfLastCurveApproximateArcRadius / 5.0)
                 {
                     CPLDebug("OGR", "Moving approximate end of "
@@ -1557,9 +1571,10 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "LineString") ||
         EQUAL(pszBaseGeometry, "LineStringSegment") ||
+        EQUAL(pszBaseGeometry, "Geodesic") ||
         EQUAL(pszBaseGeometry, "GeodesicString"))
     {
-        auto poLine = cpl::make_unique<OGRLineString>();
+        auto poLine = std::make_unique<OGRLineString>();
 
         if (!ParseGMLCoordinates(psNode, poLine.get(), nSRSDimension))
         {
@@ -1574,7 +1589,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "Arc"))
     {
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
 
         if (!ParseGMLCoordinates(psNode, poCC.get(), nSRSDimension))
         {
@@ -1599,7 +1614,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "ArcString"))
     {
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
 
         if (!ParseGMLCoordinates(psNode, poCC.get(), nSRSDimension))
         {
@@ -1621,7 +1636,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "Circle"))
     {
-        auto poLine = cpl::make_unique<OGRLineString>();
+        auto poLine = std::make_unique<OGRLineString>();
 
         if (!ParseGMLCoordinates(psNode, poLine.get(), nSRSDimension))
         {
@@ -1649,7 +1664,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             return nullptr;
         }
 
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
         OGRPoint p;
         poLine->getPoint(0, &p);
         poCC->addPoint(&p);
@@ -1693,7 +1708,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         }
         double dfNormal = CPLAtof(psChild->psChild->pszValue);
 
-        auto poLS = cpl::make_unique<OGRLineString>();
+        auto poLS = std::make_unique<OGRLineString>();
         if (!ParseGMLCoordinates(psNode, poLS.get(), nSRSDimension))
         {
             return nullptr;
@@ -1706,7 +1721,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             return nullptr;
         }
 
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
         OGRPoint p;
         poLS->getPoint(0, &p);
         poCC->addPoint(&p);
@@ -1748,8 +1763,11 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             CPLError(CE_Failure, CPLE_AppDefined, "Missing radius element.");
             return nullptr;
         }
-        const double dfRadius = CPLAtof(CPLGetXMLValue(psChild, nullptr, "0"));
         const char *pszUnits = CPLGetXMLValue(psChild, "uom", nullptr);
+        const double dfUOMConv = GetUOMInMetre(pszUnits);
+        const double dfRadiusRaw =
+            CPLAtof(CPLGetXMLValue(psChild, nullptr, "0"));
+        double dfRadius = dfUOMConv > 0 ? dfRadiusRaw * dfUOMConv : dfRadiusRaw;
 
         psChild = FindBareXMLChild(psNode, "startAngle");
         if (psChild == nullptr || psChild->eType != CXT_Element)
@@ -1778,6 +1796,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
 
         bool bSRSUnitIsDegree = false;
         bool bInvertedAxisOrder = false;
+        double dfSemiMajor = OGR_GREATCIRCLE_DEFAULT_RADIUS;
         if (pszSRSName != nullptr)
         {
             OGRSpatialReference oSRS;
@@ -1785,6 +1804,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             {
                 if (oSRS.IsGeographic())
                 {
+                    dfSemiMajor = GetSemiMajor(&oSRS);
                     bInvertedAxisOrder =
                         CPL_TO_BOOL(oSRS.EPSGTreatsAsLatLong());
                     bSRSUnitIsDegree = fabs(oSRS.GetAngularUnits(nullptr) -
@@ -1792,8 +1812,14 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 }
                 else if (oSRS.IsProjected())
                 {
+                    dfSemiMajor = GetSemiMajor(&oSRS);
                     bInvertedAxisOrder =
                         CPL_TO_BOOL(oSRS.EPSGTreatsAsNorthingEasting());
+
+                    const double dfSRSUnitsToMetre =
+                        oSRS.GetLinearUnits(nullptr);
+                    if (dfSRSUnitsToMetre > 0)
+                        dfRadius /= dfSRSUnitsToMetre;
                 }
             }
         }
@@ -1801,11 +1827,9 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         double dfCenterX = p.getX();
         double dfCenterY = p.getY();
 
-        double dfDistance;
-        if (bSRSUnitIsDegree && pszUnits != nullptr &&
-            (dfDistance = GetDistanceInMetre(dfRadius, pszUnits)) > 0)
+        if (bSRSUnitIsDegree && dfUOMConv > 0)
         {
-            auto poLS = cpl::make_unique<OGRLineString>();
+            auto poLS = std::make_unique<OGRLineString>();
             // coverity[tainted_data]
             const double dfStep =
                 CPLAtof(CPLGetConfigOption("OGR_ARC_STEPSIZE", "4"));
@@ -1819,18 +1843,18 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 if (bInvertedAxisOrder)
                 {
                     OGR_GreatCircle_ExtendPosition(
-                        dfCenterX, dfCenterY, dfDistance,
+                        dfCenterX, dfCenterY, dfRadius,
                         // See
                         // https://ext.eurocontrol.int/aixm_confluence/display/ACG/ArcByCenterPoint+Interpretation+Summary
-                        dfAngle, &dfLat, &dfLong);
+                        dfAngle, dfSemiMajor, &dfLat, &dfLong);
                     p.setX(dfLat);  // yes, external code will do the swap later
                     p.setY(dfLong);
                 }
                 else
                 {
-                    OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX,
-                                                   dfDistance, 90 - dfAngle,
-                                                   &dfLat, &dfLong);
+                    OGR_GreatCircle_ExtendPosition(
+                        dfCenterY, dfCenterX, dfRadius, 90 - dfAngle,
+                        dfSemiMajor, &dfLat, &dfLong);
                     p.setX(dfLong);
                     p.setY(dfLat);
                 }
@@ -1841,16 +1865,17 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             double dfLat = 0.0;
             if (bInvertedAxisOrder)
             {
-                OGR_GreatCircle_ExtendPosition(dfCenterX, dfCenterY, dfDistance,
-                                               dfEndAngle, &dfLat, &dfLong);
+                OGR_GreatCircle_ExtendPosition(dfCenterX, dfCenterY, dfRadius,
+                                               dfEndAngle, dfSemiMajor, &dfLat,
+                                               &dfLong);
                 p.setX(dfLat);  // yes, external code will do the swap later
                 p.setY(dfLong);
             }
             else
             {
-                OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX, dfDistance,
-                                               90 - dfEndAngle, &dfLat,
-                                               &dfLong);
+                OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX, dfRadius,
+                                               90 - dfEndAngle, dfSemiMajor,
+                                               &dfLat, &dfLong);
                 p.setX(dfLong);
                 p.setY(dfLat);
             }
@@ -1862,7 +1887,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (bInvertedAxisOrder)
             std::swap(dfCenterX, dfCenterY);
 
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
         p.setX(dfCenterX + dfRadius * cos(dfStartAngle * kdfD2R));
         p.setY(dfCenterY + dfRadius * sin(dfStartAngle * kdfD2R));
         poCC->addPoint(&p);
@@ -1891,8 +1916,11 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             CPLError(CE_Failure, CPLE_AppDefined, "Missing radius element.");
             return nullptr;
         }
-        const double dfRadius = CPLAtof(CPLGetXMLValue(psChild, nullptr, "0"));
         const char *pszUnits = CPLGetXMLValue(psChild, "uom", nullptr);
+        const double dfUOMConv = GetUOMInMetre(pszUnits);
+        const double dfRadiusRaw =
+            CPLAtof(CPLGetXMLValue(psChild, nullptr, "0"));
+        double dfRadius = dfUOMConv > 0 ? dfRadiusRaw * dfUOMConv : dfRadiusRaw;
 
         OGRPoint p;
         if (!ParseGMLCoordinates(psNode, &p, nSRSDimension))
@@ -1902,6 +1930,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
 
         bool bSRSUnitIsDegree = false;
         bool bInvertedAxisOrder = false;
+        double dfSemiMajor = OGR_GREATCIRCLE_DEFAULT_RADIUS;
         if (pszSRSName != nullptr)
         {
             OGRSpatialReference oSRS;
@@ -1909,6 +1938,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             {
                 if (oSRS.IsGeographic())
                 {
+                    dfSemiMajor = GetSemiMajor(&oSRS);
                     bInvertedAxisOrder =
                         CPL_TO_BOOL(oSRS.EPSGTreatsAsLatLong());
                     bSRSUnitIsDegree = fabs(oSRS.GetAngularUnits(nullptr) -
@@ -1916,8 +1946,14 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 }
                 else if (oSRS.IsProjected())
                 {
+                    dfSemiMajor = GetSemiMajor(&oSRS);
                     bInvertedAxisOrder =
                         CPL_TO_BOOL(oSRS.EPSGTreatsAsNorthingEasting());
+
+                    const double dfSRSUnitsToMetre =
+                        oSRS.GetLinearUnits(nullptr);
+                    if (dfSRSUnitsToMetre > 0)
+                        dfRadius /= dfSRSUnitsToMetre;
                 }
             }
         }
@@ -1925,11 +1961,9 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         double dfCenterX = p.getX();
         double dfCenterY = p.getY();
 
-        double dfDistance;
-        if (bSRSUnitIsDegree && pszUnits != nullptr &&
-            (dfDistance = GetDistanceInMetre(dfRadius, pszUnits)) > 0)
+        if (bSRSUnitIsDegree && dfUOMConv > 0)
         {
-            auto poLS = cpl::make_unique<OGRLineString>();
+            auto poLS = std::make_unique<OGRLineString>();
             const double dfStep =
                 CPLAtof(CPLGetConfigOption("OGR_ARC_STEPSIZE", "4"));
             for (double dfAngle = 0; dfAngle < 360; dfAngle += dfStep)
@@ -1938,17 +1972,17 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 double dfLat = 0.0;
                 if (bInvertedAxisOrder)
                 {
-                    OGR_GreatCircle_ExtendPosition(dfCenterX, dfCenterY,
-                                                   dfDistance, dfAngle, &dfLat,
-                                                   &dfLong);
+                    OGR_GreatCircle_ExtendPosition(
+                        dfCenterX, dfCenterY, dfRadius, dfAngle, dfSemiMajor,
+                        &dfLat, &dfLong);
                     p.setX(dfLat);  // yes, external code will do the swap later
                     p.setY(dfLong);
                 }
                 else
                 {
-                    OGR_GreatCircle_ExtendPosition(dfCenterY, dfCenterX,
-                                                   dfDistance, dfAngle, &dfLat,
-                                                   &dfLong);
+                    OGR_GreatCircle_ExtendPosition(
+                        dfCenterY, dfCenterX, dfRadius, dfAngle, dfSemiMajor,
+                        &dfLat, &dfLong);
                     p.setX(dfLong);
                     p.setY(dfLat);
                 }
@@ -1962,12 +1996,18 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (bInvertedAxisOrder)
             std::swap(dfCenterX, dfCenterY);
 
-        auto poCC = cpl::make_unique<OGRCircularString>();
+        auto poCC = std::make_unique<OGRCircularString>();
         p.setX(dfCenterX - dfRadius);
         p.setY(dfCenterY);
         poCC->addPoint(&p);
+        p.setX(dfCenterX);
+        p.setY(dfCenterY + dfRadius);
+        poCC->addPoint(&p);
         p.setX(dfCenterX + dfRadius);
         p.setY(dfCenterY);
+        poCC->addPoint(&p);
+        p.setX(dfCenterX);
+        p.setY(dfCenterY - dfRadius);
         poCC->addPoint(&p);
         p.setX(dfCenterX - dfRadius);
         p.setY(dfCenterY);
@@ -1986,7 +2026,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         EQUAL(pszBaseGeometry, "Point") ||
         EQUAL(pszBaseGeometry, "ConnectionPoint"))
     {
-        auto poPoint = cpl::make_unique<OGRPoint>();
+        auto poPoint = std::make_unique<OGRPoint>();
 
         if (!ParseGMLCoordinates(psNode, poPoint.get(), nSRSDimension))
         {
@@ -2009,8 +2049,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (oPoints.getNumPoints() < 2)
             return nullptr;
 
-        auto poBoxRing = cpl::make_unique<OGRLinearRing>();
-        auto poBoxPoly = cpl::make_unique<OGRPolygon>();
+        auto poBoxRing = std::make_unique<OGRLinearRing>();
+        auto poBoxPoly = std::make_unique<OGRPolygon>();
 
         poBoxRing->setNumPoints(5);
         poBoxRing->setPoint(0, oPoints.getX(0), oPoints.getY(0),
@@ -2063,8 +2103,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         CSLDestroy(papszLowerCorner);
         CSLDestroy(papszUpperCorner);
 
-        auto poEnvelopeRing = cpl::make_unique<OGRLinearRing>();
-        auto poPoly = cpl::make_unique<OGRPolygon>();
+        auto poEnvelopeRing = std::make_unique<OGRLinearRing>();
+        auto poPoly = std::make_unique<OGRPolygon>();
 
         poEnvelopeRing->setNumPoints(5);
         poEnvelopeRing->setPoint(0, dfLLX, dfLLY);
@@ -2089,8 +2129,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     {
         std::unique_ptr<OGRMultiSurface> poMS =
             EQUAL(pszBaseGeometry, "MultiPolygon")
-                ? cpl::make_unique<OGRMultiPolygon>()
-                : cpl::make_unique<OGRMultiSurface>();
+                ? std::make_unique<OGRMultiPolygon>()
+                : std::make_unique<OGRMultiSurface>();
         bool bReconstructTopology = false;
         bool bChildrenAreAllPolygons = true;
 
@@ -2159,7 +2199,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                                 }
 
                                 bReconstructTopology = true;
-                                auto poPolygon = cpl::make_unique<OGRPolygon>();
+                                auto poPolygon = std::make_unique<OGRPolygon>();
                                 auto poLinearRing =
                                     std::unique_ptr<OGRLinearRing>(
                                         poRing.release()->toLinearRing());
@@ -2251,7 +2291,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "MultiPoint"))
     {
-        auto poMP = cpl::make_unique<OGRMultiPoint>();
+        auto poMP = std::make_unique<OGRMultiPoint>();
 
         // Collect points.
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
@@ -2329,7 +2369,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "MultiLineString"))
     {
-        auto poMLS = cpl::make_unique<OGRMultiLineString>();
+        auto poMLS = std::make_unique<OGRMultiLineString>();
 
         // Collect lines.
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
@@ -2368,7 +2408,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "MultiCurve"))
     {
-        auto poMC = cpl::make_unique<OGRMultiCurve>();
+        auto poMC = std::make_unique<OGRMultiCurve>();
         bool bChildrenAreAllLineString = true;
 
         // Collect curveMembers.
@@ -2452,7 +2492,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "CompositeCurve"))
     {
-        auto poCC = cpl::make_unique<OGRCompoundCurve>();
+        auto poCC = std::make_unique<OGRCompoundCurve>();
         bool bChildrenAreAllLineString = true;
 
         // Collect curveMembers.
@@ -2510,7 +2550,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     /*      Curve                                                           */
     /* -------------------------------------------------------------------- */
-    if (EQUAL(pszBaseGeometry, "Curve"))
+    if (EQUAL(pszBaseGeometry, "Curve") ||
+        EQUAL(pszBaseGeometry, "ElevatedCurve") /* AIXM */)
     {
         const CPLXMLNode *psChild = FindBareXMLChild(psNode, "segments");
         if (psChild == nullptr)
@@ -2547,6 +2588,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         bool bLastCurveWasApproximateArc = false;
         bool bLastCurveWasApproximateArcInvertedAxisOrder = false;
         double dfLastCurveApproximateArcRadius = 0.0;
+        double dfSemiMajor = OGR_GREATCIRCLE_DEFAULT_RADIUS;
 
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
              psChild = psChild->psNext)
@@ -2583,7 +2625,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                     storeArcByCenterPointParameters(
                         psChild, pszSRSName, bIsApproximateArc,
                         dfLastCurveApproximateArcRadius,
-                        bLastCurveWasApproximateArcInvertedAxisOrder);
+                        bLastCurveWasApproximateArcInvertedAxisOrder,
+                        dfSemiMajor);
                 }
 
                 if (wkbFlatten(poGeom->getGeometryType()) != wkbLineString)
@@ -2597,7 +2640,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 {
                     if (poCC == nullptr)
                     {
-                        poCC = cpl::make_unique<OGRCompoundCurve>();
+                        poCC = std::make_unique<OGRCompoundCurve>();
                         if (poCC->addCurve(std::move(poCurve)) != OGRERR_NONE)
                         {
                             return nullptr;
@@ -2609,7 +2652,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                         poGeom.get(), poCC.get(), bIsApproximateArc,
                         bLastCurveWasApproximateArc,
                         dfLastCurveApproximateArcRadius,
-                        bLastCurveWasApproximateArcInvertedAxisOrder);
+                        bLastCurveWasApproximateArcInvertedAxisOrder,
+                        dfSemiMajor);
 
                     auto poAsCurve =
                         std::unique_ptr<OGRCurve>(poGeom.release()->toCurve());
@@ -2646,7 +2690,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     if (EQUAL(pszBaseGeometry, "MultiGeometry") ||
         EQUAL(pszBaseGeometry, "GeometryCollection"))
     {
-        auto poGC = cpl::make_unique<OGRGeometryCollection>();
+        auto poGC = std::make_unique<OGRGeometryCollection>();
 
         // Collect geoms.
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
@@ -2825,7 +2869,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             {
                 // Create a scope so that poMP can be initialized with goto
                 // above and label below.
-                auto poMP = cpl::make_unique<OGRMultiPoint>();
+                auto poMP = std::make_unique<OGRMultiPoint>();
                 poMP->addGeometry(std::move(poNegativeNode));
                 poMP->addGeometry(std::move(poPositiveNode));
 
@@ -2876,8 +2920,8 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (bGetSecondaryGeometry)
         {
             // Choose a point based on the orientation.
-            poNegativeNode = cpl::make_unique<OGRPoint>();
-            poPositiveNode = cpl::make_unique<OGRPoint>();
+            poNegativeNode = std::make_unique<OGRPoint>();
+            poPositiveNode = std::make_unique<OGRPoint>();
             if (bEdgeOrientation == bOrientation)
             {
                 poLineString->StartPoint(poNegativeNode.get());
@@ -2889,7 +2933,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 poLineString->EndPoint(poNegativeNode.get());
             }
 
-            auto poMP = cpl::make_unique<OGRMultiPoint>();
+            auto poMP = std::make_unique<OGRMultiPoint>();
             poMP->addGeometry(std::move(poNegativeNode));
             poMP->addGeometry(std::move(poPositiveNode));
             return poMP;
@@ -2898,19 +2942,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         // correct orientation of the line string
         if (bEdgeOrientation != bOrientation)
         {
-            int iStartCoord = 0;
-            int iEndCoord = poLineString->getNumPoints() - 1;
-            OGRPoint oTempStartPoint;
-            OGRPoint oTempEndPoint;
-            while (iStartCoord < iEndCoord)
-            {
-                poLineString->getPoint(iStartCoord, &oTempStartPoint);
-                poLineString->getPoint(iEndCoord, &oTempEndPoint);
-                poLineString->setPoint(iStartCoord, &oTempEndPoint);
-                poLineString->setPoint(iEndCoord, &oTempStartPoint);
-                iStartCoord++;
-                iEndCoord--;
-            }
+            poLineString->reversePoints();
         }
         return poLineString;
     }
@@ -2924,9 +2956,9 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         std::unique_ptr<OGRMultiPoint> poMP;
 
         if (bGetSecondaryGeometry)
-            poMP = cpl::make_unique<OGRMultiPoint>();
+            poMP = std::make_unique<OGRMultiPoint>();
         else
-            poMLS = cpl::make_unique<OGRMultiLineString>();
+            poMLS = std::make_unique<OGRMultiLineString>();
 
         // Collect directedEdges.
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
@@ -3027,7 +3059,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             }
             return nullptr;
 #else
-            auto poTS = cpl::make_unique<OGRMultiPolygon>();
+            auto poTS = std::make_unique<OGRMultiPolygon>();
 
             // Collect directed faces.
             for (const CPLXMLNode *psChild = psNode->psChild;
@@ -3049,7 +3081,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                         continue;
 
                     auto poCollectedGeom =
-                        cpl::make_unique<OGRMultiLineString>();
+                        std::make_unique<OGRMultiLineString>();
 
                     // Collect directed edges of the face.
                     for (const CPLXMLNode *psDirectedEdgeChild =
@@ -3121,7 +3153,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                                 wkbPolygon)
                             {
                                 // Forcing to be a MultiPolygon.
-                                poTS = cpl::make_unique<OGRMultiPolygon>();
+                                poTS = std::make_unique<OGRMultiPolygon>();
                                 poTS->addGeometry(std::move(poUnion));
                             }
                             else if (wkbFlatten(poUnion->getGeometryType()) ==
@@ -3161,7 +3193,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (bGetSecondaryGeometry)
             return nullptr;
         bool bFaceOrientation = true;
-        auto poTS = cpl::make_unique<OGRPolygon>();
+        auto poTS = std::make_unique<OGRPolygon>();
 
         // Collect directed faces.
         for (const CPLXMLNode *psChild = psNode->psChild; psChild != nullptr;
@@ -3181,7 +3213,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 if (psFaceChild == nullptr)
                     continue;
 
-                auto poFaceGeom = cpl::make_unique<OGRLinearRing>();
+                auto poFaceGeom = std::make_unique<OGRLinearRing>();
 
                 // Collect directed edges of the face.
                 for (const CPLXMLNode *psDirectedEdgeChild =
@@ -3310,7 +3342,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         {
             // <gml:Surface/> and <gml:Surface><gml:patches/></gml:Surface> are
             // valid GML.
-            return cpl::make_unique<OGRPolygon>();
+            return std::make_unique<OGRPolygon>();
         }
 
         OGRMultiSurface *poMSPtr = nullptr;
@@ -3344,9 +3376,9 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                         if (wkbFlatten(poResultPoly->getGeometryType()) ==
                                 wkbPolygon &&
                             eGeomType == wkbPolygon)
-                            poMS = cpl::make_unique<OGRMultiPolygon>();
+                            poMS = std::make_unique<OGRMultiPolygon>();
                         else
-                            poMS = cpl::make_unique<OGRMultiSurface>();
+                            poMS = std::make_unique<OGRMultiSurface>();
                         OGRErr eErr =
                             poMS->addGeometry(std::move(poResultPoly));
                         CPL_IGNORE_RET_VAL(eErr);
@@ -3388,7 +3420,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
                 {
                     if (poTINPtr == nullptr)
                     {
-                        auto poTIN = cpl::make_unique<OGRTriangulatedSurface>();
+                        auto poTIN = std::make_unique<OGRTriangulatedSurface>();
                         OGRErr eErr =
                             poTIN->addGeometry(std::move(poResultTri));
                         CPL_IGNORE_RET_VAL(eErr);
@@ -3413,7 +3445,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             return poResultTri;
         else
         {
-            auto poGC = cpl::make_unique<OGRGeometryCollection>();
+            auto poGC = std::make_unique<OGRGeometryCollection>();
             poGC->addGeometry(std::move(poResultTri));
             poGC->addGeometry(std::move(poResultPoly));
             return poGC;
@@ -3439,7 +3471,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             return nullptr;
         }
 
-        auto poTIN = cpl::make_unique<OGRTriangulatedSurface>();
+        auto poTIN = std::make_unique<OGRTriangulatedSurface>();
         for (; psChild != nullptr; psChild = psChild->psNext)
         {
             if (psChild->eType == CXT_Element &&
@@ -3474,7 +3506,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
             if (GetChildElement(psNode) == nullptr)
             {
                 // This is empty PolyhedralSurface.
-                return cpl::make_unique<OGRPolyhedralSurface>();
+                return std::make_unique<OGRPolyhedralSurface>();
             }
             else
             {
@@ -3488,7 +3520,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         if (psChild == nullptr)
         {
             // This is empty PolyhedralSurface.
-            return cpl::make_unique<OGRPolyhedralSurface>();
+            return std::make_unique<OGRPolyhedralSurface>();
         }
         else if (!EQUAL(BareGMLElement(psChild->pszValue), "PolygonPatch"))
         {
@@ -3501,13 +3533,13 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         // Each psChild has the tags corresponding to <gml:PolygonPatch>
         // Each PolygonPatch has a set of polygons enclosed in a
         // OGRPolyhedralSurface.
-        auto poGC = cpl::make_unique<OGRGeometryCollection>();
+        auto poGC = std::make_unique<OGRGeometryCollection>();
         for (; psParent != nullptr; psParent = psParent->psNext)
         {
             psChild = GetChildElement(psParent);
             if (psChild == nullptr)
                 continue;
-            auto poPS = cpl::make_unique<OGRPolyhedralSurface>();
+            auto poPS = std::make_unique<OGRPolyhedralSurface>();
             for (; psChild != nullptr; psChild = psChild->psNext)
             {
                 if (psChild->eType == CXT_Element &&
@@ -3593,12 +3625,12 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
         {
             // <gml:Solid/> and <gml:Solid><gml:exterior/></gml:Solid> are valid
             // GML.
-            return cpl::make_unique<OGRPolyhedralSurface>();
+            return std::make_unique<OGRPolyhedralSurface>();
         }
 
         if (EQUAL(BareGMLElement(psChild->pszValue), "CompositeSurface"))
         {
-            auto poPS = cpl::make_unique<OGRPolyhedralSurface>();
+            auto poPS = std::make_unique<OGRPolyhedralSurface>();
 
             // Iterate over children.
             for (psChild = psChild->psChild; psChild != nullptr;
@@ -3643,6 +3675,38 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     }
 
     /* -------------------------------------------------------------------- */
+    /*      OrientableCurve                                                 */
+    /* -------------------------------------------------------------------- */
+    if (EQUAL(pszBaseGeometry, "OrientableCurve"))
+    {
+        // Find baseCurve.
+        const CPLXMLNode *psChild = FindBareXMLChild(psNode, "baseCurve");
+
+        psChild = GetChildElement(psChild);
+        if (psChild == nullptr)
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Missing <baseCurve> for OrientableCurve.");
+            return nullptr;
+        }
+
+        auto poGeom = GML2OGRGeometry_XMLNode_Internal(
+            psChild, nPseudoBoolGetSecondaryGeometryOption, nRecLevel + 1,
+            nSRSDimension, pszSRSName);
+        if (!poGeom || !OGR_GT_IsCurve(poGeom->getGeometryType()))
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "baseCurve of OrientableCurve is not a curve.");
+            return nullptr;
+        }
+        if (!GetElementOrientation(psNode))
+        {
+            poGeom->toCurve()->reversePoints();
+        }
+        return poGeom;
+    }
+
+    /* -------------------------------------------------------------------- */
     /*      OrientableSurface                                               */
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "OrientableSurface"))
@@ -3670,7 +3734,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     if (EQUAL(pszBaseGeometry, "SimplePolygon") ||
         EQUAL(pszBaseGeometry, "SimpleRectangle"))
     {
-        auto poRing = cpl::make_unique<OGRLinearRing>();
+        auto poRing = std::make_unique<OGRLinearRing>();
 
         if (!ParseGMLCoordinates(psNode, poRing.get(), nSRSDimension))
         {
@@ -3679,14 +3743,14 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
 
         poRing->closeRings();
 
-        auto poPolygon = cpl::make_unique<OGRPolygon>();
+        auto poPolygon = std::make_unique<OGRPolygon>();
         poPolygon->addRing(std::move(poRing));
         return poPolygon;
     }
 
     if (EQUAL(pszBaseGeometry, "SimpleTriangle"))
     {
-        auto poRing = cpl::make_unique<OGRLinearRing>();
+        auto poRing = std::make_unique<OGRLinearRing>();
 
         if (!ParseGMLCoordinates(psNode, poRing.get(), nSRSDimension))
         {
@@ -3695,7 +3759,7 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
 
         poRing->closeRings();
 
-        auto poTriangle = cpl::make_unique<OGRTriangle>();
+        auto poTriangle = std::make_unique<OGRTriangle>();
         poTriangle->addRing(std::move(poRing));
         return poTriangle;
     }
@@ -3705,18 +3769,18 @@ static std::unique_ptr<OGRGeometry> GML2OGRGeometry_XMLNode_Internal(
     /* -------------------------------------------------------------------- */
     if (EQUAL(pszBaseGeometry, "SimpleMultiPoint"))
     {
-        auto poLS = cpl::make_unique<OGRLineString>();
+        auto poLS = std::make_unique<OGRLineString>();
 
         if (!ParseGMLCoordinates(psNode, poLS.get(), nSRSDimension))
         {
             return nullptr;
         }
 
-        auto poMP = cpl::make_unique<OGRMultiPoint>();
+        auto poMP = std::make_unique<OGRMultiPoint>();
         int nPoints = poLS->getNumPoints();
         for (int i = 0; i < nPoints; i++)
         {
-            auto poPoint = cpl::make_unique<OGRPoint>();
+            auto poPoint = std::make_unique<OGRPoint>();
             poLS->getPoint(i, poPoint.get());
             poMP->addGeometry(std::move(poPoint));
         }
@@ -3760,14 +3824,16 @@ OGRGeometryH OGR_G_CreateFromGMLTree(const CPLXMLNode *psTree)
  * The following GML2 elements are parsed : Point, LineString, Polygon,
  * MultiPoint, MultiLineString, MultiPolygon, MultiGeometry.
  *
- * (OGR >= 1.8.0) The following GML3 elements are parsed : Surface,
+ * The following GML3 elements are parsed : Surface,
  * MultiSurface, PolygonPatch, Triangle, Rectangle, Curve, MultiCurve,
  * CompositeCurve, LineStringSegment, Arc, Circle, CompositeSurface,
  * OrientableSurface, Solid, Tin, TriangulatedSurface.
  *
- * Arc and Circle elements are stroked to linestring, by using a
- * 4 degrees step, unless the user has overridden the value with the
- * OGR_ARC_STEPSIZE configuration variable.
+ * Arc and Circle elements are returned as curves by default. Stroking to
+ * linestrings can be done with
+ * OGR_G_ForceTo(hGeom, OGR_GT_GetLinear(OGR_G_GetGeometryType(hGeom)), NULL).
+ * A 4 degrees step is used by default, unless the user
+ * has overridden the value with the OGR_ARC_STEPSIZE configuration variable.
  *
  * The C++ method OGRGeometryFactory::createFromGML() is the same as
  * this function.
@@ -3775,6 +3841,10 @@ OGRGeometryH OGR_G_CreateFromGMLTree(const CPLXMLNode *psTree)
  * @param pszGML The GML fragment for the geometry.
  *
  * @return a geometry on success, or NULL on error.
+ *
+ * @see OGR_G_ForceTo()
+ * @see OGR_GT_GetLinear()
+ * @see OGR_G_GetGeometryType()
  */
 
 OGRGeometryH OGR_G_CreateFromGML(const char *pszGML)

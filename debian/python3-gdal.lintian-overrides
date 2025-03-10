@@ -1,0 +1,3 @@
+# False positive (#1094364)
+missing-dependency-on-numpy-abi *
+

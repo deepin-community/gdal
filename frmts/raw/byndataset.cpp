@@ -8,23 +8,7 @@
  * Copyright (c) 2018, Ivan Lucena
  * Copyright (c) 2018, Even Rouault
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -276,7 +260,7 @@ GDALDataset *BYNDataset::Open(GDALOpenInfo *poOpenInfo)
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
 
-    auto poDS = cpl::make_unique<BYNDataset>();
+    auto poDS = std::make_unique<BYNDataset>();
 
     poDS->eAccess = poOpenInfo->eAccess;
     std::swap(poDS->fpImage, poOpenInfo->fpL);
@@ -370,7 +354,7 @@ GDALDataset *BYNDataset::Open(GDALOpenInfo *poOpenInfo)
 
     int bIsLSB = poDS->hHeader.nByteOrder == 1 ? 1 : 0;
 
-    auto poBand = cpl::make_unique<BYNRasterBand>(
+    auto poBand = std::make_unique<BYNRasterBand>(
         poDS.get(), 1, poDS->fpImage, BYN_HDR_SZ, nDTSize,
         poDS->nRasterXSize * nDTSize, eDT, CPL_IS_LSB == bIsLSB);
     if (!poBand->IsValid())
@@ -496,7 +480,7 @@ const OGRSpatialReference *BYNDataset::GetSpatialRef() const
     {
         /* Return COMPD_CS with GEOGCS and VERT_CS */
 
-        m_oSRS = oSRSComp;
+        m_oSRS = std::move(oSRSComp);
         m_oSRS.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
         return &m_oSRS;
     }

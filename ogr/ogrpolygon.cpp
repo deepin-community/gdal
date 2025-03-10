@@ -8,23 +8,7 @@
  * Copyright (c) 1999, Frank Warmerdam
  * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -44,16 +28,6 @@
 #include "ogr_p.h"
 
 /************************************************************************/
-/*                             OGRPolygon()                             */
-/************************************************************************/
-
-/**
- * \brief Create an empty polygon.
- */
-
-OGRPolygon::OGRPolygon() = default;
-
-/************************************************************************/
 /*                     OGRPolygon( const OGRPolygon& )                  */
 /************************************************************************/
 
@@ -67,12 +41,6 @@ OGRPolygon::OGRPolygon() = default;
  */
 
 OGRPolygon::OGRPolygon(const OGRPolygon &) = default;
-
-/************************************************************************/
-/*                            ~OGRPolygon()                             */
-/************************************************************************/
-
-OGRPolygon::~OGRPolygon() = default;
 
 /************************************************************************/
 /*                     operator=( const OGRPolygon&)                    */
@@ -279,18 +247,26 @@ OGRLinearRing *OGRPolygon::stealInteriorRing(int iRing)
 }
 
 /*! @cond Doxygen_Suppress */
+
+/************************************************************************/
+/*                            isRingCorrectType()                               */
+/************************************************************************/
+bool OGRPolygon::isRingCorrectType(const OGRCurve *poRing) const
+{
+    return poRing != nullptr && EQUAL(poRing->getGeometryName(), "LINEARRING");
+}
+
 /************************************************************************/
 /*                            checkRing()                               */
 /************************************************************************/
 
-int OGRPolygon::checkRing(OGRCurve *poNewRing) const
+bool OGRPolygon::checkRing(const OGRCurve *poNewRing) const
 {
-    if (poNewRing == nullptr ||
-        !(EQUAL(poNewRing->getGeometryName(), "LINEARRING")))
+    if (!isRingCorrectType(poNewRing))
     {
         CPLError(CE_Failure, CPLE_AppDefined,
                  "Wrong curve type. Expected LINEARRING.");
-        return FALSE;
+        return false;
     }
 
     if (!poNewRing->IsEmpty() && !poNewRing->get_IsClosed())
@@ -302,7 +278,7 @@ int OGRPolygon::checkRing(OGRCurve *poNewRing) const
         if (pszEnvVar != nullptr && !CPLTestBool(pszEnvVar))
         {
             CPLError(CE_Failure, CPLE_AppDefined, "Non closed ring detected.");
-            return FALSE;
+            return false;
         }
         else
         {
@@ -315,8 +291,9 @@ int OGRPolygon::checkRing(OGRCurve *poNewRing) const
         }
     }
 
-    return TRUE;
+    return true;
 }
+
 /*! @endcond */
 
 /************************************************************************/
@@ -427,24 +404,28 @@ OGRErr OGRPolygon::importFromWkb(const unsigned char *pabyData, size_t nSize,
 /*      Build a well known binary representation of this object.        */
 /************************************************************************/
 
-OGRErr OGRPolygon::exportToWkb(OGRwkbByteOrder eByteOrder,
-                               unsigned char *pabyData,
-                               OGRwkbVariant eWkbVariant) const
+OGRErr OGRPolygon::exportToWkb(unsigned char *pabyData,
+                               const OGRwkbExportOptions *psOptions) const
 
 {
+    if (psOptions == nullptr)
+    {
+        static const OGRwkbExportOptions defaultOptions;
+        psOptions = &defaultOptions;
+    }
 
     /* -------------------------------------------------------------------- */
     /*      Set the byte order.                                             */
     /* -------------------------------------------------------------------- */
-    pabyData[0] =
-        DB2_V72_UNFIX_BYTE_ORDER(static_cast<unsigned char>(eByteOrder));
+    pabyData[0] = DB2_V72_UNFIX_BYTE_ORDER(
+        static_cast<unsigned char>(psOptions->eByteOrder));
 
     /* -------------------------------------------------------------------- */
     /*      Set the geometry feature type.                                  */
     /* -------------------------------------------------------------------- */
     GUInt32 nGType = getGeometryType();
 
-    if (eWkbVariant == wkbVariantPostGIS1)
+    if (psOptions->eWkbVariant == wkbVariantPostGIS1)
     {
         nGType = wkbFlatten(nGType);
         if (Is3D())
@@ -454,10 +435,10 @@ OGRErr OGRPolygon::exportToWkb(OGRwkbByteOrder eByteOrder,
         if (IsMeasured())
             nGType = static_cast<OGRwkbGeometryType>(nGType | 0x40000000);
     }
-    else if (eWkbVariant == wkbVariantIso)
+    else if (psOptions->eWkbVariant == wkbVariantIso)
         nGType = getIsoGeometryType();
 
-    if (OGR_SWAP(eByteOrder))
+    if (OGR_SWAP(psOptions->eByteOrder))
     {
         nGType = CPL_SWAP32(nGType);
     }
@@ -467,7 +448,7 @@ OGRErr OGRPolygon::exportToWkb(OGRwkbByteOrder eByteOrder,
     /* -------------------------------------------------------------------- */
     /*      Copy in the raw data.                                           */
     /* -------------------------------------------------------------------- */
-    if (OGR_SWAP(eByteOrder))
+    if (OGR_SWAP(psOptions->eByteOrder))
     {
         const int nCount = CPL_SWAP32(oCC.nCurveCount);
         memcpy(pabyData + 5, &nCount, 4);
@@ -484,7 +465,7 @@ OGRErr OGRPolygon::exportToWkb(OGRwkbByteOrder eByteOrder,
 
     for (auto &&poRing : *this)
     {
-        poRing->_exportToWkb(eByteOrder, flags, pabyData + nOffset);
+        poRing->_exportToWkb(flags, pabyData + nOffset, psOptions);
 
         nOffset += poRing->_WkbSize(flags);
     }
@@ -674,6 +655,7 @@ OGRErr OGRPolygon::importFromWKTListOnly(const char **ppszInput, int bHasZ,
     *ppszInput = pszInput;
     return OGRERR_NONE;
 }
+
 /*! @endcond */
 
 /************************************************************************/
@@ -911,4 +893,5 @@ OGRSurfaceCasterToCurvePolygon OGRPolygon::GetCasterToCurvePolygon() const
 {
     return OGRPolygon::CasterToCurvePolygon;
 }
+
 /*! @endcond */

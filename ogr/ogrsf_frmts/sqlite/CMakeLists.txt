@@ -22,8 +22,15 @@ add_gdal_driver(
           rasterlite2_header.h
           rasterlite2.cpp
           sqlite_rtree_bulk_load/wrapper.cpp
+   STRONG_CXX_WFLAGS
 )
 gdal_standard_includes(ogr_SQLite)
+
+# I'm not completely sure why this is needed, but otherwise
+# autotest/cpp/gdal_unit_test crashes in test_ogr.GDALDatasetSetQueryLoggerFunc
+# This may be related to the sqlite3 extension stuff in ogrsqliteapiroutines.c
+# and ogrsqlitevirtualogr.cpp
+set_property(TARGET ogr_SQLite PROPERTY UNITY_BUILD OFF)
 
 target_compile_definitions(ogr_SQLite PRIVATE -DHAVE_SQLITE)
 gdal_target_link_libraries(ogr_SQLite PRIVATE SQLite::SQLite3)
@@ -89,8 +96,7 @@ if (GDAL_USE_SPATIALITE)
 endif ()
 
 # Test sqlite3 extension
-find_path(SQLITE3EXT_INCLUDE_DIR NAMES sqlite3ext.h)
-if (SQLITE3EXT_INCLUDE_DIR)
+if (HAVE_SQLITE3EXT_H AND BUILD_SHARED_LIBS)
     add_library(my_test_sqlite3_ext MODULE my_test_sqlite3_ext.c)
     gdal_standard_includes(my_test_sqlite3_ext)
     get_target_property(PLUGIN_OUTPUT_DIR ${GDAL_LIB_TARGET_NAME} PLUGIN_OUTPUT_DIR)

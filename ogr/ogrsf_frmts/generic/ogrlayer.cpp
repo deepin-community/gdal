@@ -8,23 +8,7 @@
  * Copyright (c) 1999,  Les Technologies SoftMap Inc.
  * Copyright (c) 2008-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogrsf_frmts.h"
@@ -38,6 +22,7 @@
 
 #include "cpl_time.h"
 #include <cassert>
+#include <cmath>
 #include <limits>
 #include <set>
 
@@ -223,6 +208,82 @@ OGRErr OGRLayer::GetExtent(int iGeomField, OGREnvelope *psExtent, int bForce)
         return GetExtentInternal(iGeomField, psExtent, bForce);
 }
 
+OGRErr OGRLayer::GetExtent3D(int iGeomField, OGREnvelope3D *psExtent3D,
+                             int bForce)
+
+{
+    psExtent3D->MinX = 0.0;
+    psExtent3D->MaxX = 0.0;
+    psExtent3D->MinY = 0.0;
+    psExtent3D->MaxY = 0.0;
+    psExtent3D->MinZ = std::numeric_limits<double>::infinity();
+    psExtent3D->MaxZ = -std::numeric_limits<double>::infinity();
+
+    /* -------------------------------------------------------------------- */
+    /*      If this layer has a none geometry type, then we can             */
+    /*      reasonably assume there are not extents available.              */
+    /* -------------------------------------------------------------------- */
+    if (iGeomField < 0 || iGeomField >= GetLayerDefn()->GetGeomFieldCount() ||
+        GetLayerDefn()->GetGeomFieldDefn(iGeomField)->GetType() == wkbNone)
+    {
+        if (iGeomField != 0)
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Invalid geometry field index : %d", iGeomField);
+        }
+        return OGRERR_FAILURE;
+    }
+
+    /* -------------------------------------------------------------------- */
+    /*      If not forced, we should avoid having to scan all the           */
+    /*      features and just return a failure.                             */
+    /* -------------------------------------------------------------------- */
+    if (!bForce)
+        return OGRERR_FAILURE;
+
+    /* -------------------------------------------------------------------- */
+    /*      OK, we hate to do this, but go ahead and read through all       */
+    /*      the features to collect geometries and build extents.           */
+    /* -------------------------------------------------------------------- */
+    OGREnvelope3D oEnv;
+    bool bExtentSet = false;
+
+    for (auto &&poFeature : *this)
+    {
+        OGRGeometry *poGeom = poFeature->GetGeomFieldRef(iGeomField);
+        if (poGeom == nullptr || poGeom->IsEmpty())
+        {
+            /* Do nothing */
+        }
+        else if (!bExtentSet)
+        {
+            poGeom->getEnvelope(psExtent3D);
+            // This is required because getEnvelope initializes Z to 0 for 2D geometries
+            if (!poGeom->Is3D())
+            {
+                psExtent3D->MinZ = std::numeric_limits<double>::infinity();
+                psExtent3D->MaxZ = -std::numeric_limits<double>::infinity();
+            }
+            bExtentSet = true;
+        }
+        else
+        {
+            poGeom->getEnvelope(&oEnv);
+            // This is required because getEnvelope initializes Z to 0 for 2D geometries
+            if (!poGeom->Is3D())
+            {
+                oEnv.MinZ = std::numeric_limits<double>::infinity();
+                oEnv.MaxZ = -std::numeric_limits<double>::infinity();
+            }
+            // Merge handles infinity correctly
+            psExtent3D->Merge(oEnv);
+        }
+    }
+    ResetReading();
+
+    return bExtentSet ? OGRERR_NONE : OGRERR_FAILURE;
+}
+
 //! @cond Doxygen_Suppress
 OGRErr OGRLayer::GetExtentInternal(int iGeomField, OGREnvelope *psExtent,
                                    int bForce)
@@ -272,8 +333,8 @@ OGRErr OGRLayer::GetExtentInternal(int iGeomField, OGREnvelope *psExtent,
         else if (!bExtentSet)
         {
             poGeom->getEnvelope(psExtent);
-            if (!(CPLIsNan(psExtent->MinX) || CPLIsNan(psExtent->MinY) ||
-                  CPLIsNan(psExtent->MaxX) || CPLIsNan(psExtent->MaxY)))
+            if (!(std::isnan(psExtent->MinX) || std::isnan(psExtent->MinY) ||
+                  std::isnan(psExtent->MaxX) || std::isnan(psExtent->MaxY)))
             {
                 bExtentSet = true;
             }
@@ -295,6 +356,7 @@ OGRErr OGRLayer::GetExtentInternal(int iGeomField, OGREnvelope *psExtent,
 
     return bExtentSet ? OGRERR_NONE : OGRERR_FAILURE;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -331,6 +393,25 @@ OGRErr OGR_L_GetExtentEx(OGRLayerH hLayer, int iGeomField,
 
     return OGRLayer::FromHandle(hLayer)->GetExtent(iGeomField, psExtent,
                                                    bForce);
+}
+
+/************************************************************************/
+/*                          OGR_L_GetExtent3D()                           */
+/************************************************************************/
+
+OGRErr OGR_L_GetExtent3D(OGRLayerH hLayer, int iGeomField,
+                         OGREnvelope3D *psExtent3D, int bForce)
+
+{
+    VALIDATE_POINTER1(hLayer, "OGR_L_GetExtent3D", OGRERR_INVALID_HANDLE);
+
+#ifdef OGRAPISPY_ENABLED
+    if (bOGRAPISpyEnabled)
+        OGRAPISpy_L_GetExtent3D(hLayer, iGeomField, bForce);
+#endif
+
+    return OGRLayer::FromHandle(hLayer)->GetExtent3D(iGeomField, psExtent3D,
+                                                     bForce);
 }
 
 /************************************************************************/
@@ -420,6 +501,7 @@ int OGRLayer::AttributeFilterEvaluationNeedsGeometry()
 
     return ContainGeomSpecialField(expr, nLayerFieldCount);
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -559,28 +641,80 @@ OGRFeatureH OGR_L_GetNextFeature(OGRLayerH hLayer)
 
 void OGRLayer::ConvertGeomsIfNecessary(OGRFeature *poFeature)
 {
-    const bool bSupportsCurve = CPL_TO_BOOL(TestCapability(OLCCurveGeometries));
-    const bool bSupportsM = CPL_TO_BOOL(TestCapability(OLCMeasuredGeometries));
-    if (!bSupportsCurve || !bSupportsM)
+    if (!m_poPrivate->m_bConvertGeomsIfNecessaryAlreadyCalled)
     {
-        int nGeomFieldCount = GetLayerDefn()->GetGeomFieldCount();
+        // One time initialization
+        m_poPrivate->m_bConvertGeomsIfNecessaryAlreadyCalled = true;
+        m_poPrivate->m_bSupportsCurve =
+            CPL_TO_BOOL(TestCapability(OLCCurveGeometries));
+        m_poPrivate->m_bSupportsM =
+            CPL_TO_BOOL(TestCapability(OLCMeasuredGeometries));
+        if (CPLTestBool(
+                CPLGetConfigOption("OGR_APPLY_GEOM_SET_PRECISION", "FALSE")))
+        {
+            const auto poFeatureDefn = GetLayerDefn();
+            const int nGeomFieldCount = poFeatureDefn->GetGeomFieldCount();
+            for (int i = 0; i < nGeomFieldCount; i++)
+            {
+                const double dfXYResolution = poFeatureDefn->GetGeomFieldDefn(i)
+                                                  ->GetCoordinatePrecision()
+                                                  .dfXYResolution;
+                if (dfXYResolution != OGRGeomCoordinatePrecision::UNKNOWN &&
+                    OGRGeometryFactory::haveGEOS())
+                {
+                    m_poPrivate->m_bApplyGeomSetPrecision = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!m_poPrivate->m_bSupportsCurve || !m_poPrivate->m_bSupportsM ||
+        m_poPrivate->m_bApplyGeomSetPrecision)
+    {
+        const auto poFeatureDefn = GetLayerDefn();
+        const int nGeomFieldCount = poFeatureDefn->GetGeomFieldCount();
         for (int i = 0; i < nGeomFieldCount; i++)
         {
             OGRGeometry *poGeom = poFeature->GetGeomFieldRef(i);
-            if (poGeom != nullptr &&
-                (!bSupportsM && OGR_GT_HasM(poGeom->getGeometryType())))
+            if (poGeom)
             {
-                poGeom->setMeasured(FALSE);
-            }
-            if (poGeom != nullptr &&
-                (!bSupportsCurve &&
-                 OGR_GT_IsNonLinear(poGeom->getGeometryType())))
-            {
-                OGRwkbGeometryType eTargetType =
-                    OGR_GT_GetLinear(poGeom->getGeometryType());
-                poFeature->SetGeomFieldDirectly(
-                    i, OGRGeometryFactory::forceTo(poFeature->StealGeometry(i),
-                                                   eTargetType));
+                if (!m_poPrivate->m_bSupportsM &&
+                    OGR_GT_HasM(poGeom->getGeometryType()))
+                {
+                    poGeom->setMeasured(FALSE);
+                }
+
+                if (!m_poPrivate->m_bSupportsCurve &&
+                    OGR_GT_IsNonLinear(poGeom->getGeometryType()))
+                {
+                    OGRwkbGeometryType eTargetType =
+                        OGR_GT_GetLinear(poGeom->getGeometryType());
+                    poGeom = OGRGeometryFactory::forceTo(
+                        poFeature->StealGeometry(i), eTargetType);
+                    poFeature->SetGeomFieldDirectly(i, poGeom);
+                    poGeom = poFeature->GetGeomFieldRef(i);
+                }
+
+                if (poGeom && m_poPrivate->m_bApplyGeomSetPrecision)
+                {
+                    const double dfXYResolution =
+                        poFeatureDefn->GetGeomFieldDefn(i)
+                            ->GetCoordinatePrecision()
+                            .dfXYResolution;
+                    if (dfXYResolution != OGRGeomCoordinatePrecision::UNKNOWN &&
+                        !poGeom->hasCurveGeometry())
+                    {
+                        auto poNewGeom = poGeom->SetPrecision(dfXYResolution,
+                                                              /* nFlags = */ 0);
+                        if (poNewGeom)
+                        {
+                            poFeature->SetGeomFieldDirectly(i, poNewGeom);
+                            // If there was potential further processing...
+                            // poGeom = poFeature->GetGeomFieldRef(i);
+                        }
+                    }
+                }
             }
         }
     }
@@ -806,7 +940,7 @@ OGRErr OGR_L_UpdateFeature(OGRLayerH hLayer, OGRFeatureH hFeat,
 /*                            CreateField()                             */
 /************************************************************************/
 
-OGRErr OGRLayer::CreateField(OGRFieldDefn *poField, int bApproxOK)
+OGRErr OGRLayer::CreateField(const OGRFieldDefn *poField, int bApproxOK)
 
 {
     (void)poField;
@@ -1052,7 +1186,7 @@ OGRErr OGR_L_AlterGeomFieldDefn(OGRLayerH hLayer, int iGeomField,
 /*                         CreateGeomField()                            */
 /************************************************************************/
 
-OGRErr OGRLayer::CreateGeomField(OGRGeomFieldDefn *poField, int bApproxOK)
+OGRErr OGRLayer::CreateGeomField(const OGRGeomFieldDefn *poField, int bApproxOK)
 
 {
     (void)poField;
@@ -1291,12 +1425,56 @@ OGRGeometryH OGR_L_GetSpatialFilter(OGRLayerH hLayer)
 }
 
 /************************************************************************/
+/*             ValidateGeometryFieldIndexForSetSpatialFilter()          */
+/************************************************************************/
+
+//! @cond Doxygen_Suppress
+bool OGRLayer::ValidateGeometryFieldIndexForSetSpatialFilter(
+    int iGeomField, const OGRGeometry *poGeomIn, bool bIsSelectLayer)
+{
+    if (iGeomField == 0 && poGeomIn == nullptr &&
+        GetLayerDefn()->GetGeomFieldCount() == 0)
+    {
+        // Setting a null spatial filter on geometry field idx 0
+        // when there are no geometry field can't harm, and is accepted silently
+        // for backward compatibility with existing practice.
+    }
+    else if (iGeomField < 0 ||
+             iGeomField >= GetLayerDefn()->GetGeomFieldCount())
+    {
+        if (iGeomField == 0)
+        {
+            CPLError(
+                CE_Failure, CPLE_AppDefined,
+                bIsSelectLayer
+                    ? "Cannot set spatial filter: no geometry field selected."
+                    : "Cannot set spatial filter: no geometry field present in "
+                      "layer.");
+        }
+        else
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                     "Cannot set spatial filter on non-existing geometry field "
+                     "of index %d.",
+                     iGeomField);
+        }
+        return false;
+    }
+    return true;
+}
+
+//! @endcond
+
+/************************************************************************/
 /*                          SetSpatialFilter()                          */
 /************************************************************************/
 
 void OGRLayer::SetSpatialFilter(OGRGeometry *poGeomIn)
 
 {
+    if (poGeomIn && !ValidateGeometryFieldIndexForSetSpatialFilter(0, poGeomIn))
+        return;
+
     m_iGeomFieldFilter = 0;
     if (InstallFilter(poGeomIn))
         ResetReading();
@@ -1307,17 +1485,18 @@ void OGRLayer::SetSpatialFilter(int iGeomField, OGRGeometry *poGeomIn)
 {
     if (iGeomField == 0)
     {
+        if (poGeomIn &&
+            !ValidateGeometryFieldIndexForSetSpatialFilter(0, poGeomIn))
+            return;
+
         m_iGeomFieldFilter = iGeomField;
         SetSpatialFilter(poGeomIn);
     }
     else
     {
-        if (iGeomField < 0 || iGeomField >= GetLayerDefn()->GetGeomFieldCount())
-        {
-            CPLError(CE_Failure, CPLE_AppDefined,
-                     "Invalid geometry field index : %d", iGeomField);
+        if (!ValidateGeometryFieldIndexForSetSpatialFilter(iGeomField,
+                                                           poGeomIn))
             return;
-        }
 
         m_iGeomFieldFilter = iGeomField;
         if (InstallFilter(poGeomIn))
@@ -1361,6 +1540,7 @@ void OGR_L_SetSpatialFilterEx(OGRLayerH hLayer, int iGeomField,
     OGRLayer::FromHandle(hLayer)->SetSpatialFilter(
         iGeomField, OGRGeometry::FromHandle(hGeom));
 }
+
 /************************************************************************/
 /*                        SetSpatialFilterRect()                        */
 /************************************************************************/
@@ -1485,45 +1665,11 @@ int OGRLayer::InstallFilter(OGRGeometry *poFilter)
     m_pPreparedFilterGeom =
         OGRCreatePreparedGeometry(OGRGeometry::ToHandle(m_poFilterGeom));
 
-    /* -------------------------------------------------------------------- */
-    /*      Now try to determine if the filter is really a rectangle.       */
-    /* -------------------------------------------------------------------- */
-    if (wkbFlatten(m_poFilterGeom->getGeometryType()) != wkbPolygon)
-        return TRUE;
-
-    OGRPolygon *poPoly = m_poFilterGeom->toPolygon();
-
-    if (poPoly->getNumInteriorRings() != 0)
-        return TRUE;
-
-    OGRLinearRing *poRing = poPoly->getExteriorRing();
-    if (poRing == nullptr)
-        return TRUE;
-
-    if (poRing->getNumPoints() > 5 || poRing->getNumPoints() < 4)
-        return TRUE;
-
-    // If the ring has 5 points, the last should be the first.
-    if (poRing->getNumPoints() == 5 && (poRing->getX(0) != poRing->getX(4) ||
-                                        poRing->getY(0) != poRing->getY(4)))
-        return TRUE;
-
-    // Polygon with first segment in "y" direction.
-    if (poRing->getX(0) == poRing->getX(1) &&
-        poRing->getY(1) == poRing->getY(2) &&
-        poRing->getX(2) == poRing->getX(3) &&
-        poRing->getY(3) == poRing->getY(0))
-        m_bFilterIsEnvelope = TRUE;
-
-    // Polygon with first segment in "x" direction.
-    if (poRing->getY(0) == poRing->getY(1) &&
-        poRing->getX(1) == poRing->getX(2) &&
-        poRing->getY(2) == poRing->getY(3) &&
-        poRing->getX(3) == poRing->getX(0))
-        m_bFilterIsEnvelope = TRUE;
+    m_bFilterIsEnvelope = m_poFilterGeom->IsRectangle();
 
     return TRUE;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -1601,7 +1747,7 @@ static bool DoesGeometryHavePointInEnvelope(const OGRGeometry *poGeometry,
 /************************************************************************/
 
 //! @cond Doxygen_Suppress
-int OGRLayer::FilterGeometry(OGRGeometry *poGeometry)
+int OGRLayer::FilterGeometry(const OGRGeometry *poGeometry)
 
 {
     /* -------------------------------------------------------------------- */
@@ -1664,7 +1810,9 @@ int OGRLayer::FilterGeometry(OGRGeometry *poGeometry)
             // CPLDebug("OGRLayer", "GEOS intersection");
             if (m_pPreparedFilterGeom != nullptr)
                 return OGRPreparedGeometryIntersects(
-                    m_pPreparedFilterGeom, OGRGeometry::ToHandle(poGeometry));
+                    m_pPreparedFilterGeom,
+                    OGRGeometry::ToHandle(
+                        const_cast<OGRGeometry *>(poGeometry)));
             else
                 return m_poFilterGeom->Intersects(poGeometry);
         }
@@ -1681,22 +1829,38 @@ bool OGRLayer::FilterWKBGeometry(const GByte *pabyWKB, size_t nWKBSize,
                                  bool bEnvelopeAlreadySet,
                                  OGREnvelope &sEnvelope) const
 {
-    if (!m_poFilterGeom)
+    OGRPreparedGeometry *pPreparedFilterGeom = m_pPreparedFilterGeom;
+    bool bRet = FilterWKBGeometry(
+        pabyWKB, nWKBSize, bEnvelopeAlreadySet, sEnvelope, m_poFilterGeom,
+        m_bFilterIsEnvelope, m_sFilterEnvelope, pPreparedFilterGeom);
+    const_cast<OGRLayer *>(this)->m_pPreparedFilterGeom = pPreparedFilterGeom;
+    return bRet;
+}
+
+/* static */
+bool OGRLayer::FilterWKBGeometry(const GByte *pabyWKB, size_t nWKBSize,
+                                 bool bEnvelopeAlreadySet,
+                                 OGREnvelope &sEnvelope,
+                                 const OGRGeometry *poFilterGeom,
+                                 bool bFilterIsEnvelope,
+                                 const OGREnvelope &sFilterEnvelope,
+                                 OGRPreparedGeometry *&pPreparedFilterGeom)
+{
+    if (!poFilterGeom)
         return true;
 
     if ((bEnvelopeAlreadySet ||
          OGRWKBGetBoundingBox(pabyWKB, nWKBSize, sEnvelope)) &&
-        m_sFilterEnvelope.Intersects(sEnvelope))
+        sFilterEnvelope.Intersects(sEnvelope))
     {
-        if (m_bFilterIsEnvelope && m_sFilterEnvelope.Contains(sEnvelope))
+        if (bFilterIsEnvelope && sFilterEnvelope.Contains(sEnvelope))
         {
             return true;
         }
         else
         {
-            if (m_bFilterIsEnvelope &&
-                OGRWKBIntersectsPessimistic(pabyWKB, nWKBSize,
-                                            m_sFilterEnvelope))
+            if (bFilterIsEnvelope &&
+                OGRWKBIntersectsPessimistic(pabyWKB, nWKBSize, sFilterEnvelope))
             {
                 return true;
             }
@@ -1707,12 +1871,19 @@ bool OGRLayer::FilterWKBGeometry(const GByte *pabyWKB, size_t nWKBSize,
                 if (OGRGeometryFactory::createFromWkb(pabyWKB, nullptr, &poGeom,
                                                       nWKBSize) == OGRERR_NONE)
                 {
-                    if (m_pPreparedFilterGeom)
+                    if (!pPreparedFilterGeom)
+                    {
+                        pPreparedFilterGeom =
+                            OGRCreatePreparedGeometry(OGRGeometry::ToHandle(
+                                const_cast<OGRGeometry *>(poFilterGeom)));
+                    }
+                    if (pPreparedFilterGeom)
                         ret = OGRPreparedGeometryIntersects(
-                            m_pPreparedFilterGeom,
-                            OGRGeometry::ToHandle(poGeom));
+                            pPreparedFilterGeom,
+                            OGRGeometry::ToHandle(
+                                const_cast<OGRGeometry *>(poGeom)));
                     else
-                        ret = m_poFilterGeom->Intersects(poGeom);
+                        ret = poFilterGeom->Intersects(poGeom);
                 }
                 delete poGeom;
                 return CPL_TO_BOOL(ret);
@@ -1756,9 +1927,11 @@ void OGR_L_ResetReading(OGRLayerH hLayer)
 /************************************************************************/
 
 //! @cond Doxygen_Suppress
-OGRErr OGRLayer::InitializeIndexSupport(const char *pszFilename)
+OGRErr
+OGRLayer::InitializeIndexSupport([[maybe_unused]] const char *pszFilename)
 
 {
+#ifdef HAVE_MITAB
     OGRErr eErr;
 
     if (m_poAttrIndex != nullptr)
@@ -1774,7 +1947,11 @@ OGRErr OGRLayer::InitializeIndexSupport(const char *pszFilename)
     }
 
     return eErr;
+#else
+    return OGRERR_FAILURE;
+#endif
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -1840,6 +2017,7 @@ GIntBig OGRLayer::GetFeaturesRead()
 {
     return m_nFeaturesRead;
 }
+
 //! @endcond
 
 /************************************************************************/
@@ -2051,7 +2229,7 @@ OGRwkbGeometryType OGR_L_GetGeomType(OGRLayerH hLayer)
 /*                          SetIgnoredFields()                          */
 /************************************************************************/
 
-OGRErr OGRLayer::SetIgnoredFields(const char **papszFields)
+OGRErr OGRLayer::SetIgnoredFields(CSLConstList papszFields)
 {
     OGRFeatureDefn *poDefn = GetLayerDefn();
 
@@ -2066,13 +2244,9 @@ OGRErr OGRLayer::SetIgnoredFields(const char **papszFields)
     }
     poDefn->SetStyleIgnored(FALSE);
 
-    if (papszFields == nullptr)
-        return OGRERR_NONE;
-
     // ignore some fields
-    while (*papszFields)
+    for (const char *pszFieldName : cpl::Iterate(papszFields))
     {
-        const char *pszFieldName = *papszFields;
         // check special fields
         if (EQUAL(pszFieldName, "OGR_GEOMETRY"))
             poDefn->SetGeometryIgnored(TRUE);
@@ -2096,7 +2270,6 @@ OGRErr OGRLayer::SetIgnoredFields(const char **papszFields)
             else
                 poDefn->GetFieldDefn(iField)->SetIgnored(TRUE);
         }
-        papszFields++;
     }
 
     return OGRERR_NONE;
@@ -2368,7 +2541,9 @@ static OGRGeometry *set_filter_from(OGRLayer *pLayer,
 static OGRGeometry *promote_to_multi(OGRGeometry *poGeom)
 {
     OGRwkbGeometryType eType = wkbFlatten(poGeom->getGeometryType());
-    if (eType == wkbPolygon)
+    if (eType == wkbPoint)
+        return OGRGeometryFactory::forceToMultiPoint(poGeom);
+    else if (eType == wkbPolygon)
         return OGRGeometryFactory::forceToMultiPolygon(poGeom);
     else if (eType == wkbLineString)
         return OGRGeometryFactory::forceToMultiLineString(poGeom);
@@ -2404,23 +2579,32 @@ static OGRGeometry *promote_to_multi(OGRGeometry *poGeom)
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
+ * </li>
  * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>PRETEST_CONTAINMENT=YES/NO. Set to YES to pretest the
  *     containment of features of method layer within the features of
  *     this layer. This will speed up the method significantly in some
  *     cases. Requires that the prepared geometries are in effect.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Intersection().
@@ -2462,22 +2646,22 @@ OGRErr OGRLayer::Intersection(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
     double progress_max = static_cast<double>(GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
-    int bUsePreparedGeometries = CPLTestBool(
+    const bool bUsePreparedGeometries = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "USE_PREPARED_GEOMETRIES", "YES"));
-    if (bUsePreparedGeometries)
-        bUsePreparedGeometries = OGRHasPreparedGeometrySupport();
-    int bPretestContainment = CPLTestBool(
+    const bool bPretestContainment = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PRETEST_CONTAINMENT", "NO"));
-    int bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
+    bool bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
         papszOptions, "KEEP_LOWER_DIMENSION_GEOMETRIES", "YES"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Intersection() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -2504,7 +2688,7 @@ OGRErr OGRLayer::Intersection(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
         {
             CPLDebug("OGR", "Resetting KEEP_LOWER_DIMENSION_GEOMETRIES to NO "
                             "since the result layer does not allow it.");
-            bKeepLowerDimGeom = FALSE;
+            bKeepLowerDimGeom = false;
         }
     }
 
@@ -2717,23 +2901,32 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>PRETEST_CONTAINMENT=YES/NO. Set to YES to pretest the
  *     containment of features of method layer within the features of
  *     this layer. This will speed up the method significantly in some
  *     cases. Requires that the prepared geometries are in effect.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Intersection().
@@ -2809,19 +3002,27 @@ OGRErr OGR_L_Intersection(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Union().
@@ -2864,20 +3065,20 @@ OGRErr OGRLayer::Union(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
         static_cast<double>(pLayerMethod->GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
-    int bUsePreparedGeometries = CPLTestBool(
+    const bool bUsePreparedGeometries = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "USE_PREPARED_GEOMETRIES", "YES"));
-    if (bUsePreparedGeometries)
-        bUsePreparedGeometries = OGRHasPreparedGeometrySupport();
-    int bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
+    bool bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
         papszOptions, "KEEP_LOWER_DIMENSION_GEOMETRIES", "YES"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Union() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -3255,19 +3456,27 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Union().
@@ -3341,12 +3550,16 @@ OGRErr OGR_L_Union(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
+ * </li>
  * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
  *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_SymDifference().
@@ -3389,14 +3602,16 @@ OGRErr OGRLayer::SymDifference(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
         static_cast<double>(pLayerMethod->GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::SymDifference() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -3669,12 +3884,17 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::SymDifference().
@@ -3749,19 +3969,27 @@ OGRErr OGR_L_SymDifference(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Identity().
@@ -3801,20 +4029,20 @@ OGRErr OGRLayer::Identity(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
     double progress_max = static_cast<double>(GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
-    int bUsePreparedGeometries = CPLTestBool(
+    const bool bUsePreparedGeometries = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "USE_PREPARED_GEOMETRIES", "YES"));
-    if (bUsePreparedGeometries)
-        bUsePreparedGeometries = OGRHasPreparedGeometrySupport();
-    int bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
+    bool bKeepLowerDimGeom = CPLTestBool(CSLFetchNameValueDef(
         papszOptions, "KEEP_LOWER_DIMENSION_GEOMETRIES", "YES"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Identity() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
     if (bKeepLowerDimGeom)
@@ -4075,19 +4303,27 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * <li>USE_PREPARED_GEOMETRIES=YES/NO. Set to NO to not use prepared
  *     geometries to pretest intersection of features of method layer
  *     with features of this layer.
+ * </li>
  * <li>KEEP_LOWER_DIMENSION_GEOMETRIES=YES/NO. Set to NO to skip
  *     result features with lower dimension geometry that would
- *     otherwise be added to the result layer. The default is to add
- *     but only if the result layer has an unknown geometry type.
+ *     otherwise be added to the result layer. The default is YES, to add
+ *     features with lower dimension geometry, but only if the result layer
+ *     has an unknown geometry type.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Identity().
@@ -4161,12 +4397,17 @@ OGRErr OGR_L_Identity(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Update().
@@ -4208,14 +4449,16 @@ OGRErr OGRLayer::Update(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
         static_cast<double>(pLayerMethod->GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Update() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -4426,12 +4669,17 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Update().
@@ -4498,12 +4746,17 @@ OGRErr OGR_L_Update(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Clip().
@@ -4541,14 +4794,16 @@ OGRErr OGRLayer::Clip(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
     double progress_max = static_cast<double>(GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Clip() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -4723,12 +4978,17 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Clip().
@@ -4795,12 +5055,17 @@ OGRErr OGR_L_Clip(OGRLayerH pLayerInput, OGRLayerH pLayerMethod,
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This method is the same as the C function OGR_L_Erase().
@@ -4838,14 +5103,16 @@ OGRErr OGRLayer::Erase(OGRLayer *pLayerMethod, OGRLayer *pLayerResult,
     double progress_max = static_cast<double>(GetFeatureCount(FALSE));
     double progress_counter = 0;
     double progress_ticker = 0;
-    int bSkipFailures =
+    const bool bSkipFailures =
         CPLTestBool(CSLFetchNameValueDef(papszOptions, "SKIP_FAILURES", "NO"));
-    int bPromoteToMulti = CPLTestBool(
+    const bool bPromoteToMulti = CPLTestBool(
         CSLFetchNameValueDef(papszOptions, "PROMOTE_TO_MULTI", "NO"));
 
     // check for GEOS
     if (!OGRGeometryFactory::haveGEOS())
     {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "OGRLayer::Erase() requires GEOS support");
         return OGRERR_UNSUPPORTED_OPERATION;
     }
 
@@ -4999,12 +5266,17 @@ done:
  * <ul>
  * <li>SKIP_FAILURES=YES/NO. Set it to YES to go on, even when a
  *     feature could not be inserted or a GEOS call failed.
- * <li>PROMOTE_TO_MULTI=YES/NO. Set it to YES to convert Polygons
- *     into MultiPolygons, or LineStrings to MultiLineStrings.
+ * </li>
+ * <li>PROMOTE_TO_MULTI=YES/NO. Set to YES to convert Polygons
+ *     into MultiPolygons, LineStrings to MultiLineStrings or
+ *     Points to MultiPoints (only since GDAL 3.9.2 for the later)
+ * </li>
  * <li>INPUT_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the input layer.
+ * </li>
  * <li>METHOD_PREFIX=string. Set a prefix for the field names that
  *     will be created from the fields of the method layer.
+ * </li>
  * </ul>
  *
  * This function is the same as the C++ method OGRLayer::Erase().
@@ -5240,7 +5512,7 @@ OGRLayer::GetGeometryTypes(int iGeomField, int nFlagsGGT, int &nEntryCountOut,
     if (poDefn->IsStyleIgnored())
         aosIgnoredFieldsRestore.AddString("OGR_STYLE");
     aosIgnoredFields.AddString("OGR_STYLE");
-    SetIgnoredFields(const_cast<const char **>(aosIgnoredFields.List()));
+    SetIgnoredFields(aosIgnoredFields.List());
 
     // Iterate over features
     std::map<OGRwkbGeometryType, int64_t> oMapCount;
@@ -5288,7 +5560,7 @@ OGRLayer::GetGeometryTypes(int iGeomField, int nFlagsGGT, int &nEntryCountOut,
     }
 
     // Restore ignore fields state
-    SetIgnoredFields(const_cast<const char **>(aosIgnoredFieldsRestore.List()));
+    SetIgnoredFields(aosIgnoredFieldsRestore.List());
 
     if (bInterrupted)
     {
@@ -5380,7 +5652,7 @@ OGRLayer::GetSupportedSRSList(CPL_UNUSED int iGeomField)
  * @param hLayer Layer.
  * @param iGeomField Geometry field index.
  * @param[out] pnCount Number of values in returned array. Must not be null.
- * @return list of supported SRS, to be freeds with OSRFreeSRSArray(), or
+ * @return list of supported SRS, to be freed with OSRFreeSRSArray(), or
  * nullptr
  * @since GDAL 3.7
  */
@@ -5424,9 +5696,10 @@ OGRSpatialReferenceH *OGR_L_GetSupportedSRSList(OGRLayerH hLayer,
  * <ul>
  * <li>the SRS in which geometries of returned features are expressed,</li>
  * <li>the SRS in which geometries of passed features (CreateFeature(),
- * SetFeature()) are expressed,</li> <li>the SRS returned by GetSpatialRef() and
- * GetGeomFieldDefn()->GetSpatialRef(),</li> <li>the SRS used to interpret
- * SetSpatialFilter() values.</li>
+ * SetFeature()) are expressed,</li>
+ * <li>the SRS returned by GetSpatialRef() and
+ * GetGeomFieldDefn()->GetSpatialRef(),</li>
+ * <li>the SRS used to interpret SetSpatialFilter() values.</li>
  * </ul>
  * This also resets feature reading and the spatial filter.
  * Note however that this does not modify the storage SRS of the features of
@@ -5459,9 +5732,10 @@ OGRErr OGRLayer::SetActiveSRS(CPL_UNUSED int iGeomField,
  * <ul>
  * <li>the SRS in which geometries of returned features are expressed,</li>
  * <li>the SRS in which geometries of passed features (CreateFeature(),
- * SetFeature()) are expressed,</li> <li>the SRS returned by GetSpatialRef() and
- * GetGeomFieldDefn()->GetSpatialRef(),</li> <li>the SRS used to interpret
- * SetSpatialFilter() values.</li>
+ * SetFeature()) are expressed,</li>
+ * <li>the SRS returned by GetSpatialRef() and
+ * GetGeomFieldDefn()->GetSpatialRef(),</li>
+ * <li>the SRS used to interpret SetSpatialFilter() values.</li>
  * </ul>
  * This also resets feature reading and the spatial filter.
  * Note however that this does not modify the storage SRS of the features of
@@ -5481,4 +5755,59 @@ OGRErr OGR_L_SetActiveSRS(OGRLayerH hLayer, int iGeomField,
     VALIDATE_POINTER1(hLayer, "OGR_L_SetActiveSRS", OGRERR_FAILURE);
     return OGRLayer::FromHandle(hLayer)->SetActiveSRS(
         iGeomField, OGRSpatialReference::FromHandle(hSRS));
+}
+
+/************************************************************************/
+/*                             GetDataset()                             */
+/************************************************************************/
+
+/** Return the dataset associated with this layer.
+ *
+ * As of GDAL 3.9, GetDataset() is implemented on all in-tree drivers that
+ * have CreateLayer() capability. It may not be implemented in read-only
+ * drivers or out-of-tree drivers.
+ *
+ * It is currently only used by the GetRecordBatchSchema()
+ * method to retrieve the field domain associated with a field, to fill the
+ * dictionary field of a struct ArrowSchema.
+ * It is also used by CreateFieldFromArrowSchema() to determine which field
+ * types and subtypes are supported by the layer, by inspecting the driver
+ * metadata, and potentially use fallback types when needed.
+ *
+ * This method is the same as the C function OGR_L_GetDataset().
+ *
+ * @return dataset, or nullptr when unknown.
+ * @since GDAL 3.6
+ */
+GDALDataset *OGRLayer::GetDataset()
+{
+    return nullptr;
+}
+
+/************************************************************************/
+/*                          OGR_L_GetDataset()                          */
+/************************************************************************/
+
+/** Return the dataset associated with this layer.
+ *
+ * As of GDAL 3.9, GetDataset() is implemented on all in-tree drivers that
+ * have CreateLayer() capability. It may not be implemented in read-only
+ * drivers or out-of-tree drivers.
+ *
+ * It is currently only used by the GetRecordBatchSchema()
+ * method to retrieve the field domain associated with a field, to fill the
+ * dictionary field of a struct ArrowSchema.
+ * It is also used by CreateFieldFromArrowSchema() to determine which field
+ * types and subtypes are supported by the layer, by inspecting the driver
+ * metadata, and potentially use fallback types when needed.
+ *
+ * This function is the same as the C++ method OGRLayer::GetDataset().
+ *
+ * @return dataset, or nullptr when unknown.
+ * @since GDAL 3.9
+ */
+GDALDatasetH OGR_L_GetDataset(OGRLayerH hLayer)
+{
+    VALIDATE_POINTER1(hLayer, "OGR_L_GetDataset", nullptr);
+    return GDALDataset::ToHandle(OGRLayer::FromHandle(hLayer)->GetDataset());
 }

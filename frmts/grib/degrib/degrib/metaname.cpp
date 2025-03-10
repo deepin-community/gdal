@@ -25,6 +25,8 @@
 #include "cpl_port.h"
 #include "cpl_csv.h"
 
+#include <cmath>
+
 static const char* GetGRIB2_CSVFilename(const char* pszFilename)
 {
     const char* pszGribTableDirectory = CPLGetConfigOption("GRIB_RESOURCE_DIR", nullptr);
@@ -427,7 +429,7 @@ static void ElemNameProb (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
       if (upperProb > tmp ||
           tmp > std::numeric_limits<int>::max() ||
           tmp < std::numeric_limits<int>::min() ||
-          CPLIsNan(tmp) ) {
+          std::isnan(tmp) ) {
          // TODO(schwehr): What is the correct response?
          errSprintf ("ERROR: upperProb out of range.  Setting to 0.\n");
          upperProb = 0.0;
@@ -867,8 +869,8 @@ static void ElemNamePerc (uChar mstrVersion, uShort2 center, uShort2 subcenter, 
  * the percentile (or exceedance value) so don't tack on percentile here.*/
             size_t len = strlen(pszShortName);
             if (len >= 2 &&
-                isdigit(pszShortName[len -1]) &&
-                isdigit(pszShortName[len -2])) {
+                isdigit(static_cast<unsigned char>(pszShortName[len -1])) &&
+                isdigit(static_cast<unsigned char>(pszShortName[len -2]))) {
                mallocSprintf (name, "%s", pszShortName);
             } else if ((strcmp (pszShortName, "Surge") == 0) ||
                        (strcmp (pszShortName, "SURGE") == 0)) {

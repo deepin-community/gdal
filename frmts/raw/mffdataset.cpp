@@ -8,23 +8,7 @@
  * Copyright (c) 2000, Frank Warmerdam
  * Copyright (c) 2008-2012, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "atlsci_spheroid.h"
@@ -81,16 +65,19 @@ class MFFDataset final : public RawDataset
     char **GetFileList() override;
 
     int GetGCPCount() override;
+
     const OGRSpatialReference *GetGCPSpatialRef() const override
     {
         return m_oGCPSRS.IsEmpty() ? nullptr : &m_oGCPSRS;
     }
+
     const GDAL_GCP *GetGCPs() override;
 
     const OGRSpatialReference *GetSpatialRef() const override
     {
         return m_oSRS.IsEmpty() ? nullptr : &m_oSRS;
     }
+
     CPLErr GetGeoTransform(double *) override;
 
     static GDALDataset *Open(GDALOpenInfo *);
@@ -208,6 +195,7 @@ class MFFSpheroidList : public SpheroidList
 {
   public:
     MFFSpheroidList();
+
     ~MFFSpheroidList()
     {
     }
@@ -648,7 +636,7 @@ void MFFDataset::ScanForProjectionInfo()
     }
 
     m_oSRS = oProj;
-    m_oGCPSRS = oProj;
+    m_oGCPSRS = std::move(oProj);
 
     if (!transform_ok)
     {
@@ -729,7 +717,7 @@ GDALDataset *MFFDataset::Open(GDALOpenInfo *poOpenInfo)
     /* -------------------------------------------------------------------- */
     /*      Create a corresponding GDALDataset.                             */
     /* -------------------------------------------------------------------- */
-    auto poDS = cpl::make_unique<MFFDataset>();
+    auto poDS = std::make_unique<MFFDataset>();
 
     poDS->papszHdrLines = papszHdrLines;
 
@@ -821,7 +809,8 @@ GDALDataset *MFFDataset::Open(GDALOpenInfo *poOpenInfo)
                 continue;
 
             pszExtension = CPLGetExtension(papszDirFiles[i]);
-            if (strlen(pszExtension) >= 2 && isdigit(pszExtension[1]) &&
+            if (strlen(pszExtension) >= 2 &&
+                isdigit(static_cast<unsigned char>(pszExtension[1])) &&
                 atoi(pszExtension + 1) == nRawBand &&
                 strchr("bBcCiIjJrRxXzZ", pszExtension[0]) != nullptr)
                 break;
@@ -937,7 +926,7 @@ GDALDataset *MFFDataset::Open(GDALOpenInfo *poOpenInfo)
 
         if (bTiled)
         {
-            poBand = cpl::make_unique<MFFTiledBand>(poDS.get(), nBand, fpRaw,
+            poBand = std::make_unique<MFFTiledBand>(poDS.get(), nBand, fpRaw,
                                                     nTileXSize, nTileYSize,
                                                     eDataType, eByteOrder);
         }
@@ -1248,7 +1237,7 @@ GDALDataset *MFFDataset::CreateCopy(const char *pszFilename,
         GDALRasterBand *poSrcBand = poSrcDS->GetRasterBand(iBand + 1);
         GDALRasterBand *poDstBand = poDS->GetRasterBand(iBand + 1);
 
-        void *pData = CPLMalloc(nBlockXSize * nBlockYSize *
+        void *pData = CPLMalloc(static_cast<size_t>(nBlockXSize) * nBlockYSize *
                                 GDALGetDataTypeSizeBytes(eType));
 
         for (int iYOffset = 0; iYOffset < nYSize; iYOffset += nBlockYSize)

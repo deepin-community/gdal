@@ -9,23 +9,7 @@
  * Copyright (c) 2003, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2009-2014, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #ifndef OGR_VRT_H_INCLUDED
@@ -82,6 +66,8 @@ class OGRVRTGeomFieldProps
     bool bNullable;
 
     OGREnvelope sStaticEnvelope;
+
+    OGRGeomCoordinatePrecision sCoordinatePrecision{};
 
     OGRVRTGeomFieldProps();
     ~OGRVRTGeomFieldProps();
@@ -140,6 +126,8 @@ class OGRVRTLayer final : public OGRLayer
 
     bool bError;
 
+    bool m_bEmptyResultSet = false;
+
     bool ParseGeometryField(CPLXMLNode *psNode, CPLXMLNode *psNodeParent,
                             OGRVRTGeomFieldProps *poProps);
 
@@ -154,6 +142,7 @@ class OGRVRTLayer final : public OGRLayer
     {
         return osName.c_str();
     }
+
     virtual OGRwkbGeometryType GetGeomType() override;
 
     /* -------------------------------------------------------------------- */
@@ -198,7 +187,7 @@ class OGRVRTLayer final : public OGRLayer
     virtual OGRErr CommitTransaction() override;
     virtual OGRErr RollbackTransaction() override;
 
-    virtual OGRErr SetIgnoredFields(const char **papszFields) override;
+    virtual OGRErr SetIgnoredFields(CSLConstList papszFields) override;
 
     GDALDataset *GetSrcDataset();
 };
@@ -214,13 +203,11 @@ typedef enum
     OGR_VRT_OTHER_LAYER,
 } OGRLayerType;
 
-class OGRVRTDataSource final : public OGRDataSource
+class OGRVRTDataSource final : public GDALDataset
 {
     OGRLayer **papoLayers;
     OGRLayerType *paeLayerType;
     int nLayers;
-
-    char *pszName;
 
     CPLXMLNode *psTree;
 
@@ -255,14 +242,11 @@ class OGRVRTDataSource final : public OGRDataSource
 
     bool Initialize(CPLXMLNode *psXML, const char *pszName, int bUpdate);
 
-    const char *GetName() override
-    {
-        return pszName;
-    }
     int GetLayerCount() override
     {
         return nLayers;
     }
+
     OGRLayer *GetLayer(int) override;
 
     int TestCapability(const char *) override;
@@ -274,6 +258,7 @@ class OGRVRTDataSource final : public OGRDataSource
     {
         nCallLevel = nCallLevelIn;
     }
+
     int GetCallLevel()
     {
         return nCallLevel;
@@ -283,6 +268,7 @@ class OGRVRTDataSource final : public OGRDataSource
     {
         poParentDS = poParentDSIn;
     }
+
     OGRVRTDataSource *GetParentDS()
     {
         return poParentDS;
@@ -292,6 +278,7 @@ class OGRVRTDataSource final : public OGRDataSource
     {
         bRecursionDetected = true;
     }
+
     bool GetRecursionDetected() const
     {
         return bRecursionDetected;
@@ -301,8 +288,5 @@ class OGRVRTDataSource final : public OGRDataSource
     void AddForbiddenNames(const char *pszOtherDSName);
     bool IsInForbiddenNames(const char *pszOtherDSName) const;
 };
-
-OGRwkbGeometryType OGRVRTGetGeometryType(const char *pszGType, int *pbError);
-CPLString OGRVRTGetSerializedGeometryType(OGRwkbGeometryType eGeomType);
 
 #endif  // ndef OGR_VRT_H_INCLUDED

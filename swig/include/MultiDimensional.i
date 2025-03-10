@@ -8,24 +8,10 @@
  ******************************************************************************
  * Copyright (c) 2019, Even Rouault <even.rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  *****************************************************************************/
+
+%include RasterAttributeTable.i
 
 %rename (ExtendedDataTypeSubType) GDALExtendedDataTypeSubType;
 typedef enum {
@@ -689,8 +675,8 @@ public:
   {
 
     const int nExpectedDims = (int)GDALMDArrayGetDimensionCount(self);
-    std::vector<size_t> count_internal(nExpectedDims);
-    if( nExpectedDims != 1 )
+    std::vector<size_t> count_internal(nExpectedDims + 1);
+    if( nExpectedDims > 1 )
     {
         CPLError(CE_Failure, CPLE_AppDefined,
             "Unsupported number of dimensions");
@@ -705,23 +691,26 @@ public:
             return CE_Failure;
         }
     }
-    if( nDims1 != 1 )
+    if( nExpectedDims == 1 )
     {
-        CPLError(CE_Failure, CPLE_AppDefined,
-            "Wrong number of values in array_start_idx");
-        return CE_Failure;
-    }
-    if( nDims2 != 1 )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined,
-            "Wrong number of values in count");
-        return CE_Failure;
-    }
-    if( nDims3 != 1 )
-    {
-        CPLError(CE_Failure, CPLE_AppDefined,
-            "Wrong number of values in array_step");
-        return CE_Failure;
+        if( nDims1 != 1 )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                "Wrong number of values in array_start_idx");
+            return CE_Failure;
+        }
+        if( nDims2 != 1 )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                "Wrong number of values in count");
+            return CE_Failure;
+        }
+        if( nDims3 != 1 )
+        {
+            CPLError(CE_Failure, CPLE_AppDefined,
+                "Wrong number of values in array_step");
+            return CE_Failure;
+        }
     }
 
     CPLErr eErr = GDALMDArrayWrite(self,
@@ -1158,6 +1147,18 @@ public:
 %clear OSRSpatialReferenceShadow**;
 #endif
 
+
+#if defined(SWIGPYTHON)
+%newobject GetMeshGrid;
+%apply (int object_list_count, GDALMDArrayHS **poObjects) {(int nInputArrays, GDALMDArrayHS **ahInputArrays)};
+%apply (GDALMDArrayHS*** parrays, size_t* pnCount) {(GDALMDArrayHS*** outputArrays, size_t* pnCountOutputArrays)};
+  static void GetMeshGrid(int nInputArrays, GDALMDArrayHS **ahInputArrays,
+                          GDALMDArrayHS*** outputArrays, size_t* pnCountOutputArrays, char **options = 0)
+  {
+    *outputArrays = GDALMDArrayGetMeshGrid(ahInputArrays, nInputArrays, pnCountOutputArrays, options);
+  }
+#endif
+
   bool Cache( char** options = NULL )
   {
       return GDALMDArrayCache(self, options);
@@ -1270,6 +1271,10 @@ public:
     return GDALAttributeReadAsInt(self);
   }
 
+  long long ReadAsInt64() {
+    return GDALAttributeReadAsInt64(self);
+  }
+
   double ReadAsDouble() {
     return GDALAttributeReadAsDouble(self);
   }
@@ -1283,6 +1288,12 @@ public:
 #if defined(SWIGPYTHON)
   void ReadAsIntArray( int** pvals, size_t* pnCount ) {
     *pvals = GDALAttributeReadAsIntArray(self, pnCount);
+  }
+#endif
+
+#if defined(SWIGPYTHON)
+  void ReadAsInt64Array( long long** pvals, size_t* pnCount ) {
+    *pvals = (long long*)GDALAttributeReadAsInt64Array(self, pnCount);
   }
 #endif
 
@@ -1325,10 +1336,29 @@ public:
     return GDALAttributeWriteInt(self, val) ? CE_None : CE_Failure;
   }
 
+  CPLErr WriteInt64(long long val)
+  {
+    return GDALAttributeWriteInt64(self, val) ? CE_None : CE_Failure;
+  }
+
   CPLErr WriteDouble(double val)
   {
     return GDALAttributeWriteDouble(self, val) ? CE_None : CE_Failure;
   }
+
+#if defined(SWIGPYTHON)
+  CPLErr WriteIntArray(int nList, int* pList)
+  {
+    return GDALAttributeWriteIntArray(self, pList, nList) ? CE_None : CE_Failure;
+  }
+#endif
+
+#if defined(SWIGPYTHON)
+  CPLErr WriteInt64Array(int nList, long long* pList)
+  {
+    return GDALAttributeWriteInt64Array(self, (int64_t*)pList, nList) ? CE_None : CE_Failure;
+  }
+#endif
 
 #if defined(SWIGPYTHON)
   CPLErr WriteDoubleArray(int nList, double* pList)
@@ -1564,3 +1594,22 @@ public:
 } /* extend */
 }; /* GDALEDTComponentHS */
 
+
+#if defined(SWIGPYTHON)
+%apply (int object_list_count, GDALMDArrayHS **poObjects) {(int nArrays, GDALMDArrayHS **ahArrays)};
+%apply (int nUsages, GDALRATFieldUsage *paeUsages) {(int nUsages, GDALRATFieldUsage *paeUsages)};
+%newobject CreateRasterAttributeTableFromMDArrays;
+%inline %{
+GDALRasterAttributeTableShadow* CreateRasterAttributeTableFromMDArrays(
+    GDALRATTableType eTableType, int nArrays, GDALMDArrayHS **ahArrays,
+    int nUsages = 0, GDALRATFieldUsage *paeUsages = NULL )
+{
+  if( nUsages != 0 && nUsages != nArrays )
+  {
+      CPLError(CE_Failure, CPLE_AppDefined, "nUsages != nArrays");
+      return NULL;
+  }
+  return GDALCreateRasterAttributeTableFromMDArrays( eTableType, nArrays, (const GDALMDArrayH *)ahArrays, paeUsages );
+}
+%}
+#endif

@@ -10,23 +10,7 @@
  * Copyright (c) 2017, Ari Jolma
  * Copyright (c) 2017, Finnish Environment Institute
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_string.h"
@@ -177,8 +161,8 @@ std::string WCSDataset110::GetCoverageRequest(bool scaled, int /* nBufXSize */,
         bbox_2 = extent[3];  // max Y
         bbox_3 = extent[2];  // max X
     }
-    CPLString request = CPLGetXMLValue(psService, "ServiceURL", "");
-    request = CPLURLAddKVP(request, "SERVICE", "WCS");
+    std::string request = CPLGetXMLValue(psService, "ServiceURL", "");
+    request = CPLURLAddKVP(request.c_str(), "SERVICE", "WCS");
     request += CPLString().Printf(
         "&VERSION=%s&REQUEST=GetCoverage&IDENTIFIER=%s"
         "&FORMAT=%s&BOUNDINGBOX=%.15g,%.15g,%.15g,%.15g,%s%s",
@@ -238,7 +222,8 @@ std::string WCSDataset110::GetCoverageRequest(bool scaled, int /* nBufXSize */,
         for (unsigned int i = 0; i < pairs.size(); ++i)
         {
             std::vector<std::string> pair = Split(pairs[i].c_str(), "=");
-            request = CPLURLAddKVP(request, pair[0].c_str(), pair[1].c_str());
+            request =
+                CPLURLAddKVP(request.c_str(), pair[0].c_str(), pair[1].c_str());
         }
     }
     extra = CPLGetXMLValue(psService, "GetCoverageExtra", "");
@@ -248,7 +233,8 @@ std::string WCSDataset110::GetCoverageRequest(bool scaled, int /* nBufXSize */,
         for (unsigned int i = 0; i < pairs.size(); ++i)
         {
             std::vector<std::string> pair = Split(pairs[i].c_str(), "=");
-            request = CPLURLAddKVP(request, pair[0].c_str(), pair[1].c_str());
+            request =
+                CPLURLAddKVP(request.c_str(), pair[0].c_str(), pair[1].c_str());
         }
     }
     CPLDebug("WCS", "Requesting %s", request.c_str());
@@ -262,12 +248,12 @@ std::string WCSDataset110::GetCoverageRequest(bool scaled, int /* nBufXSize */,
 
 std::string WCSDataset110::DescribeCoverageRequest()
 {
-    CPLString request = CPLGetXMLValue(psService, "ServiceURL", "");
-    request = CPLURLAddKVP(request, "SERVICE", "WCS");
-    request = CPLURLAddKVP(request, "REQUEST", "DescribeCoverage");
-    request = CPLURLAddKVP(request, "VERSION",
+    std::string request = CPLGetXMLValue(psService, "ServiceURL", "");
+    request = CPLURLAddKVP(request.c_str(), "SERVICE", "WCS");
+    request = CPLURLAddKVP(request.c_str(), "REQUEST", "DescribeCoverage");
+    request = CPLURLAddKVP(request.c_str(), "VERSION",
                            CPLGetXMLValue(psService, "Version", "1.1.0"));
-    request = CPLURLAddKVP(request, "IDENTIFIERS",
+    request = CPLURLAddKVP(request.c_str(), "IDENTIFIERS",
                            CPLGetXMLValue(psService, "CoverageName", ""));
     CPLString extra = CPLGetXMLValue(psService, "Parameters", "");
     if (extra != "")
@@ -388,7 +374,14 @@ bool WCSDataset110::ExtractGridInfo()
     {
         CPLString s = offset_1.back();
         offset_1.erase(offset_1.end() - 1);
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         offset_2.insert(offset_2.begin(), s);
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
     }
     std::vector<std::vector<double>> offsets;
     if (swap)
@@ -695,7 +688,7 @@ CPLErr WCSDataset110::ParseCapabilities(CPLXMLNode *Capabilities,
     }
 
     char **metadata = nullptr;
-    CPLString path = "WCS_GLOBAL#";
+    std::string path = "WCS_GLOBAL#";
 
     CPLString key = path + "version";
     metadata = CSLSetNameValue(metadata, key, Version());
@@ -713,14 +706,10 @@ CPLErr WCSDataset110::ParseCapabilities(CPLXMLNode *Capabilities,
     }
 
     // identification metadata
-    CPLString path2 = path;
-    std::vector<std::string> keys2;
-    keys2.push_back("Title");
-    keys2.push_back("Abstract");
-    keys2.push_back("Fees");
-    keys2.push_back("AccessConstraints");
-    CPLXMLNode *service = AddSimpleMetaData(&metadata, Capabilities, path2,
-                                            "ServiceIdentification", keys2);
+    std::string path2 = path;
+    CPLXMLNode *service = AddSimpleMetaData(
+        &metadata, Capabilities, path2, "ServiceIdentification",
+        {"Title", "Abstract", "Fees", "AccessConstraints"});
     CPLString kw = GetKeywords(service, "Keywords", "Keyword");
     if (kw != "")
     {
@@ -736,51 +725,39 @@ CPLErr WCSDataset110::ParseCapabilities(CPLXMLNode *Capabilities,
 
     // provider metadata
     path2 = path;
-    keys2.clear();
-    keys2.push_back("ProviderName");
-    CPLXMLNode *provider = AddSimpleMetaData(&metadata, Capabilities, path2,
-                                             "ServiceProvider", keys2);
+    CPLXMLNode *provider = AddSimpleMetaData(
+        &metadata, Capabilities, path2, "ServiceProvider", {"ProviderName"});
     if (provider)
     {
         CPLXMLNode *site = CPLGetXMLNode(provider, "ProviderSite");
         if (site)
         {
-            CPLString path3 = path2 + "ProviderSite";
+            std::string path3 = path2 + "ProviderSite";
             CPLString value =
                 CPLGetXMLValue(CPLGetXMLNode(site, "href"), nullptr, "");
-            metadata = CSLSetNameValue(metadata, path3, value);
+            metadata = CSLSetNameValue(metadata, path3.c_str(), value);
         }
-        CPLString path3 = path2;
-        std::vector<std::string> keys3;
-        keys3.push_back("IndividualName");
-        keys3.push_back("PositionName");
-        keys3.push_back("Role");
-        CPLXMLNode *contact = AddSimpleMetaData(&metadata, provider, path3,
-                                                "ServiceContact", keys3);
+        std::string path3 = std::move(path2);
+        CPLXMLNode *contact =
+            AddSimpleMetaData(&metadata, provider, path3, "ServiceContact",
+                              {"IndividualName", "PositionName", "Role"});
         if (contact)
         {
-            CPLString path4 = path3;
-            std::vector<std::string> keys4;
-            keys4.push_back("HoursOfService");
-            keys4.push_back("ContactInstructions");
-            CPLXMLNode *info = AddSimpleMetaData(&metadata, contact, path4,
-                                                 "ContactInfo", keys4);
+            std::string path4 = std::move(path3);
+            CPLXMLNode *info =
+                AddSimpleMetaData(&metadata, contact, path4, "ContactInfo",
+                                  {"HoursOfService", "ContactInstructions"});
             if (info)
             {
-                CPLString path5 = path4;
-                std::vector<std::string> keys5;
-                keys5.push_back("DeliveryPoint");
-                keys5.push_back("City");
-                keys5.push_back("AdministrativeArea");
-                keys5.push_back("PostalCode");
-                keys5.push_back("Country");
-                keys5.push_back("ElectronicMailAddress");
-                CPLString path6 = path4;
-                std::vector<std::string> keys6;
-                keys6.push_back("Voice");
-                keys6.push_back("Facsimile");
-                AddSimpleMetaData(&metadata, info, path5, "Address", keys5);
-                AddSimpleMetaData(&metadata, info, path6, "Phone", keys6);
+                std::string path5 = path4;
+                std::string path6 = path4;
+                AddSimpleMetaData(&metadata, info, path5, "Address",
+                                  {"DeliveryPoint", "City",
+                                   "AdministrativeArea", "PostalCode",
+                                   "Country", "ElectronicMailAddress"});
+                AddSimpleMetaData(&metadata, info, path6, "Phone",
+                                  {"Voice", "Facsimile"});
+                CPL_IGNORE_RET_VAL(path4);
             }
         }
     }
@@ -880,7 +857,7 @@ CPLErr WCSDataset110::ParseCapabilities(CPLXMLNode *Capabilities,
             name = CPLURLAddKVP(name, "version", this->Version());
 
             CPLXMLNode *node = CPLGetXMLNode(summary, "CoverageId");
-            CPLString id;
+            std::string id;
             if (node)
             {
                 id = CPLGetXMLValue(node, nullptr, "");
@@ -902,24 +879,22 @@ CPLErr WCSDataset110::ParseCapabilities(CPLXMLNode *Capabilities,
                     return CE_Failure;
                 }
             }
-            name = CPLURLAddKVP(name, "coverage", id);
+            name = CPLURLAddKVP(name, "coverage", id.c_str());
             name = "WCS:" + name;
             metadata = CSLSetNameValue(metadata, key2, name);
 
             key2 = path3 + "DESC";
-            CPLString desc;
 
             node = CPLGetXMLNode(summary, "Title");
             if (node)
             {
-                desc = CPLGetXMLValue(node, nullptr, "");
+                metadata = CSLSetNameValue(metadata, key2,
+                                           CPLGetXMLValue(node, nullptr, ""));
             }
             else
             {
-                desc = id;
+                metadata = CSLSetNameValue(metadata, key2, id.c_str());
             }
-
-            metadata = CSLSetNameValue(metadata, key2, desc);
 
             // todo: compose global bounding box from WGS84BoundingBox and
             // BoundingBox

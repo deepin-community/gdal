@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2023, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -37,6 +21,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <limits>
 #include <new>
 #include <utility>
@@ -117,10 +102,14 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
         return false;
     }
 
-    int iRow = 0;
+    int64_t iRow = 0;
     while (iRow < oTable.GetTotalRecordCount() &&
            (iRow = oTable.GetAndSelectNextNonEmptyRow(iRow)) >= 0)
     {
+        if (iRow >= INT32_MAX)
+        {
+            return false;
+        }
         auto psField = oTable.GetFieldValue(i_raster_id);
         if (!psField)
         {
@@ -137,7 +126,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
             continue;
         }
 
-        const int nGDBRasterBandId = iRow + 1;
+        const int nGDBRasterBandId = static_cast<int>(iRow) + 1;
 
         psField = oTable.GetFieldValue(i_sequence_nbr);
         if (!psField)
@@ -477,7 +466,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
                     {
                         const auto poFieldRaster =
                             static_cast<FileGDBRasterField *>(poField);
-                        const auto osWKT = poFieldRaster->GetWKT();
+                        const auto &osWKT = poFieldRaster->GetWKT();
                         if (!osWKT.empty() && osWKT[0] != '{')
                         {
                             auto poSRS = BuildSRS(osWKT.c_str());
@@ -694,13 +683,13 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
         }
         else
         {
-            poMaskBand = cpl::make_unique<GDALOpenFileGDBRasterBand>(
+            poMaskBand = std::make_unique<GDALOpenFileGDBRasterBand>(
                 this, 1, GDT_Byte, 8, nBlockWidth, nBlockHeight, 0, true);
         }
     }
     else if (EQUAL(pszNoDataOrMask, "MASK"))
     {
-        poMaskBand = cpl::make_unique<GDALOpenFileGDBRasterBand>(
+        poMaskBand = std::make_unique<GDALOpenFileGDBRasterBand>(
             this, 1, GDT_Byte, 8, nBlockWidth, nBlockHeight, 0, true);
     }
     else if (!EQUAL(pszNoDataOrMask, "NONE"))
@@ -715,7 +704,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
             if (std::fabs(dfNoData) > std::numeric_limits<float>::max())
             {
                 CPLError(CE_Failure, CPLE_AppDefined,
-                         "Invalid nodata value %.18g for Float32", dfNoData);
+                         "Invalid nodata value %.17g for Float32", dfNoData);
                 return false;
             }
             bHasNoData = true;
@@ -758,7 +747,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
                 dfNoData != static_cast<double>(static_cast<int64_t>(dfNoData)))
             {
                 CPLError(CE_Failure, CPLE_AppDefined,
-                         "Invalid nodata value %.18g for %s", dfNoData,
+                         "Invalid nodata value %.17g for %s", dfNoData,
                          GDALGetDataTypeName(eDT));
                 return false;
             }
@@ -792,7 +781,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
         // Create overview bands
         for (int iOvr = 0; iOvr < nOverviewCount; ++iOvr)
         {
-            auto poOvrBand = cpl::make_unique<GDALOpenFileGDBRasterBand>(
+            auto poOvrBand = std::make_unique<GDALOpenFileGDBRasterBand>(
                 this, iBand, eDT, nBitWidth, nBlockWidth, nBlockHeight,
                 iOvr + 1, false);
             if (poBand->m_bHasNoData)
@@ -821,7 +810,7 @@ bool OGROpenFileGDBDataSource::OpenRaster(const GDALOpenInfo *poOpenInfo,
                 {
                     // Make the mask band owned by the first raster band
                     poOvrBand->m_poMaskBandOwned =
-                        cpl::make_unique<GDALOpenFileGDBRasterBand>(
+                        std::make_unique<GDALOpenFileGDBRasterBand>(
                             this, 1, GDT_Byte, 8, nBlockWidth, nBlockHeight,
                             iOvr + 1, true);
                     poMaskBandRef = poOvrBand->m_poMaskBandOwned.get();
@@ -901,8 +890,8 @@ void OGROpenFileGDBDataSource::GuessJPEGQuality(int nOverviewCount)
                 }
                 if (nJPEGSize)
                 {
-                    CPLString osTmpFilename;
-                    osTmpFilename.Printf("/vsimem/_openfilegdb/%p.jpg", this);
+                    const CPLString osTmpFilename(
+                        VSIMemGenerateHiddenFilename("openfilegdb.jpg"));
                     VSIFCloseL(VSIFileFromMemBuffer(
                         osTmpFilename.c_str(),
                         const_cast<GByte *>(pabyData + nJPEGOffset), nJPEGSize,
@@ -1546,12 +1535,8 @@ CPLErr GDALOpenFileGDBRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
                 return CE_Failure;
             }
 
-            VSILFILE *fp = VSIFOpenL("tmp.jpg", "wb");
-            VSIFWriteL(pabyData + nJPEGOffset, nJPEGSize, 1, fp);
-            VSIFCloseL(fp);
-
-            CPLString osTmpFilename;
-            osTmpFilename.Printf("/vsimem/_openfilegdb/%p.jpg", this);
+            const CPLString osTmpFilename(
+                VSIMemGenerateHiddenFilename("openfilegdb.jpg"));
             VSIFCloseL(VSIFileFromMemBuffer(
                 osTmpFilename.c_str(),
                 const_cast<GByte *>(pabyData + nJPEGOffset), nJPEGSize, false));
@@ -1673,8 +1658,8 @@ CPLErr GDALOpenFileGDBRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
                 return CE_Failure;
             }
 
-            CPLString osTmpFilename;
-            osTmpFilename.Printf("/vsimem/_openfilegdb/%p.j2k", this);
+            const CPLString osTmpFilename(
+                VSIMemGenerateHiddenFilename("openfilegdb.j2k"));
             VSIFCloseL(VSIFileFromMemBuffer(
                 osTmpFilename.c_str(),
                 const_cast<GByte *>(pabyData + nJPEGOffset), nJPEGSize, false));
@@ -1900,7 +1885,7 @@ CPLErr GDALOpenFileGDBRasterBand::IReadBlock(int nBlockXOff, int nBlockYOff,
         {
             for (int x = 0; x < nBlockXSize; ++x)
             {
-                printf("%.18g ", // ok
+                printf("%.17g ", // ok
                        static_cast<double *>(pImage)[y * nBlockXSize + x]);
             }
             printf("\n"); // ok
@@ -1944,14 +1929,15 @@ GDALRasterAttributeTable *GDALOpenFileGDBRasterBand::GetDefaultRAT()
     const std::string osVATTableName(
         std::string("VAT_").append(poGDS->m_osRasterLayerName));
     // Instantiate a new dataset, os that the RAT is standalone
-    auto poDSNew = cpl::make_unique<OGROpenFileGDBDataSource>();
+    auto poDSNew = std::make_unique<OGROpenFileGDBDataSource>();
     GDALOpenInfo oOpenInfo(poGDS->m_osDirName.c_str(), GA_ReadOnly);
-    if (!poDSNew->Open(&oOpenInfo))
+    bool bRetryFileGDBUnused = false;
+    if (!poDSNew->Open(&oOpenInfo, bRetryFileGDBUnused))
         return nullptr;
     auto poVatLayer = poDSNew->BuildLayerFromName(osVATTableName.c_str());
     if (!poVatLayer)
         return nullptr;
-    m_poRAT = cpl::make_unique<GDALOpenFileGDBRasterAttributeTable>(
+    m_poRAT = std::make_unique<GDALOpenFileGDBRasterAttributeTable>(
         std::move(poDSNew), osVATTableName, std::move(poVatLayer));
     return m_poRAT.get();
 }

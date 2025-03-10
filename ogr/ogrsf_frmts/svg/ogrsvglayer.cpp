@@ -7,23 +7,7 @@
  ******************************************************************************
  * Copyright (c) 2011-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "ogr_svg.h"
@@ -158,6 +142,7 @@ void OGRSVGLayer::ResetReading()
     if (fpSVG)
     {
         VSIFSeekL(fpSVG, 0, SEEK_SET);
+        VSIFClearErrL(fpSVG);
 #ifdef HAVE_EXPAT
         if (oParser)
             XML_ParserFree(oParser);
@@ -536,7 +521,7 @@ OGRFeature *OGRSVGLayer::GetNextFeature()
         return ppoFeatureTab[nFeatureTabIndex++];
     }
 
-    if (VSIFEofL(fpSVG))
+    if (VSIFEofL(fpSVG) || VSIFErrorL(fpSVG))
         return nullptr;
 
     std::vector<char> aBuf(PARSER_BUF_SIZE);
@@ -554,7 +539,7 @@ OGRFeature *OGRSVGLayer::GetNextFeature()
         nDataHandlerCounter = 0;
         unsigned int nLen =
             (unsigned int)VSIFReadL(aBuf.data(), 1, aBuf.size(), fpSVG);
-        nDone = VSIFEofL(fpSVG);
+        nDone = nLen < aBuf.size();
         if (XML_Parse(oParser, aBuf.data(), nLen, nDone) == XML_STATUS_ERROR)
         {
             CPLError(
@@ -664,7 +649,7 @@ void OGRSVGLayer::LoadSchema()
         nDataHandlerCounter = 0;
         unsigned int nLen =
             (unsigned int)VSIFReadL(aBuf.data(), 1, aBuf.size(), fpSVG);
-        nDone = VSIFEofL(fpSVG);
+        nDone = nLen < aBuf.size();
         if (XML_Parse(oSchemaParser, aBuf.data(), nLen, nDone) ==
             XML_STATUS_ERROR)
         {
@@ -708,7 +693,12 @@ void OGRSVGLayer::startElementLoadSchemaCbk(const char *pszName,
     if (strcmp(pszName, "circle") == 0 &&
         strcmp(OGRSVGGetClass(ppszAttr), "point") == 0)
     {
-        poCurLayer = (OGRSVGLayer *)poDS->GetLayer(0);
+        poCurLayer = cpl::down_cast<OGRSVGLayer *>(poDS->GetLayer(0));
+        if (!poCurLayer)
+        {
+            CPLAssert(false);
+            return;
+        }
         poCurLayer->nTotalFeatures++;
         inInterestingElement = true;
         interestingDepthLevel = depthLevel;
@@ -716,7 +706,12 @@ void OGRSVGLayer::startElementLoadSchemaCbk(const char *pszName,
     else if (strcmp(pszName, "path") == 0 &&
              strcmp(OGRSVGGetClass(ppszAttr), "line") == 0)
     {
-        poCurLayer = (OGRSVGLayer *)poDS->GetLayer(1);
+        poCurLayer = cpl::down_cast<OGRSVGLayer *>(poDS->GetLayer(1));
+        if (!poCurLayer)
+        {
+            CPLAssert(false);
+            return;
+        }
         poCurLayer->nTotalFeatures++;
         inInterestingElement = true;
         interestingDepthLevel = depthLevel;
@@ -724,7 +719,12 @@ void OGRSVGLayer::startElementLoadSchemaCbk(const char *pszName,
     else if (strcmp(pszName, "path") == 0 &&
              strcmp(OGRSVGGetClass(ppszAttr), "polygon") == 0)
     {
-        poCurLayer = (OGRSVGLayer *)poDS->GetLayer(2);
+        poCurLayer = cpl::down_cast<OGRSVGLayer *>(poDS->GetLayer(2));
+        if (!poCurLayer)
+        {
+            CPLAssert(false);
+            return;
+        }
         poCurLayer->nTotalFeatures++;
         inInterestingElement = true;
         interestingDepthLevel = depthLevel;

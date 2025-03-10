@@ -8,23 +8,7 @@
  * Copyright (c) 2000, Frank Warmerdam
  * Copyright (c) 2008-2013, Even Rouault <even dot rouault at spatialys.com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #include "cpl_port.h"
@@ -89,10 +73,10 @@ GDALRasterBandH MEMCreateRasterBandEx(GDALDataset *poDS, int nBand,
 /************************************************************************/
 
 MEMRasterBand::MEMRasterBand(GByte *pabyDataIn, GDALDataType eTypeIn,
-                             int nXSizeIn, int nYSizeIn)
+                             int nXSizeIn, int nYSizeIn, bool bOwnDataIn)
     : GDALPamRasterBand(FALSE), pabyData(pabyDataIn),
       nPixelOffset(GDALGetDataTypeSizeBytes(eTypeIn)), nLineOffset(0),
-      bOwnData(true)
+      bOwnData(bOwnDataIn)
 {
     eAccess = GA_Update;
     eDataType = eTypeIn;
@@ -274,7 +258,7 @@ CPLErr MEMRasterBand::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
 CPLErr MEMDataset::IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpaceBuf, GSpacing nLineSpaceBuf,
                              GSpacing nBandSpaceBuf,
                              GDALRasterIOExtraArg *psExtraArg)
@@ -463,7 +447,7 @@ int MEMRasterBand::GetOverviewCount()
     MEMDataset *poMemDS = dynamic_cast<MEMDataset *>(poDS);
     if (poMemDS == nullptr)
         return 0;
-    return poMemDS->m_nOverviewDSCount;
+    return static_cast<int>(poMemDS->m_apoOverviewDS.size());
 }
 
 /************************************************************************/
@@ -476,9 +460,9 @@ GDALRasterBand *MEMRasterBand::GetOverview(int i)
     MEMDataset *poMemDS = dynamic_cast<MEMDataset *>(poDS);
     if (poMemDS == nullptr)
         return nullptr;
-    if (i < 0 || i >= poMemDS->m_nOverviewDSCount)
+    if (i < 0 || i >= static_cast<int>(poMemDS->m_apoOverviewDS.size()))
         return nullptr;
-    return poMemDS->m_papoOverviewDS[i]->GetRasterBand(nBand);
+    return poMemDS->m_apoOverviewDS[i]->GetRasterBand(nBand);
 }
 
 /************************************************************************/
@@ -504,11 +488,10 @@ CPLErr MEMRasterBand::CreateMaskBand(int nFlagsIn)
         return CE_Failure;
 
     nMaskFlags = nFlagsIn;
-    bOwnMask = true;
-    auto poMemMaskBand =
-        new MEMRasterBand(pabyMaskData, GDT_Byte, nRasterXSize, nRasterYSize);
-    poMask = poMemMaskBand;
+    auto poMemMaskBand = new MEMRasterBand(pabyMaskData, GDT_Byte, nRasterXSize,
+                                           nRasterYSize, /* bOwnData= */ true);
     poMemMaskBand->m_bIsMask = true;
+    poMask.reset(poMemMaskBand, true);
     if ((nFlagsIn & GMF_PER_DATASET) != 0 && nBand == 1 && poMemDS != nullptr)
     {
         for (int i = 2; i <= poMemDS->GetRasterCount(); ++i)
@@ -517,8 +500,7 @@ CPLErr MEMRasterBand::CreateMaskBand(int nFlagsIn)
                 cpl::down_cast<MEMRasterBand *>(poMemDS->GetRasterBand(i));
             poOtherBand->InvalidateMaskBand();
             poOtherBand->nMaskFlags = nFlagsIn;
-            poOtherBand->bOwnMask = false;
-            poOtherBand->poMask = poMask;
+            poOtherBand->poMask.reset(poMask.get(), false);
         }
     }
     return CE_None;
@@ -544,9 +526,7 @@ bool MEMRasterBand::IsMaskBand() const
 /************************************************************************/
 
 MEMDataset::MEMDataset()
-    : GDALDataset(FALSE), bGeoTransformSet(FALSE), m_nGCPCount(0),
-      m_pasGCPs(nullptr), m_nOverviewDSCount(0), m_papoOverviewDS(nullptr),
-      m_poPrivate(new Private())
+    : GDALDataset(FALSE), bGeoTransformSet(FALSE), m_poPrivate(new Private())
 {
     adfGeoTransform[0] = 0.0;
     adfGeoTransform[1] = 1.0;
@@ -568,13 +548,6 @@ MEMDataset::~MEMDataset()
     bSuppressOnClose = true;
     FlushCache(true);
     bSuppressOnClose = bSuppressOnCloseBackup;
-
-    GDALDeinitGCPs(m_nGCPCount, m_pasGCPs);
-    CPLFree(m_pasGCPs);
-
-    for (int i = 0; i < m_nOverviewDSCount; ++i)
-        delete m_papoOverviewDS[i];
-    CPLFree(m_papoOverviewDS);
 }
 
 #if 0
@@ -676,6 +649,7 @@ void *MEMDataset::GetInternalHandle(const char *pszRequest)
 
     return nullptr;
 }
+
 /************************************************************************/
 /*                            GetGCPCount()                             */
 /************************************************************************/
@@ -683,7 +657,7 @@ void *MEMDataset::GetInternalHandle(const char *pszRequest)
 int MEMDataset::GetGCPCount()
 
 {
-    return m_nGCPCount;
+    return static_cast<int>(m_aoGCPs.size());
 }
 
 /************************************************************************/
@@ -703,7 +677,7 @@ const OGRSpatialReference *MEMDataset::GetGCPSpatialRef() const
 const GDAL_GCP *MEMDataset::GetGCPs()
 
 {
-    return m_pasGCPs;
+    return gdal::GCP::c_ptr(m_aoGCPs);
 }
 
 /************************************************************************/
@@ -714,15 +688,11 @@ CPLErr MEMDataset::SetGCPs(int nNewCount, const GDAL_GCP *pasNewGCPList,
                            const OGRSpatialReference *poSRS)
 
 {
-    GDALDeinitGCPs(m_nGCPCount, m_pasGCPs);
-    CPLFree(m_pasGCPs);
-
     m_oGCPSRS.Clear();
     if (poSRS)
         m_oGCPSRS = *poSRS;
 
-    m_nGCPCount = nNewCount;
-    m_pasGCPs = GDALDuplicateGCPs(m_nGCPCount, pasNewGCPList);
+    m_aoGCPs = gdal::GCP::fromC(pasNewGCPList, nNewCount);
 
     return CE_None;
 }
@@ -833,11 +803,7 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
     if (nOverviews == 0)
     {
         // Cleanup existing overviews
-        for (int i = 0; i < m_nOverviewDSCount; ++i)
-            delete m_papoOverviewDS[i];
-        CPLFree(m_papoOverviewDS);
-        m_nOverviewDSCount = 0;
-        m_papoOverviewDS = nullptr;
+        m_apoOverviewDS.clear();
         return CE_None;
     }
 
@@ -910,7 +876,7 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
         // Create new overview dataset if needed.
         if (!bExisting)
         {
-            MEMDataset *poOvrDS = new MEMDataset();
+            auto poOvrDS = std::make_unique<MEMDataset>();
             poOvrDS->eAccess = GA_Update;
             poOvrDS->nRasterXSize =
                 (nRasterXSize + panOverviewList[i] - 1) / panOverviewList[i];
@@ -922,14 +888,10 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
                     GetRasterBand(iBand + 1)->GetRasterDataType();
                 if (poOvrDS->AddBand(eDT, nullptr) != CE_None)
                 {
-                    delete poOvrDS;
                     return CE_Failure;
                 }
             }
-            m_nOverviewDSCount++;
-            m_papoOverviewDS = (GDALDataset **)CPLRealloc(
-                m_papoOverviewDS, sizeof(GDALDataset *) * m_nOverviewDSCount);
-            m_papoOverviewDS[m_nOverviewDSCount - 1] = poOvrDS;
+            m_apoOverviewDS.emplace_back(std::move(poOvrDS));
         }
     }
 
@@ -986,7 +948,7 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
         // for it
         MEMRasterBand *poMEMBand = cpl::down_cast<MEMRasterBand *>(poBand);
         const bool bMustGenerateMaskOvr =
-            ((poMEMBand->bOwnMask && poMEMBand->poMask != nullptr) ||
+            ((poMEMBand->poMask != nullptr && poMEMBand->poMask.IsOwned()) ||
              // Or if it is a per-dataset mask, in which case just do it for the
              // first band
              ((poMEMBand->nMaskFlags & GMF_PER_DATASET) != 0 && iBand == 0)) &&
@@ -998,8 +960,8 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
             {
                 MEMRasterBand *poMEMOvrBand =
                     cpl::down_cast<MEMRasterBand *>(papoOverviewBands[i]);
-                if (!(poMEMOvrBand->bOwnMask &&
-                      poMEMOvrBand->poMask != nullptr) &&
+                if (!(poMEMOvrBand->poMask != nullptr &&
+                      poMEMOvrBand->poMask.IsOwned()) &&
                     (poMEMOvrBand->nMaskFlags & GMF_PER_DATASET) == 0)
                 {
                     poMEMOvrBand->CreateMaskBand(poMEMBand->nMaskFlags);
@@ -1016,8 +978,7 @@ CPLErr MEMDataset::IBuildOverviews(const char *pszResampling, int nOverviews,
             // Make the mask band to be its own mask, similarly to what is
             // done for alpha bands in GDALRegenerateOverviews() (#5640)
             poMaskBand->InvalidateMaskBand();
-            poMaskBand->bOwnMask = false;
-            poMaskBand->poMask = poMaskBand;
+            poMaskBand->poMask.reset(poMaskBand, false);
             poMaskBand->nMaskFlags = 0;
             eErr = GDALRegenerateOverviewsEx(
                 (GDALRasterBandH)poMaskBand, nNewOverviews,
@@ -1064,6 +1025,106 @@ CPLErr MEMDataset::CreateMaskBand(int nFlagsIn)
 }
 
 /************************************************************************/
+/*                           CanBeCloned()                              */
+/************************************************************************/
+
+/** Implements GDALDataset::CanBeCloned()
+ *
+ * This method is called by GDALThreadSafeDataset::Create() to determine if
+ * it is possible to create a thread-safe wrapper for a dataset, which involves
+ * the ability to Clone() it.
+ *
+ * The implementation of this method must be thread-safe.
+ */
+bool MEMDataset::CanBeCloned(int nScopeFlags, bool bCanShareState) const
+{
+    return nScopeFlags == GDAL_OF_RASTER && bCanShareState &&
+           typeid(this) == typeid(const MEMDataset *);
+}
+
+/************************************************************************/
+/*                              Clone()                                 */
+/************************************************************************/
+
+/** Implements GDALDataset::Clone()
+ *
+ * This method returns a new instance, identical to "this", but which shares the
+ * same memory buffer as "this".
+ *
+ * The implementation of this method must be thread-safe.
+ */
+std::unique_ptr<GDALDataset> MEMDataset::Clone(int nScopeFlags,
+                                               bool bCanShareState) const
+{
+    if (MEMDataset::CanBeCloned(nScopeFlags, bCanShareState))
+    {
+        auto poNewDS = std::make_unique<MEMDataset>();
+        poNewDS->poDriver = poDriver;
+        poNewDS->nRasterXSize = nRasterXSize;
+        poNewDS->nRasterYSize = nRasterYSize;
+        poNewDS->bGeoTransformSet = bGeoTransformSet;
+        memcpy(poNewDS->adfGeoTransform, adfGeoTransform,
+               sizeof(adfGeoTransform));
+        poNewDS->m_oSRS = m_oSRS;
+        poNewDS->m_aoGCPs = m_aoGCPs;
+        poNewDS->m_oGCPSRS = m_oGCPSRS;
+        for (const auto &poOvrDS : m_apoOverviewDS)
+        {
+            poNewDS->m_apoOverviewDS.emplace_back(
+                poOvrDS->Clone(nScopeFlags, bCanShareState));
+        }
+
+        poNewDS->SetDescription(GetDescription());
+        poNewDS->oMDMD = oMDMD;
+
+        // Clone bands
+        for (int i = 1; i <= nBands; ++i)
+        {
+            auto poSrcMEMBand =
+                dynamic_cast<const MEMRasterBand *>(papoBands[i - 1]);
+            CPLAssert(poSrcMEMBand);
+            auto poNewBand = std::make_unique<MEMRasterBand>(
+                poNewDS.get(), i, poSrcMEMBand->pabyData,
+                poSrcMEMBand->GetRasterDataType(), poSrcMEMBand->nPixelOffset,
+                poSrcMEMBand->nLineOffset,
+                /* bAssumeOwnership = */ false);
+
+            poNewBand->SetDescription(poSrcMEMBand->GetDescription());
+            poNewBand->oMDMD = poSrcMEMBand->oMDMD;
+
+            if (poSrcMEMBand->psPam)
+            {
+                poNewBand->PamInitialize();
+                CPLAssert(poNewBand->psPam);
+                poNewBand->psPam->CopyFrom(*(poSrcMEMBand->psPam));
+            }
+
+            // Instantiates a mask band when needed.
+            if ((poSrcMEMBand->nMaskFlags &
+                 (GMF_ALL_VALID | GMF_ALPHA | GMF_NODATA)) == 0)
+            {
+                auto poSrcMaskBand = dynamic_cast<const MEMRasterBand *>(
+                    poSrcMEMBand->poMask.get());
+                if (poSrcMaskBand)
+                {
+                    auto poMaskBand = new MEMRasterBand(
+                        poSrcMaskBand->pabyData, GDT_Byte, nRasterXSize,
+                        nRasterYSize, /* bOwnData = */ false);
+                    poMaskBand->m_bIsMask = true;
+                    poNewBand->poMask.reset(poMaskBand, true);
+                    poNewBand->nMaskFlags = poSrcMaskBand->nMaskFlags;
+                }
+            }
+
+            poNewDS->SetBand(i, std::move(poNewBand));
+        }
+
+        return poNewDS;
+    }
+    return GDALDataset::Clone(nScopeFlags, bCanShareState);
+}
+
+/************************************************************************/
 /*                                Open()                                */
 /************************************************************************/
 
@@ -1077,6 +1138,20 @@ GDALDataset *MEMDataset::Open(GDALOpenInfo *poOpenInfo)
     if (!STARTS_WITH_CI(poOpenInfo->pszFilename, "MEM:::") ||
         poOpenInfo->fpL != nullptr)
         return nullptr;
+
+#ifndef GDAL_MEM_ENABLE_OPEN
+    if (!CPLTestBool(CPLGetConfigOption("GDAL_MEM_ENABLE_OPEN", "NO")))
+    {
+        CPLError(CE_Failure, CPLE_AppDefined,
+                 "Opening a MEM dataset with the MEM:::DATAPOINTER= syntax "
+                 "is no longer supported by default for security reasons. "
+                 "If you want to allow it, define the "
+                 "GDAL_MEM_ENABLE_OPEN "
+                 "configuration option to YES, or build GDAL with the "
+                 "GDAL_MEM_ENABLE_OPEN compilation definition");
+        return nullptr;
+    }
+#endif
 
     char **papszOptions =
         CSLTokenizeStringComplex(poOpenInfo->pszFilename + 6, ",", TRUE, FALSE);
@@ -1332,9 +1407,9 @@ MEMDataset *MEMDataset::Create(const char * /* pszFilename */, int nXSize,
         MEMRasterBand *poNewBand = nullptr;
 
         if (bPixelInterleaved)
-            poNewBand =
-                new MEMRasterBand(poDS, iBand + 1, apbyBandData[iBand], eType,
-                                  nWordSize * nBandsIn, 0, iBand == 0);
+            poNewBand = new MEMRasterBand(
+                poDS, iBand + 1, apbyBandData[iBand], eType,
+                cpl::fits_on<int>(nWordSize * nBandsIn), 0, iBand == 0);
         else
             poNewBand = new MEMRasterBand(poDS, iBand + 1, apbyBandData[iBand],
                                           eType, 0, 0, iBand == 0);

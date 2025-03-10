@@ -8,23 +8,7 @@
  * Copyright (c) 1998, 2002, Frank Warmerdam <warmerdam@pobox.com>
  * Copyright (c) 2007-2015, Even Rouault <even dot rouault at spatialys dot com>
  *
- * Permission is hereby granted, free of charge, to any person obtaining a
- * copy of this software and associated documentation files (the "Software"),
- * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
- * and/or sell copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
- * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
- * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
+ * SPDX-License-Identifier: MIT
  ****************************************************************************/
 
 #ifndef GTIFFDATASET_H_INCLUDED
@@ -32,6 +16,7 @@
 
 #include "gdal_pam.h"
 
+#include <mutex>
 #include <queue>
 
 #include "cpl_mem_cache.h"
@@ -52,9 +37,6 @@ enum class GTiffProfile : GByte
 
 // This must be a #define, since it is used in a XSTRINGIFY() macro
 #define DEFAULT_WEBP_LEVEL 75
-
-constexpr const char *const szJPEGGTiffDatasetTmpPrefix =
-    "/vsimem/gtiffdataset_jpg_tmp_";
 
 class GTiffBitmapBand;
 class GTiffDataset;
@@ -130,6 +112,13 @@ class GTiffDataset final : public GDALPamDataset
     friend void GTIFFSetZLevel(GDALDatasetH hGTIFFDS, int nZLevel);
     friend void GTIFFSetZSTDLevel(GDALDatasetH hGTIFFDS, int nZSTDLevel);
     friend void GTIFFSetMaxZError(GDALDatasetH hGTIFFDS, double dfMaxZError);
+#if HAVE_JXL
+    friend void GTIFFSetJXLLossless(GDALDatasetH hGTIFFDS, bool bIsLossless);
+    friend void GTIFFSetJXLEffort(GDALDatasetH hGTIFFDS, int nEffort);
+    friend void GTIFFSetJXLDistance(GDALDatasetH hGTIFFDS, float fDistance);
+    friend void GTIFFSetJXLAlphaDistance(GDALDatasetH hGTIFFDS,
+                                         float fAlphaDistance);
+#endif
 
     TIFF *m_hTIFF = nullptr;
     VSILFILE *m_fpL = nullptr;
@@ -146,8 +135,8 @@ class GTiffDataset final : public GDALPamDataset
     std::unique_ptr<GDALDataset>
         m_poMaskExtOvrDS{};  // Used with MASK_OVERVIEW_DATASET open option
     GTiffJPEGOverviewDS **m_papoJPEGOverviewDS = nullptr;
-    GDAL_GCP *m_pasGCPList = nullptr;
-    GDALColorTable *m_poColorTable = nullptr;
+    std::vector<gdal::GCP> m_aoGCPs{};
+    std::unique_ptr<GDALColorTable> m_poColorTable{};
     char **m_papszMetadataFiles = nullptr;
     GByte *m_pabyBlockBuf = nullptr;
     char **m_papszCreationOptions = nullptr;
@@ -157,12 +146,10 @@ class GTiffDataset final : public GDALPamDataset
     CPLVirtualMem *m_psVirtualMemIOMapping = nullptr;
     CPLWorkerThreadPool *m_poThreadPool = nullptr;
     std::unique_ptr<CPLJobQueue> m_poCompressQueue{};
-    CPLMutex *m_hCompressThreadPoolMutex = nullptr;
+    std::mutex m_oCompressThreadPoolMutex{};
 
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
     lru11::Cache<int, std::pair<vsi_l_offset, vsi_l_offset>>
         m_oCacheStrileToOffsetByteCount{1024};
-#endif
 
     MaskOffset *m_panMaskOffsetLsb = nullptr;
     char *m_pszVertUnit = nullptr;
@@ -197,8 +184,17 @@ class GTiffDataset final : public GDALPamDataset
     int m_nLastBandRead = -1;        // Used for the all-in-on-strip case.
     int m_nLastWrittenBlockId = -1;  // used for m_bStreamingOut
     int m_nRefBaseMapping = 0;
-    int m_nGCPCount = 0;
     int m_nDisableMultiThreadedRead = 0;
+
+  public:
+    static constexpr int DEFAULT_COLOR_TABLE_MULTIPLIER_257 = 257;
+
+  private:
+    //! Multiplication factor to go from GDAL [0,255] color table range to
+    // TIFF [0,65535] color map one.
+    // 0 is not a valid value, and means not specified by user through the
+    // COLOR_TABLE_MULTIPLIER open / creation option.
+    int m_nColorTableMultiplier = 0;
 
     GTIFFKeysFlavorEnum m_eGeoTIFFKeysFlavor = GEOTIFF_KEYS_STANDARD;
     GeoTIFFVersionEnum m_eGeoTIFFVersion = GEOTIFF_VERSION_AUTO;
@@ -330,9 +326,8 @@ class GTiffDataset final : public GDALPamDataset
 
     int GetJPEGOverviewCount();
 
-    bool IsBlockAvailable(int nBlockId, vsi_l_offset *pnOffset = nullptr,
-                          vsi_l_offset *pnSize = nullptr,
-                          bool *pbErrOccurred = nullptr);
+    bool IsBlockAvailable(int nBlockId, vsi_l_offset *pnOffset,
+                          vsi_l_offset *pnSize, bool *pbErrOccurred);
 
     void ApplyPamInfo();
     void PushMetadataToPam();
@@ -341,6 +336,10 @@ class GTiffDataset final : public GDALPamDataset
                           int bPreserveDataBuffer);
     bool WriteEncodedStrip(uint32_t strip, GByte *pabyData,
                            int bPreserveDataBuffer);
+
+    template <typename T>
+    void WriteDealWithLercAndNan(T *pBuffer, int nActualBlockWidth,
+                                 int nActualBlockHeight, int nStrileHeight);
 
     bool HasOnlyNoData(const void *pBuffer, int nWidth, int nHeight,
                        int nLineStride, int nComponents);
@@ -385,15 +384,16 @@ class GTiffDataset final : public GDALPamDataset
 
     int DirectIO(GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize,
                  int nYSize, void *pData, int nBufXSize, int nBufYSize,
-                 GDALDataType eBufType, int nBandCount, int *panBandMap,
+                 GDALDataType eBufType, int nBandCount, const int *panBandMap,
                  GSpacing nPixelSpace, GSpacing nLineSpace, GSpacing nBandSpace,
                  GDALRasterIOExtraArg *psExtraArg);
 
     int VirtualMemIO(GDALRWFlag eRWFlag, int nXOff, int nYOff, int nXSize,
                      int nYSize, void *pData, int nBufXSize, int nBufYSize,
-                     GDALDataType eBufType, int nBandCount, int *panBandMap,
-                     GSpacing nPixelSpace, GSpacing nLineSpace,
-                     GSpacing nBandSpace, GDALRasterIOExtraArg *psExtraArg);
+                     GDALDataType eBufType, int nBandCount,
+                     const int *panBandMap, GSpacing nPixelSpace,
+                     GSpacing nLineSpace, GSpacing nBandSpace,
+                     GDALRasterIOExtraArg *psExtraArg);
 
     void SetStructuralMDFromParent(GTiffDataset *poParentDS);
 
@@ -401,19 +401,19 @@ class GTiffDataset final : public GDALPamDataset
     CPLErr CommonDirectIO(FetchBuffer &oFetcher, int nXOff, int nYOff,
                           int nXSize, int nYSize, void *pData, int nBufXSize,
                           int nBufYSize, GDALDataType eBufType, int nBandCount,
-                          int *panBandMap, GSpacing nPixelSpace,
+                          const int *panBandMap, GSpacing nPixelSpace,
                           GSpacing nLineSpace, GSpacing nBandSpace);
 
     CPLErr CommonDirectIOClassic(FetchBufferDirectIO &oFetcher, int nXOff,
                                  int nYOff, int nXSize, int nYSize, void *pData,
                                  int nBufXSize, int nBufYSize,
                                  GDALDataType eBufType, int nBandCount,
-                                 int *panBandMap, GSpacing nPixelSpace,
+                                 const int *panBandMap, GSpacing nPixelSpace,
                                  GSpacing nLineSpace, GSpacing nBandSpace);
 
     void LoadGeoreferencingAndPamIfNeeded();
 
-    char **GetSiblingFiles();
+    CSLConstList GetSiblingFiles();
 
     void IdentifyAuthorizedGeoreferencingSources();
 
@@ -463,17 +463,17 @@ class GTiffDataset final : public GDALPamDataset
     virtual const GDAL_GCP *GetGCPs() override;
     CPLErr SetGCPs(int nGCPCountIn, const GDAL_GCP *pasGCPListIn,
                    const OGRSpatialReference *poSRS) override;
-#ifdef SUPPORTS_GET_OFFSET_BYTECOUNT
+
     bool IsMultiThreadedReadCompatible() const;
     CPLErr MultiThreadedRead(int nXOff, int nYOff, int nXSize, int nYSize,
                              void *pData, GDALDataType eBufType, int nBandCount,
                              const int *panBandMap, GSpacing nPixelSpace,
                              GSpacing nLineSpace, GSpacing nBandSpace);
-#endif
+
     virtual CPLErr IRasterIO(GDALRWFlag eRWFlag, int nXOff, int nYOff,
                              int nXSize, int nYSize, void *pData, int nBufXSize,
                              int nBufYSize, GDALDataType eBufType,
-                             int nBandCount, int *panBandMap,
+                             int nBandCount, BANDMAP_TYPE panBandMap,
                              GSpacing nPixelSpace, GSpacing nLineSpace,
                              GSpacing nBandSpace,
                              GDALRasterIOExtraArg *psExtraArg) override;
@@ -540,8 +540,8 @@ class GTiffDataset final : public GDALPamDataset
     static TIFF *CreateLL(const char *pszFilename, int nXSize, int nYSize,
                           int nBands, GDALDataType eType,
                           double dfExtraSpaceForOverviews,
-                          char **papszParamList, VSILFILE **pfpL,
-                          CPLString &osTmpFilename);
+                          int nColorTableMultiplier, char **papszParamList,
+                          VSILFILE **pfpL, CPLString &osTmpFilename);
 
     CPLErr WriteEncodedTileOrStrip(uint32_t tile_or_strip, void *data,
                                    int bPreserveDataBuffer);
@@ -550,6 +550,9 @@ class GTiffDataset final : public GDALPamDataset
                                char **papszParamList, uint32_t nBitsPerSample);
 
     static const GTIFFTag *GetTIFFTags();
+
+    static unsigned short ClampCTEntry(int iColor, int iComp, int nCTEntryVal,
+                                       int nMultFactor);
 };
 
 GTIFFKeysFlavorEnum GetGTIFFKeysFlavor(CSLConstList papszOptions);
